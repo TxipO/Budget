@@ -12,3 +12,5 @@ dist/
 *~
 .vscode/
 *.log
+.claude/scheduled_tasks.lock
+.claude/logs/
