@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle, XCircle, Info, X } from 'lucide-react';
 import type { ToastType, ToastAction } from '@/lib/toast';
 
-interface Toast { id: number; message: string; type: ToastType; action?: ToastAction }
+interface Toast { id: string; message: string; type: ToastType; action?: ToastAction }
 
 const ICONS = {
   success: <CheckCircle size={16} />,
@@ -20,10 +20,9 @@ export default function ToastContainer() {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   useEffect(() => {
-    let counter = 0;
     const handler = (e: Event) => {
       const { message, type, action, duration } = (e as CustomEvent).detail;
-      const id = ++counter;
+      const id = crypto.randomUUID();
       setToasts(prev => [...prev, { id, message, type, action }]);
       setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration ?? 3200);
     };

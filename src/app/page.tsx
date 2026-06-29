@@ -79,8 +79,9 @@ export default function Dashboard() {
     setLoading(true);
     const params = new URLSearchParams({ period, year: String(year), month: String(month) });
     fetch(`/api/stats?${params}`)
-      .then(r => r.json())
-      .then(data => { setStats(data); setLoading(false); });
+      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
+      .then(data => { setStats(data); setLoading(false); })
+      .catch(() => { setLoading(false); });
   }
 
   useEffect(() => { loadStats(); }, [year, month, period]);

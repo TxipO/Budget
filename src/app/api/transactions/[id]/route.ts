@@ -30,9 +30,12 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    await prisma.transaction.delete({ where: { id: parseInt(params.id) } });
+    const id = parseInt(params.id);
+    if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
+    await prisma.transaction.delete({ where: { id } });
     return NextResponse.json({ ok: true });
-  } catch (e) {
+  } catch (e: any) {
+    if (e?.code === 'P2025') return NextResponse.json({ error: 'Транзакцію не знайдено' }, { status: 404 });
     console.error('[transactions/[id] DELETE]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

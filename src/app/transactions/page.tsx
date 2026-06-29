@@ -30,12 +30,22 @@ export default function TransactionsPage() {
 
   function load() {
     fetch(`/api/transactions?year=${year}&month=${month}${typeFilter ? `&type=${typeFilter}` : ''}`)
-      .then(r => r.json()).then(setTxs);
+      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
+      .then(setTxs)
+      .catch(() => toast('Помилка завантаження транзакцій', 'error'));
   }
 
   useEffect(() => { load(); }, [year, month, typeFilter]);
 
   useEffect(() => { setPage(1); }, [year, month, typeFilter, search]);
+
+  // Cleanup pending delete timers on unmount
+  useEffect(() => {
+    return () => {
+      pendingDels.current.forEach(tid => clearTimeout(tid));
+      pendingDels.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -144,7 +154,7 @@ export default function TransactionsPage() {
   const filtered = txs.filter(tx =>
     !search ||
     tx.category.name.toLowerCase().includes(search.toLowerCase()) ||
-    tx.details.toLowerCase().includes(search.toLowerCase()) ||
+    (tx.details ?? '').toLowerCase().includes(search.toLowerCase()) ||
     String(tx.amount).includes(search.replace(/\s/g, ''))
   );
 

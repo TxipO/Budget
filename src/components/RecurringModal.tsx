@@ -34,20 +34,21 @@ export default function RecurringModal({ year, month, onClose, onApplied }: Prop
 
   useEffect(() => {
     loadTemplates();
-    fetch('/api/categories').then(r => r.json()).then(setCats);
-    fetch('/api/users').then(r => r.json()).then(setUsers);
+    fetch('/api/categories').then(r => r.ok ? r.json() : Promise.reject()).then(setCats).catch(() => {});
+    fetch('/api/users').then(r => r.ok ? r.json() : Promise.reject()).then(setUsers).catch(() => {});
   }, [year, month]);
 
   function loadTemplates() {
     setLoading(true);
     fetch(`/api/recurring?year=${year}&month=${month}`)
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
       .then((data: Template[]) => {
         setTemplates(data);
         setSelected(new Set(data.filter(t => !t.applied).map(t => t.id)));
         setToUnapply(new Set());
-        setLoading(false);
-      });
+      })
+      .catch(() => toast('Помилка завантаження шаблонів', 'error'))
+      .finally(() => setLoading(false));
   }
 
   function toggle(id: number) {
@@ -125,6 +126,7 @@ export default function RecurringModal({ year, month, onClose, onApplied }: Prop
       onClose();
     } catch {
       toast('Помилка застосування шаблонів', 'error');
+      loadTemplates();
     } finally {
       setApplying(false);
     }
