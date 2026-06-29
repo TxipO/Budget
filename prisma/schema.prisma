@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int                  @id @default(autoincrement())
+  name               String               @unique
+  transactions       Transaction[]
+  recurringTemplates RecurringTemplate[]
+  createdAt          DateTime             @default(now())
+}
+
+model Category {
+  id                 Int                  @id @default(autoincrement())
+  name               String
+  type               String
+  color              String               @default("#6366F1")
+  icon               String               @default("circle")
+  isActive           Boolean              @default(true)
+  transactions       Transaction[]
+  plans              MonthlyPlan[]
+  recurringTemplates RecurringTemplate[]
+}
+
+model Transaction {
+  id                  Int                @id @default(autoincrement())
+  date                DateTime
+  categoryId          Int
+  amount              Float
+  details             String             @default("")
+  userId              Int?
+  createdAt           DateTime           @default(now())
+  recurringTemplateId Int?
+  category            Category           @relation(fields: [categoryId], references: [id])
+  user                User?              @relation(fields: [userId], references: [id])
+  recurringTemplate   RecurringTemplate? @relation(fields: [recurringTemplateId], references: [id])
+}
+
+model RecurringTemplate {
+  id           Int           @id @default(autoincrement())
+  name         String
+  amount       Float
+  categoryId   Int
+  userId       Int
+  details      String        @default("")
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  category     Category      @relation(fields: [categoryId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+}
+
+model MonthlyPlan {
+  id            Int      @id @default(autoincrement())
+  year          Int
+  month         Int
+  categoryId    Int
+  plannedAmount Float    @default(0)
+  notes         String   @default("")
+  category      Category @relation(fields: [categoryId], references: [id])
+
+  @@unique([year, month, categoryId])
+}

@@ -1,0 +1,302 @@
+'use client';
+import { useEffect, useRef, useState } from 'react';
+import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, RefreshCw } from 'lucide-react';
+import { CATEGORY_PALETTE, formatMoney } from '@/lib/utils';
+import { toast } from '@/lib/toast';
+import { useTheme } from '@/lib/theme';
+
+interface Category { id: number; name: string; type: string; color: string; isActive: boolean }
+interface RecurringTemplate {
+  id: number; name: string; amount: number; details: string;
+  category: { name: string; color: string; type: string };
+  user: { name: string };
+}
+
+export default function SettingsPage() {
+  const [cats, setCats] = useState<Category[]>([]);
+  const [form, setForm] = useState({ name: '', type: 'expense', color: CATEGORY_PALETTE[0] });
+  const [importStatus, setImportStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [editingColorId, setEditingColorId] = useState<number | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
+  const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
+  const [tplForm, setTplForm] = useState({ name: '', amount: '', categoryId: '', userId: '' });
+
+  function loadCats() {
+    fetch('/api/categories').then(r => r.json()).then(setCats);
+  }
+  function loadTemplates() {
+    fetch('/api/recurring').then(r => r.json()).then(setTemplates);
+  }
+  useEffect(() => {
+    loadCats();
+    loadTemplates();
+    fetch('/api/users').then(r => r.json()).then(setUsers);
+  }, []);
+
+  async function addTemplate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!tplForm.name || !tplForm.amount || !tplForm.categoryId || !tplForm.userId) return;
+    const res = await fetch('/api/recurring', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...tplForm, amount: Number(tplForm.amount), categoryId: Number(tplForm.categoryId), userId: Number(tplForm.userId) }),
+    });
+    if (!res.ok) { toast('Помилка додавання шаблону', 'error'); return; }
+    toast(`Шаблон "${tplForm.name}" додано`);
+    setTplForm({ name: '', amount: '', categoryId: '', userId: '' });
+    loadTemplates();
+  }
+
+  async function deleteTemplate(id: number, name: string) {
+    const res = await fetch(`/api/recurring/${id}`, { method: 'DELETE' });
+    if (!res.ok) { toast('Помилка видалення шаблону', 'error'); return; }
+    toast(`Шаблон "${name}" видалено`, 'info');
+    loadTemplates();
+  }
+
+  async function addCat(e: React.FormEvent) {
+    e.preventDefault();
+    const res = await fetch('/api/categories', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    });
+    if (!res.ok) { toast('Помилка додавання категорії', 'error'); return; }
+    toast(`Категорію "${form.name}" додано`);
+    setForm({ name: '', type: 'expense', color: CATEGORY_PALETTE[0] });
+    loadCats();
+  }
+
+  async function deleteCat(id: number) {
+    const cat = cats.find(c => c.id === id);
+    if (!confirm('Видалити категорію?')) return;
+    const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+    if (!res.ok) { toast('Помилка видалення категорії', 'error'); return; }
+    toast(`Категорію "${cat?.name}" видалено`, 'info');
+    loadCats();
+  }
+
+  async function updateColor(id: number, color: string) {
+    const res = await fetch(`/api/categories/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ color }),
+    });
+    if (!res.ok) { toast('Помилка оновлення кольору', 'error'); return; }
+    setCats(prev => prev.map(c => c.id === id ? { ...c, color } : c));
+    setEditingColorId(null);
+    toast('Колір оновлено');
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportStatus('loading');
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/api/import', { method: 'POST', body: formData });
+    if (res.ok) { setImportStatus('done'); loadCats(); toast('Імпорт завершено успішно'); }
+    else setImportStatus('error');
+  }
+
+  const [theme, toggleTheme] = useTheme();
+
+  const sections = [
+    { type: 'income', label: 'Дохід', color: '#22C55E' },
+    { type: 'expense', label: 'Витрати', color: '#EF4444' },
+    { type: 'savings', label: 'Збереження', color: '#F59E0B' },
+  ];
+
+  return (
+    <div style={{ maxWidth: 700 }}>
+      <div style={{ marginBottom: 32 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Налаштування</h1>
+        <p style={{ color: '#475569', fontSize: 14 }}>Категорії та імпорт даних</p>
+      </div>
+
+      {/* Appearance section */}
+      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Зовнішній вигляд</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-sec)', marginBottom: 2 }}>
+              {theme === 'dark' ? 'Темна тема' : 'Світла тема'}
+            </p>
+            <p style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>
+              {theme === 'dark' ? 'Перемкнути на світлу' : 'Перемкнути на темну'}
+            </p>
+          </div>
+          <button
+            onClick={toggleTheme}
+            className="btn-ghost"
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px' }}
+          >
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            {theme === 'dark' ? 'Світла' : 'Темна'}
+          </button>
+        </div>
+      </div>
+
+      {/* Import section */}
+      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Імпорт з Excel</h2>
+        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>
+          Завантажте файл Budget.xlsx — автоматично імпортуються категорії та дані з листів "Планування" і "Ведення".
+        </p>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleImport} />
+          <button className="btn-primary" onClick={() => fileRef.current?.click()} disabled={importStatus === 'loading'}>
+            <Upload size={15} />
+            {importStatus === 'loading' ? 'Імпорт…' : 'Завантажити файл'}
+          </button>
+          {importStatus === 'done' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#4ADE80', fontSize: 13 }}>
+              <CheckCircle size={16} /> Імпортовано успішно
+            </div>
+          )}
+          {importStatus === 'error' && (
+            <div style={{ color: '#FCA5A5', fontSize: 13 }}>Помилка імпорту</div>
+          )}
+        </div>
+      </div>
+
+      {/* Recurring templates */}
+      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <RefreshCw size={16} color="#F97316" /> Шаблони (recurring)
+        </h2>
+        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>
+          Щомісячні транзакції — оренда, комунальні, підписки. Натисни "Шаблони" на головній щоб застосувати їх одним кліком.
+        </p>
+
+        <form onSubmit={addTemplate} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
+          <div style={{ flex: '1 1 140px' }}>
+            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Назва</label>
+            <input className="input-field" value={tplForm.name} onChange={e => setTplForm(f => ({ ...f, name: e.target.value }))} required placeholder="Напр. Оренда" />
+          </div>
+          <div style={{ flex: '0 0 110px' }}>
+            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Сума</label>
+            <input className="input-field" type="number" value={tplForm.amount} onChange={e => setTplForm(f => ({ ...f, amount: e.target.value }))} required placeholder="0" min="0" />
+          </div>
+          <div style={{ flex: '1 1 130px' }}>
+            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Категорія</label>
+            <select className="input-field" value={tplForm.categoryId} onChange={e => setTplForm(f => ({ ...f, categoryId: e.target.value }))} required>
+              <option value="">Вибрати…</option>
+              {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: '0 0 100px' }}>
+            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Хто</label>
+            <select className="input-field" value={tplForm.userId} onChange={e => setTplForm(f => ({ ...f, userId: e.target.value }))} required>
+              <option value="">Вибрати…</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+          <button type="submit" className="btn-primary"><Plus size={15} /> Додати</button>
+        </form>
+
+        {templates.length === 0 && <p style={{ fontSize: 13, color: '#475569' }}>Шаблонів ще немає</p>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {templates.map(t => (
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ width: 10, height: 10, borderRadius: '50%', background: t.category.color, flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <span style={{ fontSize: 14, color: 'var(--c-text-sec)', fontWeight: 600 }}>{t.name}</span>
+                <span style={{ fontSize: 12, color: '#475569', marginLeft: 8 }}>{t.category.name} · {t.user.name}</span>
+              </div>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text)', marginRight: 8 }}>{formatMoney(t.amount)}</span>
+              <button className="btn-ghost" style={{ padding: '4px 6px', border: 'none', color: '#EF4444' }} onClick={() => deleteTemplate(t.id, t.name)}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Add category */}
+      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Додати категорію</h2>
+        <form onSubmit={addCat} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: '1 1 160px' }}>
+            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
+              Назва
+            </label>
+            <input className="input-field" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required placeholder="Назва категорії" />
+          </div>
+          <div style={{ flex: '1 1 120px' }}>
+            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Тип</label>
+            <select className="input-field" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+              <option value="income">Дохід</option>
+              <option value="expense">Витрати</option>
+              <option value="savings">Збереження</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Колір</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {CATEGORY_PALETTE.map(c => (
+                <button
+                  key={c} type="button"
+                  onClick={() => setForm(f => ({ ...f, color: c }))}
+                  style={{
+                    width: 24, height: 24, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer',
+                    outline: form.color === c ? '2px solid white' : 'none', outlineOffset: 2,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+          <button type="submit" className="btn-primary"><Plus size={15} /> Додати</button>
+        </form>
+      </div>
+
+      {/* Categories list */}
+      {sections.map(({ type, label, color }) => {
+        const items = cats.filter(c => c.type === type);
+        return (
+          <div key={type} className="card" style={{ padding: 24, marginBottom: 16 }}>
+            <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color }}>{label}</span>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#475569' }}>({items.length})</span>
+            </h2>
+            {items.length === 0 && <p style={{ fontSize: 13, color: '#475569' }}>Немає категорій</p>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {items.map(cat => (
+                <div key={cat.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
+                    <button
+                      title="Змінити колір"
+                      onClick={() => setEditingColorId(editingColorId === cat.id ? null : cat.id)}
+                      style={{
+                        width: 16, height: 16, borderRadius: '50%', background: cat.color,
+                        border: editingColorId === cat.id ? '2px solid white' : '2px solid transparent',
+                        cursor: 'pointer', flexShrink: 0, padding: 0,
+                      }}
+                    />
+                    <span style={{ flex: 1, fontSize: 14, color: 'var(--c-text-sec)' }}>{cat.name}</span>
+                    <button className="btn-ghost" style={{ padding: '4px 6px', border: 'none', color: '#EF4444' }} onClick={() => deleteCat(cat.id)}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                  {editingColorId === cat.id && (
+                    <div style={{ display: 'flex', gap: 6, paddingBottom: 10, paddingLeft: 26, flexWrap: 'wrap' }}>
+                      {CATEGORY_PALETTE.map(c => (
+                        <button
+                          key={c} type="button"
+                          onClick={() => updateColor(cat.id, c)}
+                          style={{
+                            width: 22, height: 22, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer',
+                            outline: cat.color === c ? '2px solid white' : 'none', outlineOffset: 2,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
