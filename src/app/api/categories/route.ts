@@ -23,7 +23,14 @@ export async function POST(req: NextRequest) {
     if (!name)                    return badRequest('Назва категорії обов\'язкова');
     if (!isValidType(body.type))  return badRequest('Тип має бути income, expense або savings');
 
-    const cat = await prisma.category.create({ data: { ...body, name } });
+    const cat = await prisma.category.create({
+      data: {
+        name,
+        type: body.type,
+        ...(typeof body.color === 'string' ? { color: body.color } : {}),
+        ...(typeof body.icon  === 'string' ? { icon: body.icon }   : {}),
+      },
+    });
     return NextResponse.json(cat);
   } catch (e) {
     console.error('[categories POST]', e);

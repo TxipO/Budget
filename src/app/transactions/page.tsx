@@ -3,12 +3,13 @@ import { useEffect, useState, useRef } from 'react';
 import { Plus, Search, Trash2, Pencil, ChevronLeft, ChevronRight, Download, RefreshCw } from 'lucide-react';
 import { formatMoney, MONTH_NAMES, TYPE_LABELS } from '@/lib/utils';
 import TransactionForm from '@/components/TransactionForm';
+import CategoryIcon from '@/components/CategoryIcon';
 import { toast } from '@/lib/toast';
 
 interface Tx {
   id: number; date: string; amount: number; details: string;
   recurringTemplateId: number | null;
-  category: { id: number; name: string; type: string; color: string };
+  category: { id: number; name: string; type: string; color: string; icon: string };
   user: { name: string } | null;
 }
 
@@ -332,7 +333,7 @@ export default function TransactionsPage() {
             </span>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: tx.category.color, flexShrink: 0 }} />
+              <CategoryIcon name={tx.category.icon} color={tx.category.color} size={15} />
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
                   {tx.category.name}

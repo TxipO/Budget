@@ -4,8 +4,10 @@ import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, RefreshCw } from 'lucide-
 import { CATEGORY_PALETTE, formatMoney } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { useTheme } from '@/lib/theme';
+import { ICON_KEYS } from '@/lib/icons';
+import CategoryIcon from '@/components/CategoryIcon';
 
-interface Category { id: number; name: string; type: string; color: string; isActive: boolean }
+interface Category { id: number; name: string; type: string; color: string; icon: string; isActive: boolean }
 interface RecurringTemplate {
   id: number; name: string; amount: number; details: string;
   category: { name: string; color: string; type: string };
@@ -14,9 +16,10 @@ interface RecurringTemplate {
 
 export default function SettingsPage() {
   const [cats, setCats] = useState<Category[]>([]);
-  const [form, setForm] = useState({ name: '', type: 'expense', color: CATEGORY_PALETTE[0] });
+  const [form, setForm] = useState({ name: '', type: 'expense', color: CATEGORY_PALETTE[0], icon: 'circle' });
   const [importStatus, setImportStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [editingColorId, setEditingColorId] = useState<number | null>(null);
+  const [editingIconId, setEditingIconId] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
@@ -63,7 +66,7 @@ export default function SettingsPage() {
     });
     if (!res.ok) { toast('Помилка додавання категорії', 'error'); return; }
     toast(`Категорію "${form.name}" додано`);
-    setForm({ name: '', type: 'expense', color: CATEGORY_PALETTE[0] });
+    setForm({ name: '', type: 'expense', color: CATEGORY_PALETTE[0], icon: 'circle' });
     loadCats();
   }
 
@@ -85,6 +88,17 @@ export default function SettingsPage() {
     setCats(prev => prev.map(c => c.id === id ? { ...c, color } : c));
     setEditingColorId(null);
     toast('Колір оновлено');
+  }
+
+  async function updateIcon(id: number, icon: string) {
+    const res = await fetch(`/api/categories/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ icon }),
+    });
+    if (!res.ok) { toast('Помилка оновлення іконки', 'error'); return; }
+    setCats(prev => prev.map(c => c.id === id ? { ...c, icon } : c));
+    setEditingIconId(null);
+    toast('Іконку оновлено');
   }
 
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
@@ -246,6 +260,26 @@ export default function SettingsPage() {
             </div>
           </div>
           <button type="submit" className="btn-primary"><Plus size={15} /> Додати</button>
+          <div style={{ flexBasis: '100%' }}>
+            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>Іконка</label>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 96, overflowY: 'auto' }}>
+              {ICON_KEYS.map(key => (
+                <button
+                  key={key} type="button"
+                  onClick={() => setForm(f => ({ ...f, icon: key }))}
+                  title={key}
+                  style={{
+                    width: 30, height: 30, borderRadius: 8, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: form.icon === key ? `${form.color}22` : 'var(--c-hover)',
+                    border: form.icon === key ? `1px solid ${form.color}` : '1px solid transparent',
+                  }}
+                >
+                  <CategoryIcon name={key} color={form.icon === key ? form.color : '#94A3B8'} size={15} />
+                </button>
+              ))}
+            </div>
+          </div>
         </form>
       </div>
 
@@ -264,8 +298,20 @@ export default function SettingsPage() {
                 <div key={cat.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
                     <button
+                      title="Змінити іконку"
+                      onClick={() => { setEditingIconId(editingIconId === cat.id ? null : cat.id); setEditingColorId(null); }}
+                      style={{
+                        width: 28, height: 28, borderRadius: 8, flexShrink: 0, cursor: 'pointer',
+                        background: `${cat.color}1A`,
+                        border: editingIconId === cat.id ? `1px solid ${cat.color}` : '1px solid transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                      }}
+                    >
+                      <CategoryIcon name={cat.icon} color={cat.color} size={15} />
+                    </button>
+                    <button
                       title="Змінити колір"
-                      onClick={() => setEditingColorId(editingColorId === cat.id ? null : cat.id)}
+                      onClick={() => { setEditingColorId(editingColorId === cat.id ? null : cat.id); setEditingIconId(null); }}
                       style={{
                         width: 16, height: 16, borderRadius: '50%', background: cat.color,
                         border: editingColorId === cat.id ? '2px solid white' : '2px solid transparent',
@@ -277,6 +323,25 @@ export default function SettingsPage() {
                       <Trash2 size={13} />
                     </button>
                   </div>
+                  {editingIconId === cat.id && (
+                    <div style={{ display: 'flex', gap: 6, paddingBottom: 10, paddingLeft: 26, flexWrap: 'wrap', maxHeight: 120, overflowY: 'auto' }}>
+                      {ICON_KEYS.map(key => (
+                        <button
+                          key={key} type="button"
+                          onClick={() => updateIcon(cat.id, key)}
+                          title={key}
+                          style={{
+                            width: 28, height: 28, borderRadius: 8, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: cat.icon === key ? `${cat.color}22` : 'var(--c-hover)',
+                            border: cat.icon === key ? `1px solid ${cat.color}` : '1px solid transparent',
+                          }}
+                        >
+                          <CategoryIcon name={key} color={cat.icon === key ? cat.color : '#94A3B8'} size={14} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {editingColorId === cat.id && (
                     <div style={{ display: 'flex', gap: 6, paddingBottom: 10, paddingLeft: 26, flexWrap: 'wrap' }}>
                       {CATEGORY_PALETTE.map(c => (

@@ -6,7 +6,7 @@ const MONTHS_SHORT = ['Січ','Лют','Бер','Кві','Тра','Чер','Л�
 async function sumByType(start: Date, end: Date) {
   const txs = await prisma.transaction.findMany({
     where: { date: { gte: start, lt: end } },
-    include: { category: true },
+    include: { category: true, user: true },
   });
   const income   = txs.filter(t => t.category.type === 'income')  .reduce((s, t) => s + t.amount, 0);
   const expenses = txs.filter(t => t.category.type === 'expense') .reduce((s, t) => s + t.amount, 0);
@@ -82,13 +82,28 @@ export async function GET(req: NextRequest) {
   }, 0);
 
   // Category breakdown (expenses) + plan
-  const expenseByCategory: Record<number, { name: string; amount: number; color: string; planned: number }> = {};
+  const expenseByCategory: Record<number, { name: string; amount: number; color: string; icon: string; planned: number }> = {};
   txs.filter(t => t.category.type === 'expense').forEach(t => {
     if (!expenseByCategory[t.categoryId]) {
-      expenseByCategory[t.categoryId] = { name: t.category.name, amount: 0, color: t.category.color, planned: 0 };
+      expenseByCategory[t.categoryId] = { name: t.category.name, amount: 0, color: t.category.color, icon: t.category.icon, planned: 0 };
     }
     expenseByCategory[t.categoryId].amount += t.amount;
   });
+
+  // Per-user breakdown for the period (хто скільки)
+  const userAgg = new Map<string, { name: string; income: number; expenses: number; savings: number }>();
+  for (const t of txs) {
+    const key = t.user?.name ?? '__shared__';
+    const label = t.user?.name ?? 'Спільні';
+    if (!userAgg.has(key)) userAgg.set(key, { name: label, income: 0, expenses: 0, savings: 0 });
+    const bucket = userAgg.get(key)!;
+    if (t.category.type === 'income')  bucket.income   += t.amount;
+    if (t.category.type === 'expense') bucket.expenses += t.amount;
+    if (t.category.type === 'savings') bucket.savings  += t.amount;
+  }
+  const byUser = [...userAgg.values()]
+    .map(u => ({ ...u, net: u.income - u.expenses - u.savings }))
+    .sort((a, b) => b.income + b.expenses - (a.income + a.expenses));
 
   // Attach monthly plans for the period
   if (period === 'month') {
@@ -150,7 +165,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     income, expenses, savings, balance, cumBalance,
-    byCategory, trend, recent, forecast,
+    byCategory, byUser, trend, recent, forecast,
     prev: prev ? { income: prev.income, expenses: prev.expenses, savings: prev.savings, balance: prev.balance } : null,
   });
   } catch (e) {

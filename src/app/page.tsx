@@ -5,6 +5,7 @@ import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, Chevron
 import { formatMoney, MONTH_NAMES, TYPE_COLORS, type Period, PERIOD_LABELS } from '@/lib/utils';
 import TransactionForm from '@/components/TransactionForm';
 import RecurringModal from '@/components/RecurringModal';
+import CategoryIcon from '@/components/CategoryIcon';
 
 const ExpenseDonut = dynamic(() => import('@/components/charts/ExpenseDonut'), { ssr: false });
 const BalanceTrend = dynamic(() => import('@/components/charts/BalanceTrend'), { ssr: false });
@@ -12,17 +13,19 @@ const BalanceTrend = dynamic(() => import('@/components/charts/BalanceTrend'), {
 interface Stats {
   income: number; expenses: number; savings: number;
   balance: number; cumBalance: number; forecast: number | null;
-  byCategory: { name: string; amount: number; color: string; planned: number }[];
+  byCategory: { name: string; amount: number; color: string; icon: string; planned: number }[];
+  byUser: { name: string; income: number; expenses: number; savings: number; net: number }[];
   trend: { month: string; income: number; expenses: number; savings: number; balance: number }[];
   recent: {
     id: number; date: string; amount: number; details: string;
-    category: { id: number; name: string; type: string; color: string };
+    category: { id: number; name: string; type: string; color: string; icon: string };
     user: { id: number; name: string } | null;
   }[];
   prev: { income: number; expenses: number; savings: number; balance: number } | null;
 }
 
 const PERIODS: Period[] = ['month', 'quarter', '6m', 'year', 'all'];
+const USER_COLORS = ['#F97316', '#3B82F6', '#A855F7', '#14B8A6'];
 
 function pctChange(current: number, prev: number): number | null {
   if (prev === 0) return null;
@@ -290,6 +293,63 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Хто скільки — per-user breakdown */}
+      {stats && stats.byUser.length > 0 && (stats.byUser.length > 1 || stats.byUser[0].name !== 'Спільні') && (
+        <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+            <Wallet size={16} color="#FB923C" />
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Хто скільки</h3>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(220px, 1fr))`, gap: 16 }}>
+            {stats.byUser.map((u, i) => {
+              const uColor = u.name === 'Спільні' ? '#64748B' : USER_COLORS[i % USER_COLORS.length];
+              const flow = u.income + u.expenses + u.savings;
+              const incPct = flow > 0 ? (u.income   / flow) * 100 : 0;
+              const expPct = flow > 0 ? (u.expenses / flow) * 100 : 0;
+              const savPct = flow > 0 ? (u.savings  / flow) * 100 : 0;
+              return (
+                <div key={u.name} style={{
+                  border: '1px solid var(--c-border)', borderRadius: 14, padding: 16,
+                  background: 'var(--c-elevated)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                      background: `${uColor}22`, color: uColor,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 13, fontWeight: 800,
+                    }}>{u.name.charAt(0)}</div>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text)' }}>{u.name}</span>
+                    <span style={{
+                      marginLeft: 'auto', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+                      color: u.net >= 0 ? '#4ADE80' : '#FCA5A5',
+                    }}>{u.net >= 0 ? '+' : ''}{formatMoney(u.net)}</span>
+                  </div>
+                  {/* stacked flow bar */}
+                  <div style={{ display: 'flex', height: 6, borderRadius: 4, overflow: 'hidden', marginBottom: 12, background: 'var(--c-border-mid)' }}>
+                    <div style={{ width: `${incPct}%`, background: '#22C55E' }} />
+                    <div style={{ width: `${expPct}%`, background: '#EF4444' }} />
+                    <div style={{ width: `${savPct}%`, background: '#F59E0B' }} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {[
+                      { label: 'Дохід',      val: u.income,   c: '#4ADE80' },
+                      { label: 'Витрати',    val: u.expenses, c: '#FCA5A5' },
+                      { label: 'Збереження', val: u.savings,  c: '#FCD34D' },
+                    ].filter(r => r.val > 0).map(r => (
+                      <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'var(--c-text-muted)' }}>{r.label}</span>
+                        <span style={{ color: r.c, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{formatMoney(r.val)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Budget progress bars (month view only, when plans exist) */}
       {stats && period === 'month' && categoriesWithPlan.length > 0 && (
         <div className="card" style={{ padding: 24, marginBottom: 24 }}>
@@ -305,7 +365,7 @@ export default function Dashboard() {
                 <div key={cat.name}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />
+                      <CategoryIcon name={cat.icon} color={cat.color} size={14} />
                       <span style={{ fontSize: 13, color: 'var(--c-text-sec)', fontWeight: 500 }}>{cat.name}</span>
                     </div>
                     <span style={{ fontSize: 12, color: over ? '#FCA5A5' : '#64748B', fontVariantNumeric: 'tabular-nums' }}>
@@ -376,13 +436,8 @@ export default function Dashboard() {
         )}
         {!loading && stats?.recent.map(tx => (
           <div key={tx.id} className="table-row" style={{ display: 'flex', alignItems: 'center', padding: '12px 0', gap: 12 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-              background: `${tx.category.color}20`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: tx.category.color }} />
-            </div>
+            <CategoryIcon name={tx.category.icon} color={tx.category.color} size={16} tile />
+
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)' }}>{tx.category.name}</div>
               <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
