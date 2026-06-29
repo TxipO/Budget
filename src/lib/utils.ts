@@ -44,7 +44,7 @@ export const TYPE_COLORS: Record<string, string> = {
 
 export const CATEGORY_PALETTE = [
   '#EF4444', '#F97316', '#EAB308', '#22C55E', '#06B6D4',
-  '#F97316', '#F59E0B', '#EC4899', '#14B8A6', '#EAB308',
+  '#F59E0B', '#EC4899', '#14B8A6', '#A78BFA', '#FB923C',
   '#3B82F6', '#8B5CF6',
 ];
 

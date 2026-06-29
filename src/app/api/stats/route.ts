@@ -104,17 +104,26 @@ export async function GET(req: NextRequest) {
 
   const byCategory = Object.values(expenseByCategory).sort((a, b) => b.amount - a.amount);
 
-  // Trend
+  // Trend — single query, then bucket by month in memory
+  const trendStart = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() - trendMonths, 1);
+  const trendTxs = await prisma.transaction.findMany({
+    where: { date: { gte: trendStart, lt: rangeEnd } },
+    include: { category: true },
+  });
   const trend = [];
   for (let i = trendMonths - 1; i >= 0; i--) {
-    const d     = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() - 1 - i, 1);
-    const start = new Date(d.getFullYear(), d.getMonth(), 1);
-    const end   = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-    const m     = await sumByType(start, end);
+    const d   = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() - 1 - i, 1);
+    const ym  = d.getFullYear() * 100 + d.getMonth();
+    const mTxs = trendTxs.filter(t => {
+      const td = new Date(t.date);
+      return td.getFullYear() * 100 + td.getMonth() === ym;
+    });
+    const inc = mTxs.filter(t => t.category.type === 'income') .reduce((s, t) => s + t.amount, 0);
+    const exp = mTxs.filter(t => t.category.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const sav = mTxs.filter(t => t.category.type === 'savings').reduce((s, t) => s + t.amount, 0);
     trend.push({
       month: MONTHS_SHORT[d.getMonth()] + (period === 'year' || period === 'all' ? ` '${String(d.getFullYear()).slice(2)}` : ''),
-      income: m.income, expenses: m.expenses, savings: m.savings,
-      balance: m.balance,
+      income: inc, expenses: exp, savings: sav, balance: inc - exp - sav,
     });
   }
 

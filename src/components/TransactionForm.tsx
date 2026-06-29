@@ -46,7 +46,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
       const u = users.find(u => u.name === currentUser);
       if (u) setForm(f => ({ ...f, userId: String(u.id) }));
     }
-  }, [users]);
+  }, [users, initial?.userId]);
 
   const filteredCats = cats.filter(c => c.type === form.type);
 

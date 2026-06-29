@@ -136,8 +136,10 @@ export async function POST(req: NextRequest) {
 
         let date: Date;
         if (rawDate instanceof Date) date = rawDate;
-        else if (typeof rawDate === 'number') date = XLSX.SSF.parse_date_code(rawDate) as unknown as Date;
-        else date = new Date(String(rawDate));
+        else if (typeof rawDate === 'number') {
+          const p = XLSX.SSF.parse_date_code(rawDate);
+          date = new Date(p.y, p.m - 1, p.d);
+        } else date = new Date(String(rawDate));
 
         const catNameStr = String(catName).trim();
         let cat = await prisma.category.findFirst({ where: { name: catNameStr, type: typeLower } });
@@ -147,12 +149,15 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        await prisma.transaction.create({
-          data: {
-            date, categoryId: cat.id, amount: typeof amount === 'number' ? amount : parseFloat(String(amount)),
-            details: details ? String(details) : '',
-          },
+        const detailsStr = details ? String(details) : '';
+        const exists = await prisma.transaction.findFirst({
+          where: { date, categoryId: cat.id, amount, details: detailsStr },
         });
+        if (!exists) {
+          await prisma.transaction.create({
+            data: { date, categoryId: cat.id, amount, details: detailsStr },
+          });
+        }
       }
     }
 

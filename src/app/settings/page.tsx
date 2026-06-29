@@ -95,7 +95,7 @@ export default function SettingsPage() {
     formData.append('file', file);
     const res = await fetch('/api/import', { method: 'POST', body: formData });
     if (res.ok) { setImportStatus('done'); loadCats(); toast('Імпорт завершено успішно'); }
-    else setImportStatus('error');
+    else { setImportStatus('error'); toast('Помилка імпорту', 'error'); }
   }
 
   const [theme, toggleTheme] = useTheme();
@@ -144,7 +144,7 @@ export default function SettingsPage() {
         </p>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleImport} />
-          <button className="btn-primary" onClick={() => fileRef.current?.click()} disabled={importStatus === 'loading'}>
+          <button className="btn-primary" onClick={() => { setImportStatus('idle'); fileRef.current?.value && (fileRef.current.value = ''); fileRef.current?.click(); }} disabled={importStatus === 'loading'}>
             <Upload size={15} />
             {importStatus === 'loading' ? 'Імпорт…' : 'Завантажити файл'}
           </button>

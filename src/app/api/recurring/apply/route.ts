@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       })),
     });
 
-    return NextResponse.json({ applied: templates.length, skipped: appliedSet.size });
+    return NextResponse.json({ applied: templates.length, skipped: templateIds.length - templates.length });
   } catch (e) {
     console.error('[recurring/apply POST]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

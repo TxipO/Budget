@@ -19,10 +19,11 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     fetch(`/api/analytics?year=${year}`)
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
       .then((months: { income: number; expenses: number; savings: number; balance: number }[]) =>
-        setData(months.map((m, i) => ({ month: MONTH_SHORT[i], ...m })))
-      );
+        Array.isArray(months) && setData(months.map((m, i) => ({ month: MONTH_SHORT[i], ...m })))
+      )
+      .catch(() => {});
   }, [year]);
 
   const totalIncome   = data.reduce((s, d) => s + d.income, 0);

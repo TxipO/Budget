@@ -62,11 +62,12 @@ export default function PlanningPage() {
   }
 
   async function savePlan(catId: number, month: number, val: number, notes: string) {
-    await fetch('/api/plans', {
+    const res = await fetch('/api/plans', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ year, month, categoryId: catId, plannedAmount: val, notes }),
     });
+    if (!res.ok) throw new Error(await res.text());
     setPlans(prev => {
       const idx = prev.findIndex(p => p.categoryId === catId && p.month === month);
       if (idx >= 0) {
@@ -88,8 +89,12 @@ export default function PlanningPage() {
 
   async function commitEdit() {
     if (!editCell) return;
-    await savePlan(editCell.catId, editCell.month, parseFloat(editVal) || 0, editNote);
-    setEditCell(null);
+    try {
+      await savePlan(editCell.catId, editCell.month, parseFloat(editVal) || 0, editNote);
+      setEditCell(null);
+    } catch {
+      toast('Помилка збереження плану', 'error');
+    }
   }
 
   const sections = [
