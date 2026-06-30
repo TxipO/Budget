@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw } from 'lucide-react';
 import { formatMoney, MONTH_NAMES, TYPE_COLORS, type Period, PERIOD_LABELS } from '@/lib/utils';
 import TransactionForm from '@/components/TransactionForm';
 import RecurringModal from '@/components/RecurringModal';
@@ -70,6 +70,7 @@ export default function Dashboard() {
   const [editing, setEditing] = useState<Stats['recent'][0] | null>(null);
   const [showRecurring, setShowRecurring] = useState(false);
   const [pendingRecurring, setPendingRecurring] = useState(0);
+  const [userSectionOpen, setUserSectionOpen] = useState(true);
 
   useEffect(() => {
     if (period !== 'month') { setPendingRecurring(0); return; }
@@ -293,63 +294,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Хто скільки — per-user breakdown */}
-      {stats && stats.byUser.length > 0 && (stats.byUser.length > 1 || stats.byUser[0].name !== 'Спільні') && (
-        <div className="card" style={{ padding: 24, marginBottom: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
-            <Wallet size={16} color="#FB923C" />
-            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Хто скільки</h3>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(220px, 1fr))`, gap: 16 }}>
-            {stats.byUser.map((u, i) => {
-              const uColor = u.name === 'Спільні' ? '#64748B' : USER_COLORS[i % USER_COLORS.length];
-              const flow = u.income + u.expenses + u.savings;
-              const incPct = flow > 0 ? (u.income   / flow) * 100 : 0;
-              const expPct = flow > 0 ? (u.expenses / flow) * 100 : 0;
-              const savPct = flow > 0 ? (u.savings  / flow) * 100 : 0;
-              return (
-                <div key={u.name} style={{
-                  border: '1px solid var(--c-border)', borderRadius: 14, padding: 16,
-                  background: 'var(--c-elevated)',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                    <div style={{
-                      width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-                      background: `${uColor}22`, color: uColor,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 13, fontWeight: 800,
-                    }}>{u.name.charAt(0)}</div>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text)' }}>{u.name}</span>
-                    <span style={{
-                      marginLeft: 'auto', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-                      color: u.net >= 0 ? '#4ADE80' : '#FCA5A5',
-                    }}>{u.net >= 0 ? '+' : ''}{formatMoney(u.net)}</span>
-                  </div>
-                  {/* stacked flow bar */}
-                  <div style={{ display: 'flex', height: 6, borderRadius: 4, overflow: 'hidden', marginBottom: 12, background: 'var(--c-border-mid)' }}>
-                    <div style={{ width: `${incPct}%`, background: '#22C55E' }} />
-                    <div style={{ width: `${expPct}%`, background: '#EF4444' }} />
-                    <div style={{ width: `${savPct}%`, background: '#F59E0B' }} />
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                    {[
-                      { label: 'Дохід',      val: u.income,   c: '#4ADE80' },
-                      { label: 'Витрати',    val: u.expenses, c: '#FCA5A5' },
-                      { label: 'Збереження', val: u.savings,  c: '#FCD34D' },
-                    ].filter(r => r.val > 0).map(r => (
-                      <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                        <span style={{ color: 'var(--c-text-muted)' }}>{r.label}</span>
-                        <span style={{ color: r.c, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{formatMoney(r.val)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Budget progress bars (month view only, when plans exist) */}
       {stats && period === 'month' && categoriesWithPlan.length > 0 && (
         <div className="card" style={{ padding: 24, marginBottom: 24 }}>
@@ -409,6 +353,74 @@ export default function Dashboard() {
           {stats && <BalanceTrend data={stats.trend} />}
         </div>
       </div>
+
+      {/* Хто скільки — per-user breakdown, collapsible */}
+      {stats && stats.byUser.length > 0 && (stats.byUser.length > 1 || stats.byUser[0].name !== 'Спільні') && (
+        <div className="card" style={{ marginBottom: 24, overflow: 'hidden' }}>
+          <button
+            onClick={() => setUserSectionOpen(v => !v)}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+              padding: 24, background: 'none', border: 'none', cursor: 'pointer',
+              textAlign: 'left', paddingBottom: userSectionOpen ? 4 : 24,
+            }}
+          >
+            <Wallet size={16} color="#FB923C" />
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', flex: 1 }}>Хто скільки</h3>
+            {userSectionOpen
+              ? <ChevronUp size={16} color="var(--c-text-muted)" />
+              : <ChevronDown size={16} color="var(--c-text-muted)" />}
+          </button>
+          {userSectionOpen && (
+            <div style={{ padding: '0 24px 24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+              {stats.byUser.map((u, i) => {
+                const uColor = u.name === 'Спільні' ? '#64748B' : USER_COLORS[i % USER_COLORS.length];
+                const flow = u.income + u.expenses + u.savings;
+                const incPct = flow > 0 ? (u.income   / flow) * 100 : 0;
+                const expPct = flow > 0 ? (u.expenses / flow) * 100 : 0;
+                const savPct = flow > 0 ? (u.savings  / flow) * 100 : 0;
+                return (
+                  <div key={u.name} style={{
+                    border: '1px solid var(--c-border)', borderRadius: 14, padding: 16,
+                    background: 'var(--c-elevated)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <div style={{
+                        width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                        background: `${uColor}22`, color: uColor,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 13, fontWeight: 800,
+                      }}>{u.name.charAt(0)}</div>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text)' }}>{u.name}</span>
+                      <span style={{
+                        marginLeft: 'auto', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+                        color: u.net >= 0 ? '#4ADE80' : '#FCA5A5',
+                      }}>{u.net >= 0 ? '+' : ''}{formatMoney(u.net)}</span>
+                    </div>
+                    <div style={{ display: 'flex', height: 6, borderRadius: 4, overflow: 'hidden', marginBottom: 12, background: 'var(--c-border-mid)' }}>
+                      <div style={{ width: `${incPct}%`, background: '#22C55E' }} />
+                      <div style={{ width: `${expPct}%`, background: '#EF4444' }} />
+                      <div style={{ width: `${savPct}%`, background: '#F59E0B' }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {[
+                        { label: 'Дохід',      val: u.income,   c: '#4ADE80' },
+                        { label: 'Витрати',    val: u.expenses, c: '#FCA5A5' },
+                        { label: 'Збереження', val: u.savings,  c: '#FCD34D' },
+                      ].filter(r => r.val > 0).map(r => (
+                        <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                          <span style={{ color: 'var(--c-text-muted)' }}>{r.label}</span>
+                          <span style={{ color: r.c, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{formatMoney(r.val)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Recent transactions */}
       <div className="card" style={{ padding: 24 }}>
