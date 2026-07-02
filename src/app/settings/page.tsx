@@ -120,6 +120,33 @@ export default function SettingsPage() {
 
   const [theme, toggleTheme] = useTheme();
 
+  const [pinForm, setPinForm] = useState({ current: '', next: '' });
+  const [pinSaving, setPinSaving] = useState(false);
+
+  async function changePin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pinForm.current || !pinForm.next || pinSaving) return;
+    if (!/^\d{4,8}$/.test(pinForm.next)) { toast('Новий PIN — від 4 до 8 цифр', 'error'); return; }
+    setPinSaving(true);
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current: pinForm.current, next: pinForm.next }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        toast(data?.error || 'Помилка зміни PIN', 'error');
+        return;
+      }
+      toast('PIN змінено');
+      setPinForm({ current: '', next: '' });
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setPinSaving(false);
+    }
+  }
+
   const sections = [
     { type: 'income', label: 'Дохід', color: '#22C55E' },
     { type: 'expense', label: 'Витрати', color: '#EF4444' },
@@ -154,6 +181,37 @@ export default function SettingsPage() {
             {theme === 'dark' ? 'Світла' : 'Темна'}
           </button>
         </div>
+      </div>
+
+      {/* Security section */}
+      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Безпека</h2>
+        <form onSubmit={changePin} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 140 }}>
+            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Поточний PIN</label>
+            <input
+              className="input-field" type="password" inputMode="numeric" required
+              value={pinForm.current}
+              onChange={e => setPinForm(f => ({ ...f, current: e.target.value }))}
+              placeholder="••••••"
+            />
+          </div>
+          <div style={{ flex: 1, minWidth: 140 }}>
+            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Новий PIN</label>
+            <input
+              className="input-field" type="password" inputMode="numeric" required
+              value={pinForm.next}
+              onChange={e => setPinForm(f => ({ ...f, next: e.target.value }))}
+              placeholder="••••••"
+            />
+          </div>
+          <button type="submit" disabled={pinSaving} className="btn-primary" style={{ padding: '10px 18px' }}>
+            {pinSaving ? 'Збереження…' : 'Змінити PIN'}
+          </button>
+        </form>
+        <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginTop: 10 }}>
+          Новий PIN діє одразу для наступних входів. Уже виконані входи лишаються активними до 30 днів.
+        </p>
       </div>
 
       {/* Import section */}

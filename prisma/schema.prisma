@@ -55,6 +55,11 @@ model RecurringTemplate {
   transactions Transaction[]
 }
 
+model AppSetting {
+  key   String @id
+  value String
+}
+
 model MonthlyPlan {
   id            Int      @id @default(autoincrement())
   year          Int
