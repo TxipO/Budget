@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
-import { Plus, Search, Trash2, Pencil, ChevronLeft, ChevronRight, Download, RefreshCw } from 'lucide-react';
+import { Plus, Search, Trash2, Pencil, ChevronLeft, ChevronRight, Download, RefreshCw, Globe } from 'lucide-react';
 import { formatMoney, MONTH_NAMES, TYPE_LABELS } from '@/lib/utils';
 import TransactionForm from '@/components/TransactionForm';
 import CategoryIcon from '@/components/CategoryIcon';
@@ -21,6 +21,7 @@ export default function TransactionsPage() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [typeFilter, setTypeFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [globalSearch, setGlobalSearch] = useState(false);
   const [txs, setTxs] = useState<Tx[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Tx | null>(null);
@@ -30,15 +31,18 @@ export default function TransactionsPage() {
   const pendingDels = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   function load() {
-    fetch(`/api/transactions?year=${year}&month=${month}${typeFilter ? `&type=${typeFilter}` : ''}`)
+    const url = globalSearch
+      ? `/api/transactions?limit=100000${typeFilter ? `&type=${typeFilter}` : ''}`
+      : `/api/transactions?year=${year}&month=${month}${typeFilter ? `&type=${typeFilter}` : ''}`;
+    fetch(url)
       .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
       .then(setTxs)
       .catch(() => toast('Помилка завантаження транзакцій', 'error'));
   }
 
-  useEffect(() => { load(); }, [year, month, typeFilter]);
+  useEffect(() => { load(); }, [year, month, typeFilter, globalSearch]);
 
-  useEffect(() => { setPage(1); }, [year, month, typeFilter, search]);
+  useEffect(() => { setPage(1); }, [year, month, typeFilter, search, globalSearch]);
 
   // Cleanup pending delete timers on unmount
   useEffect(() => {
@@ -131,7 +135,7 @@ export default function TransactionsPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `бюджет_${MONTH_NAMES[month - 1]}_${year}.csv`;
+    a.download = globalSearch ? 'бюджет_всі_роки.csv' : `бюджет_${MONTH_NAMES[month - 1]}_${year}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     setShowExport(false);
@@ -185,12 +189,14 @@ export default function TransactionsPage() {
             display: 'flex', alignItems: 'center', gap: 2,
             background: 'var(--c-elevated)', border: '1px solid var(--c-border)',
             borderRadius: 12, padding: '4px',
+            opacity: globalSearch ? 0.35 : 1,
+            pointerEvents: globalSearch ? 'none' : 'auto',
           }}>
             <button onClick={prevMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }}>
               <ChevronLeft size={16} />
             </button>
             <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-sec)', padding: '0 8px', minWidth: 120, textAlign: 'center' }}>
-              {MONTH_NAMES[month - 1]} {year}
+              {globalSearch ? 'Всі роки' : `${MONTH_NAMES[month - 1]} ${year}`}
             </span>
             <button onClick={nextMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }}>
               <ChevronRight size={16} />
@@ -259,6 +265,19 @@ export default function TransactionsPage() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
+        <button
+          onClick={() => setGlobalSearch(v => !v)}
+          className="btn-ghost"
+          title="Шукати по всіх роках, а не тільки в обраному місяці"
+          style={{
+            background: globalSearch ? 'rgba(249,115,22,0.2)' : undefined,
+            color: globalSearch ? '#FB923C' : undefined,
+            borderColor: globalSearch ? 'rgba(249,115,22,0.3)' : undefined,
+            fontSize: 13, display: 'flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          <Globe size={14} /> Всі роки
+        </button>
         <div style={{ display: 'flex', gap: 6 }}>
           {[['', 'Всі'], ['income', 'Дохід'], ['expense', 'Витрати'], ['savings', 'Збереження']].map(([val, label]) => (
             <button
@@ -329,7 +348,9 @@ export default function TransactionsPage() {
             }}
           >
             <span style={{ fontSize: 13, color: '#64748B' }}>
-              {new Date(tx.date).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' })}
+              {new Date(tx.date).toLocaleDateString('uk-UA', globalSearch
+                ? { day: '2-digit', month: '2-digit', year: '2-digit' }
+                : { day: '2-digit', month: '2-digit' })}
             </span>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>

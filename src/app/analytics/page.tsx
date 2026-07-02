@@ -13,16 +13,26 @@ interface MonthData {
   balance: number;
 }
 
+interface Insight { text: string; tone: 'good' | 'warn' | 'info' }
+
+const INSIGHT_STYLE: Record<Insight['tone'], { bg: string; border: string; color: string }> = {
+  good: { bg: 'rgba(34,197,94,0.08)',  border: 'rgba(34,197,94,0.2)',  color: '#4ADE80' },
+  warn: { bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.2)',  color: '#FCA5A5' },
+  info: { bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.2)', color: '#FB923C' },
+};
+
 export default function AnalyticsPage() {
   const [year, setYear] = useState(2026);
   const [data, setData] = useState<MonthData[]>([]);
+  const [insights, setInsights] = useState<Insight[]>([]);
 
   useEffect(() => {
     fetch(`/api/analytics?year=${year}`)
       .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
-      .then((months: { income: number; expenses: number; savings: number; balance: number }[]) =>
-        Array.isArray(months) && setData(months.map((m, i) => ({ month: MONTH_SHORT[i], ...m })))
-      )
+      .then((res: { months: { income: number; expenses: number; savings: number; balance: number }[]; insights: Insight[] }) => {
+        if (Array.isArray(res.months)) setData(res.months.map((m, i) => ({ month: MONTH_SHORT[i], ...m })));
+        setInsights(Array.isArray(res.insights) ? res.insights : []);
+      })
       .catch(() => {});
   }, [year]);
 
@@ -64,6 +74,25 @@ export default function AnalyticsPage() {
           </div>
         ))}
       </div>
+
+      {/* Insights */}
+      {insights.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 28 }}>
+          {insights.map((ins, i) => {
+            const s = INSIGHT_STYLE[ins.tone];
+            return (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                background: s.bg, border: `1px solid ${s.border}`, borderRadius: 12,
+                padding: '10px 16px', fontSize: 13, color: 'var(--c-text-sec)',
+              }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+                {ins.text}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Monthly income vs expenses bar chart */}
       <div className="card" style={{ padding: 24, marginBottom: 20 }}>

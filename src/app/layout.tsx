@@ -13,6 +13,15 @@ const inter = Inter({ subsets: ['latin', 'cyrillic'], variable: '--font-inter' }
 export const metadata: Metadata = {
   title: 'Бюджет',
   description: 'Сімейний трекер бюджету',
+  manifest: '/manifest.json',
+  appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'Бюджет' },
+  icons: { icon: '/icon-192.png', apple: '/icon-192.png' },
+};
+
+export const viewport = {
+  themeColor: '#F97316',
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
