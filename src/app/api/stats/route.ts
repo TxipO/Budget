@@ -158,8 +158,13 @@ export async function GET(req: NextRequest) {
     if (isCurrentMonth && today.getDate() > 1) {
       const dayOfMonth  = today.getDate();
       const daysInMonth = new Date(year, month, 0).getDate();
-      const dailyRate   = balance / dayOfMonth;
-      forecast = Math.round(balance + dailyRate * (daysInMonth - dayOfMonth));
+      // Income and savings usually land as one-off payments (salary, transfers),
+      // not a steady daily trickle — extrapolating them by day/month wildly
+      // overshoots early in the month. Only expenses accrue gradually, so only
+      // they get projected forward; income/savings are taken as already-realized.
+      const expenseRate      = expenses / dayOfMonth;
+      const projectedExpense = expenseRate * (daysInMonth - dayOfMonth);
+      forecast = Math.round(balance - projectedExpense);
     }
   }
 
