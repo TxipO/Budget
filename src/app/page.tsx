@@ -6,6 +6,7 @@ import { formatMoney, MONTH_NAMES, TYPE_COLORS, type Period, PERIOD_LABELS } fro
 import TransactionForm from '@/components/TransactionForm';
 import RecurringModal from '@/components/RecurringModal';
 import CategoryIcon from '@/components/CategoryIcon';
+import { useDashboardPrefs } from '@/lib/dashboardPrefs';
 
 const ExpenseDonut = dynamic(() => import('@/components/charts/ExpenseDonut'), { ssr: false });
 const BalanceTrend = dynamic(() => import('@/components/charts/BalanceTrend'), { ssr: false });
@@ -71,6 +72,7 @@ export default function Dashboard() {
   const [showRecurring, setShowRecurring] = useState(false);
   const [pendingRecurring, setPendingRecurring] = useState(0);
   const [userSectionOpen, setUserSectionOpen] = useState(true);
+  const [sections] = useDashboardPrefs();
 
   useEffect(() => {
     if (period !== 'month') { setPendingRecurring(0); return; }
@@ -262,7 +264,7 @@ export default function Dashboard() {
       </div>
 
       {/* Banners row: cumulative + forecast */}
-      {stats && (
+      {sections.banners && stats && (
         <div className={stats.forecast !== null ? 'grid-2' : ''} style={{ marginBottom: 24 }}>
           <div style={{
             background: 'linear-gradient(135deg, rgba(249,115,22,0.15), rgba(245,158,11,0.1))',
@@ -296,7 +298,7 @@ export default function Dashboard() {
       )}
 
       {/* Budget progress bars (month view only, when plans exist) */}
-      {stats && period === 'month' && categoriesWithPlan.length > 0 && (
+      {sections.budget && stats && period === 'month' && categoriesWithPlan.length > 0 && (
         <div className="card" style={{ padding: 24, marginBottom: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
             <Target size={16} color="#FB923C" />
@@ -340,23 +342,25 @@ export default function Dashboard() {
       )}
 
       {/* Charts row */}
-      <div className="grid-2" style={{ marginBottom: 24 }}>
-        <div className="card" style={{ padding: 24 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 20 }}>
-            Витрати по категоріях
-          </h3>
-          {stats && <ExpenseDonut data={stats.byCategory} total={stats.expenses} />}
+      {sections.charts && (
+        <div className="grid-2" style={{ marginBottom: 24 }}>
+          <div className="card" style={{ padding: 24 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 20 }}>
+              Витрати по категоріях
+            </h3>
+            {stats && <ExpenseDonut data={stats.byCategory} total={stats.expenses} />}
+          </div>
+          <div className="card" style={{ padding: 24 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 20 }}>
+              Дохід та витрати
+            </h3>
+            {stats && <BalanceTrend data={stats.trend} />}
+          </div>
         </div>
-        <div className="card" style={{ padding: 24 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 20 }}>
-            Дохід та витрати
-          </h3>
-          {stats && <BalanceTrend data={stats.trend} />}
-        </div>
-      </div>
+      )}
 
       {/* Хто скільки — per-user breakdown, collapsible */}
-      {stats && stats.byUser.length > 0 && (stats.byUser.length > 1 || stats.byUser[0].name !== 'Спільні') && (
+      {sections.byUser && stats && stats.byUser.length > 0 && (stats.byUser.length > 1 || stats.byUser[0].name !== 'Спільні') && (
         <div className="card" style={{ marginBottom: 24, overflow: 'hidden' }}>
           <button
             onClick={() => setUserSectionOpen(v => !v)}
@@ -424,6 +428,7 @@ export default function Dashboard() {
       )}
 
       {/* Recent transactions */}
+      {sections.recent && (
       <div className="card" style={{ padding: 24 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 20 }}>
           Останні транзакції
@@ -477,6 +482,7 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+      )}
 
       {showForm && (
         <TransactionForm

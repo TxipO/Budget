@@ -4,6 +4,7 @@ import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, RefreshCw } from 'lucide-
 import { CATEGORY_PALETTE, formatMoney } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { useTheme } from '@/lib/theme';
+import { useDashboardPrefs, PREF_LABELS, type DashboardPrefs } from '@/lib/dashboardPrefs';
 import { ICON_KEYS } from '@/lib/icons';
 import CategoryIcon from '@/components/CategoryIcon';
 
@@ -119,6 +120,7 @@ export default function SettingsPage() {
   }
 
   const [theme, toggleTheme] = useTheme();
+  const [dashSections, updateSections] = useDashboardPrefs();
 
   const [pinForm, setPinForm] = useState({ current: '', next: '' });
   const [pinSaving, setPinSaving] = useState(false);
@@ -180,6 +182,40 @@ export default function SettingsPage() {
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             {theme === 'dark' ? 'Світла' : 'Темна'}
           </button>
+        </div>
+      </div>
+
+      {/* Dashboard sections visibility */}
+      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4 }}>Головна сторінка</h2>
+        <p style={{ fontSize: 13, color: 'var(--c-text-muted)', marginBottom: 16 }}>
+          Які блоки показувати на дашборді (зберігається на цьому пристрої)
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {(Object.keys(PREF_LABELS) as (keyof DashboardPrefs)[]).map(key => (
+            <label key={key} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '9px 0', cursor: 'pointer', borderBottom: '1px solid var(--c-border)',
+            }}>
+              <span style={{ fontSize: 14, color: 'var(--c-text-sec)' }}>{PREF_LABELS[key]}</span>
+              <button
+                type="button"
+                onClick={() => updateSections({ [key]: !dashSections[key] })}
+                style={{
+                  width: 40, height: 22, borderRadius: 20, border: 'none', cursor: 'pointer',
+                  background: dashSections[key] ? '#F97316' : 'var(--c-border-mid)',
+                  position: 'relative', transition: 'background 0.15s', flexShrink: 0,
+                }}
+                aria-label={`${dashSections[key] ? 'Сховати' : 'Показати'}: ${PREF_LABELS[key]}`}
+              >
+                <span style={{
+                  position: 'absolute', top: 3, left: dashSections[key] ? 21 : 3,
+                  width: 16, height: 16, borderRadius: '50%', background: 'white',
+                  transition: 'left 0.15s',
+                }} />
+              </button>
+            </label>
+          ))}
         </div>
       </div>
 
