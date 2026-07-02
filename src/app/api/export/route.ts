@@ -34,8 +34,10 @@ const SECTIONS = [
 export async function GET(req: NextRequest) {
   try {
   const { searchParams } = req.nextUrl;
-  const filterYear  = searchParams.get('year')  ? parseInt(searchParams.get('year')!)  : null;
-  const filterMonth = searchParams.get('month') ? parseInt(searchParams.get('month')!) : null;
+  const yearRaw  = searchParams.get('year')  ? parseInt(searchParams.get('year')!)  : null;
+  const monthRaw = searchParams.get('month') ? parseInt(searchParams.get('month')!) : null;
+  const filterYear  = yearRaw  !== null && Number.isFinite(yearRaw)  ? yearRaw  : null;
+  const filterMonth = monthRaw !== null && Number.isFinite(monthRaw) && monthRaw >= 1 && monthRaw <= 12 ? monthRaw : null;
 
   // ── Fetch all data ──────────────────────────────────────────────────────
   const [categories, allTxs, allPlans] = await Promise.all([

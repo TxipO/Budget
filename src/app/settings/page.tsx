@@ -27,15 +27,21 @@ export default function SettingsPage() {
   const [tplForm, setTplForm] = useState({ name: '', amount: '', categoryId: '', userId: '' });
 
   function loadCats() {
-    fetch('/api/categories').then(r => r.json()).then(setCats);
+    fetch('/api/categories')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(setCats)
+      .catch(() => toast('Помилка завантаження категорій', 'error'));
   }
   function loadTemplates() {
-    fetch('/api/recurring').then(r => r.json()).then(setTemplates);
+    fetch('/api/recurring')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(setTemplates)
+      .catch(() => toast('Помилка завантаження шаблонів', 'error'));
   }
   useEffect(() => {
     loadCats();
     loadTemplates();
-    fetch('/api/users').then(r => r.json()).then(setUsers);
+    fetch('/api/users').then(r => r.ok ? r.json() : Promise.reject()).then(setUsers).catch(() => {});
   }, []);
 
   async function addTemplate(e: React.FormEvent) {

@@ -7,9 +7,14 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl;
     const year  = parseInt(searchParams.get('year')  || '2026');
     const month = searchParams.get('month');
+    if (!Number.isFinite(year)) return badRequest('Невалідний рік');
 
     const where: Record<string, unknown> = { year };
-    if (month) where.month = parseInt(month);
+    if (month) {
+      const m = parseInt(month);
+      if (!Number.isFinite(m) || m < 1 || m > 12) return badRequest('Невалідний місяць');
+      where.month = m;
+    }
 
     const plans = await prisma.monthlyPlan.findMany({
       where,

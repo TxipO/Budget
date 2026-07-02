@@ -75,8 +75,9 @@ export default function Dashboard() {
   useEffect(() => {
     if (period !== 'month') { setPendingRecurring(0); return; }
     fetch(`/api/recurring?year=${year}&month=${month}`)
-      .then(r => r.json())
-      .then((data: { applied: boolean }[]) => setPendingRecurring(data.filter(t => !t.applied).length));
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then((data: { applied: boolean }[]) => setPendingRecurring(data.filter(t => !t.applied).length))
+      .catch(() => {});
   }, [year, month, period]);
 
   function loadStats() {
@@ -497,7 +498,7 @@ export default function Dashboard() {
         <RecurringModal
           year={year} month={month}
           onClose={() => setShowRecurring(false)}
-          onApplied={() => { loadStats(); fetch(`/api/recurring?year=${year}&month=${month}`).then(r => r.json()).then((d: { applied: boolean }[]) => setPendingRecurring(d.filter(t => !t.applied).length)); }}
+          onApplied={() => { loadStats(); fetch(`/api/recurring?year=${year}&month=${month}`).then(r => r.ok ? r.json() : Promise.reject()).then((d: { applied: boolean }[]) => setPendingRecurring(d.filter(t => !t.applied).length)).catch(() => {}); }}
         />
       )}
     </div>

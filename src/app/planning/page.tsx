@@ -19,13 +19,16 @@ export default function PlanningPage() {
   const amountRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch('/api/categories').then(r => r.json()).then(setCats);
+    fetch('/api/categories')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(setCats)
+      .catch(() => toast('Помилка завантаження категорій', 'error'));
   }, []);
 
   useEffect(() => {
     if (!cats.length) return;
     fetch(`/api/plans?year=${year}`)
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
       .then((data: any[]) =>
         setPlans(data.map(p => ({
           categoryId:    p.categoryId,
@@ -33,10 +36,11 @@ export default function PlanningPage() {
           plannedAmount: p.plannedAmount,
           notes:         p.notes ?? '',
         })))
-      );
+      )
+      .catch(() => toast('Помилка завантаження планів', 'error'));
 
     fetch(`/api/transactions?year=${year}&limit=9999`)
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
       .then((txs: { date: string; amount: number; category: { id: number; type: string } }[]) => {
         const map: Record<string, number> = {};
         txs.forEach(tx => {
@@ -48,7 +52,8 @@ export default function PlanningPage() {
           const [catId, month] = key.split('-').map(Number);
           return { categoryId: catId, month, actual };
         }));
-      });
+      })
+      .catch(() => toast('Помилка завантаження транзакцій', 'error'));
   }, [year, cats]);
 
   function getPlanned(catId: number, month: number) {

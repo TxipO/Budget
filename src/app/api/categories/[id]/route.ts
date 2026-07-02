@@ -31,12 +31,15 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const id = parseInt(params.id);
+    if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
     await prisma.category.update({
-      where: { id: parseInt(params.id) },
+      where: { id },
       data: { isActive: false },
     });
     return NextResponse.json({ ok: true });
-  } catch (e) {
+  } catch (e: any) {
+    if (e?.code === 'P2025') return NextResponse.json({ error: 'Категорію не знайдено' }, { status: 404 });
     console.error('[categories/[id] DELETE]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

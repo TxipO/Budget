@@ -19,8 +19,10 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const now    = new Date();
   const period = searchParams.get('period') || 'month';
-  const year   = parseInt(searchParams.get('year')  || String(now.getFullYear()));
-  const month  = parseInt(searchParams.get('month') || String(now.getMonth() + 1));
+  const yearP  = parseInt(searchParams.get('year')  || String(now.getFullYear()));
+  const monthP = parseInt(searchParams.get('month') || String(now.getMonth() + 1));
+  const year   = Number.isFinite(yearP) ? yearP : now.getFullYear();
+  const month  = Number.isFinite(monthP) && monthP >= 1 && monthP <= 12 ? monthP : now.getMonth() + 1;
 
   let rangeStart: Date;
   let rangeEnd: Date;

@@ -4,6 +4,8 @@ import { badRequest, isValidDate, isPositiveInt, isPositiveNumber } from '@/lib/
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const id = parseInt(params.id);
+    if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
     const body = await req.json();
 
     if (!isValidDate(body.date))                   return badRequest('Невалідна дата');
@@ -11,7 +13,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     if (!isPositiveNumber(Number(body.amount)))    return badRequest('Сума має бути більше 0');
 
     const tx = await prisma.transaction.update({
-      where: { id: parseInt(params.id) },
+      where: { id },
       data: {
         date:       new Date(body.date),
         categoryId: parseInt(body.categoryId),
@@ -22,7 +24,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       include: { category: true, user: true },
     });
     return NextResponse.json(tx);
-  } catch (e) {
+  } catch (e: any) {
+    if (e?.code === 'P2025') return NextResponse.json({ error: 'Транзакцію не знайдено' }, { status: 404 });
     console.error('[transactions/[id] PUT]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
