@@ -45,10 +45,12 @@ export default function Particles() {
   const mouse     = useRef({ x: -9999, y: -9999 });
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const canvasEl = canvasRef.current;
+    if (!canvasEl) return;
+    const canvas = canvasEl;
+    const ctx2d = canvas.getContext('2d');
+    if (!ctx2d) return;
+    const ctx = ctx2d;
 
     let w = window.innerWidth;
     let h = window.innerHeight;

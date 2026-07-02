@@ -358,7 +358,7 @@ export default function TransactionsPage() {
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
                   {tx.category.name}
-                  {tx.recurringTemplateId && <RefreshCw size={11} color="#F97316" title="Recurring" />}
+                  {tx.recurringTemplateId && <span title="Recurring" style={{ display: 'flex' }}><RefreshCw size={11} color="#F97316" /></span>}
                 </div>
                 {tx.details && (
                   <div style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

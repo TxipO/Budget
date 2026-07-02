@@ -114,7 +114,7 @@ export async function GET(req: NextRequest) {
     });
     for (const p of plans) {
       if (expenseByCategory[p.categoryId]) {
-        expenseByCategory[p.categoryId].planned = p.amount;
+        expenseByCategory[p.categoryId].planned = p.plannedAmount;
       }
     }
   }
