@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 const INCOME_COLORS: Record<string, string> = {
   'Женя': '#22C55E', 'Паша': '#16A34A', 'Додаткове': '#4ADE80',
@@ -29,6 +29,35 @@ function cleanName(raw: string): string {
   return raw.trim();
 }
 
+// exceljs cell.value can be a primitive, a Date, a formula result object, or
+// a rich-text object — normalize down to what the import logic needs.
+function cellText(v: ExcelJS.CellValue): string | null {
+  if (v === null || v === undefined) return null;
+  if (v instanceof Date) return null;
+  if (typeof v === 'object') {
+    if ('richText' in v) return (v as any).richText.map((r: any) => r.text).join('');
+    if ('result' in v)   return v.result !== undefined && v.result !== null ? String(v.result) : null;
+    if ('text' in v)     return String((v as any).text);
+    return null;
+  }
+  return String(v);
+}
+function cellNumber(v: ExcelJS.CellValue): number | null {
+  if (typeof v === 'number') return v;
+  if (v && typeof v === 'object' && 'result' in v && typeof (v as any).result === 'number') return (v as any).result;
+  const s = cellText(v);
+  if (s === null || s.trim() === '') return null;
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : null;
+}
+function cellDate(v: ExcelJS.CellValue): Date | null {
+  if (v instanceof Date) return v;
+  const s = cellText(v);
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -36,7 +65,8 @@ export async function POST(req: NextRequest) {
     if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 });
 
     const buffer = await file.arrayBuffer();
-    const wb = XLSX.read(buffer, { type: 'array' });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer);
 
     // --- Ensure users exist ---
     for (const name of ['Паша', 'Женя']) {
@@ -46,27 +76,26 @@ export async function POST(req: NextRequest) {
     }
 
     // --- Parse Планування sheet ---
-    const planSheet = wb.Sheets['Планування'];
+    const planSheet = wb.getWorksheet('Планування');
     if (!planSheet) return NextResponse.json({ error: 'Sheet "Планування" not found' }, { status: 400 });
 
-    const rows: (string | number | null)[][] = XLSX.utils.sheet_to_json(planSheet, { header: 1, defval: null }) as any;
-
-    // Find section boundaries by scanning column C (index 2)
+    // Find section boundaries by scanning column C (index 3, exceljs is 1-based)
     type SectionType = 'income' | 'expense' | 'savings' | null;
     let currentSection: SectionType = null;
     const importedCats = new Map<string, number>(); // name → id
 
-    // Month columns: col index 4=Jan,5=Feb,...,15=Dec (0-indexed) for year 2026 block
-    const YEAR_COL   = 4;  // January 2026 starts at col E (index 4)
-    const MONTHS     = 12;
+    // Month columns: col 5=Jan,6=Feb,...,16=Dec (1-based) for year 2026 block
+    const YEAR_COL = 5;
+    const MONTHS   = 12;
 
-    for (const row of rows) {
-      const cell = row[2]; // Column C = category name
+    for (let r = 1; r <= planSheet.rowCount; r++) {
+      const row = planSheet.getRow(r);
+      const cell = cellText(row.getCell(3).value);
       if (cell === 'Дохід')      { currentSection = 'income';   continue; }
       if (cell === 'Витрати')    { currentSection = 'expense';  continue; }
       if (cell === 'Збереження') { currentSection = 'savings';  continue; }
       if (cell === 'Сума')       continue;
-      if (!currentSection || !cell || typeof cell !== 'string') continue;
+      if (!currentSection || !cell) continue;
       if (cell.startsWith('Встановіть') || cell.startsWith('Буде') || cell.startsWith('Накоп')) continue;
 
       const name = cleanName(cell);
@@ -81,12 +110,10 @@ export async function POST(req: NextRequest) {
       }
       importedCats.set(name, cat.id);
 
-      // Read monthly values (cols 4..15 = Jan..Dec 2026)
+      // Read monthly values (cols 5..16 = Jan..Dec 2026)
       for (let m = 0; m < MONTHS; m++) {
-        const val = row[YEAR_COL + m];
-        if (val === null || val === undefined || val === '' || val === ' ') continue;
-        const amount = typeof val === 'number' ? val : parseFloat(String(val));
-        if (!isFinite(amount) || amount <= 0) continue;
+        const amount = cellNumber(row.getCell(YEAR_COL + m).value);
+        if (amount === null || amount <= 0) continue;
 
         // Create a monthly summary transaction on the 1st of each month
         const date = new Date(2026, m, 1);
@@ -115,33 +142,27 @@ export async function POST(req: NextRequest) {
     }
 
     // --- Parse Ведення sheet (individual transactions) ---
-    const vedSheet = wb.Sheets['Ведення'];
+    const vedSheet = wb.getWorksheet('Ведення');
     if (vedSheet) {
-      const vedRows: (string | number | Date | null)[][] = XLSX.utils.sheet_to_json(vedSheet, { header: 1, defval: null }) as any;
-      for (let i = 2; i < vedRows.length; i++) {
-        const row = vedRows[i];
-        const rawDate = row[2];
-        const type    = row[3];
-        const catName = row[4];
-        const amount  = row[5];
-        const details = row[6];
+      for (let r = 3; r <= vedSheet.rowCount; r++) {
+        const row = vedSheet.getRow(r);
+        const rawDate = row.getCell(3).value;
+        const type    = cellText(row.getCell(4).value);
+        const catName = cellText(row.getCell(5).value);
+        const amount  = cellNumber(row.getCell(6).value);
+        const details = cellText(row.getCell(7).value);
 
-        if (!rawDate || !type || !catName || !amount) continue;
-        if (typeof amount !== 'number' || amount <= 0) continue;
+        if (!rawDate || !type || !catName || amount === null || amount <= 0) continue;
 
-        const typeLower = String(type) === 'Витрати' ? 'expense'
-                        : String(type) === 'Дохід'   ? 'income'
-                        : String(type) === 'Збереження' ? 'savings' : null;
+        const typeLower = type === 'Витрати' ? 'expense'
+                         : type === 'Дохід'   ? 'income'
+                         : type === 'Збереження' ? 'savings' : null;
         if (!typeLower) continue;
 
-        let date: Date;
-        if (rawDate instanceof Date) date = rawDate;
-        else if (typeof rawDate === 'number') {
-          const p = XLSX.SSF.parse_date_code(rawDate);
-          date = new Date(p.y, p.m - 1, p.d);
-        } else date = new Date(String(rawDate));
+        const date = cellDate(rawDate);
+        if (!date) continue;
 
-        const catNameStr = String(catName).trim();
+        const catNameStr = catName.trim();
         let cat = await prisma.category.findFirst({ where: { name: catNameStr, type: typeLower } });
         if (!cat) {
           cat = await prisma.category.create({
@@ -149,7 +170,7 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        const detailsStr = details ? String(details) : '';
+        const detailsStr = details ?? '';
         const exists = await prisma.transaction.findFirst({
           where: { date, categoryId: cat.id, amount, details: detailsStr },
         });
