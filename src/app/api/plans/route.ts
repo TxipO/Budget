@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { badRequest, isValidYear, isValidMonth, isPositiveInt, isNonNegativeNumber } from '@/lib/validate';
+import { badRequest, isValidYear, isValidMonth, isPositiveInt, isNonNegativeNumber, roundMoney } from '@/lib/validate';
 
 export async function GET(req: NextRequest) {
   try {
@@ -39,8 +39,8 @@ export async function POST(req: NextRequest) {
 
     const plan = await (prisma.monthlyPlan as any).upsert({
       where: { year_month_categoryId: { year, month, categoryId } },
-      update: { plannedAmount, notes: notes ?? undefined },
-      create: { year, month, categoryId, plannedAmount, notes: notes ?? '' },
+      update: { plannedAmount: roundMoney(plannedAmount), notes: notes ?? undefined },
+      create: { year, month, categoryId, plannedAmount: roundMoney(plannedAmount), notes: notes ?? '' },
       include: { category: true },
     });
     return NextResponse.json(plan);

@@ -43,12 +43,13 @@ function cellText(v: ExcelJS.CellValue): string | null {
   return String(v);
 }
 function cellNumber(v: ExcelJS.CellValue): number | null {
-  if (typeof v === 'number') return v;
-  if (v && typeof v === 'object' && 'result' in v && typeof (v as any).result === 'number') return (v as any).result;
+  const round = (n: number) => Math.round(n * 100) / 100;
+  if (typeof v === 'number') return round(v);
+  if (v && typeof v === 'object' && 'result' in v && typeof (v as any).result === 'number') return round((v as any).result);
   const s = cellText(v);
   if (s === null || s.trim() === '') return null;
   const n = parseFloat(s);
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) ? round(n) : null;
 }
 function cellDate(v: ExcelJS.CellValue): Date | null {
   if (v instanceof Date) return v;
@@ -101,13 +102,12 @@ export async function POST(req: NextRequest) {
       const name = cleanName(cell);
       if (!name) continue;
 
-      // Upsert category
-      let cat = await prisma.category.findFirst({ where: { name, type: currentSection } });
-      if (!cat) {
-        cat = await prisma.category.create({
-          data: { name, type: currentSection, color: getColor(name, currentSection) },
-        });
-      }
+      // Upsert category (name+type is unique at the DB level)
+      const cat = await prisma.category.upsert({
+        where: { name_type: { name, type: currentSection } },
+        update: {},
+        create: { name, type: currentSection, color: getColor(name, currentSection) },
+      });
       importedCats.set(name, cat.id);
 
       // Read monthly values (cols 5..16 = Jan..Dec 2026)
@@ -163,12 +163,11 @@ export async function POST(req: NextRequest) {
         if (!date) continue;
 
         const catNameStr = catName.trim();
-        let cat = await prisma.category.findFirst({ where: { name: catNameStr, type: typeLower } });
-        if (!cat) {
-          cat = await prisma.category.create({
-            data: { name: catNameStr, type: typeLower, color: getColor(catNameStr, typeLower) },
-          });
-        }
+        const cat = await prisma.category.upsert({
+          where: { name_type: { name: catNameStr, type: typeLower } },
+          update: {},
+          create: { name: catNameStr, type: typeLower, color: getColor(catNameStr, typeLower) },
+        });
 
         const detailsStr = details ?? '';
         const exists = await prisma.transaction.findFirst({

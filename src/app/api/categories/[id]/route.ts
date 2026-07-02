@@ -23,7 +23,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       data,
     });
     return NextResponse.json(cat);
-  } catch (e) {
+  } catch (e: any) {
+    if (e?.code === 'P2002') return badRequest('Така категорія вже існує');
+    if (e?.code === 'P2025') return NextResponse.json({ error: 'Категорію не знайдено' }, { status: 404 });
     console.error('[categories/[id] PUT]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

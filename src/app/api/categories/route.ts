@@ -32,7 +32,8 @@ export async function POST(req: NextRequest) {
       },
     });
     return NextResponse.json(cat);
-  } catch (e) {
+  } catch (e: any) {
+    if (e?.code === 'P2002') return badRequest('Така категорія вже існує');
     console.error('[categories POST]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

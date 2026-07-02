@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { badRequest, isValidDate, isPositiveInt, isPositiveNumber } from '@/lib/validate';
+import { badRequest, isValidDate, isPositiveInt, isPositiveNumber, roundMoney } from '@/lib/validate';
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -17,7 +17,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       data: {
         date:       new Date(body.date),
         categoryId: parseInt(body.categoryId),
-        amount:     parseFloat(body.amount),
+        amount:     roundMoney(parseFloat(body.amount)),
         details:    body.details || '',
         userId:     body.userId ? parseInt(body.userId) : null,
       },

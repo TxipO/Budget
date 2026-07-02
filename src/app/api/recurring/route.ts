@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { badRequest, isPositiveInt, isPositiveNumber } from '@/lib/validate';
+import { badRequest, isPositiveInt, isPositiveNumber, roundMoney } from '@/lib/validate';
 
 export async function GET(req: NextRequest) {
   try {
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     if (!isPositiveInt(Number(userId)))       return badRequest('Невалідний користувач');
 
     const template = await prisma.recurringTemplate.create({
-      data: { name: trimmedName, amount: Number(amount), categoryId: Number(categoryId), userId: Number(userId), details: details ?? '' },
+      data: { name: trimmedName, amount: roundMoney(Number(amount)), categoryId: Number(categoryId), userId: Number(userId), details: details ?? '' },
       include: { category: true, user: true },
     });
     return NextResponse.json(template);

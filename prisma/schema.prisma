@@ -25,6 +25,8 @@ model Category {
   transactions       Transaction[]
   plans              MonthlyPlan[]
   recurringTemplates RecurringTemplate[]
+
+  @@unique([name, type])
 }
 
 model Transaction {

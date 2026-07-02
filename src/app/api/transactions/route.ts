@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { badRequest, isValidDate, isPositiveInt, isPositiveNumber } from '@/lib/validate';
+import { badRequest, isValidDate, isPositiveInt, isPositiveNumber, roundMoney } from '@/lib/validate';
 
 export async function GET(req: NextRequest) {
   try {
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       data: {
         date:       new Date(date),
         categoryId: parseInt(categoryId),
-        amount:     parseFloat(amount),
+        amount:     roundMoney(parseFloat(amount)),
         details:    details || '',
         userId:     userId ? parseInt(userId) : null,
       },
