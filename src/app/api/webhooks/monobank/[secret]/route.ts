@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { roundMoney } from '@/lib/validate';
-import { ISO_4217, guessCategoryByMcc, normalizeMerchantKey, getCachedExchangeRate } from '@/lib/monobank';
+import { ISO_4217, guessCategoryByMcc, guessCategoryByKeyword, normalizeMerchantKey, getCachedExchangeRate } from '@/lib/monobank';
 
 interface StatementItem {
   id: string;
@@ -21,19 +21,28 @@ async function resolveCategoryId(userId: number, txType: 'expense' | 'income', m
   });
   if (rule) return rule.categoryId;
 
-  // 2. Crude MCC guess (Ф4 adds a Claude call as the real fallback on top).
+  // 2. MCC guess — free, no external call (standard ISO 18245 codes).
   const mccGuess = guessCategoryByMcc(mcc);
   if (mccGuess) {
     const cat = await prisma.category.findFirst({ where: { name: mccGuess, type: txType, isActive: true } });
     if (cat) return cat.id;
   }
 
-  // 3. Safe fallback — a bucket that always exists for the type.
+  // 3. Keyword guess against the merchant description — also free. Catches
+  // cases MCC alone doesn't (a generic "retail" MCC from a recognizable
+  // grocery chain name, for instance).
+  const keywordGuess = guessCategoryByKeyword(merchantKey);
+  if (keywordGuess) {
+    const cat = await prisma.category.findFirst({ where: { name: keywordGuess, type: txType, isActive: true } });
+    if (cat) return cat.id;
+  }
+
+  // 4. Safe fallback — a bucket that always exists for the type.
   const fallbackName = txType === 'expense' ? 'Незрозуміло' : 'Додаткове';
   const fallback = await prisma.category.findFirst({ where: { name: fallbackName, type: txType, isActive: true } });
   if (fallback) return fallback.id;
 
-  // 4. Absolute last resort — any active category of the right type, so an
+  // 5. Absolute last resort — any active category of the right type, so an
   // import never crashes even if the expected fallback category was renamed
   // or deleted.
   const any = await prisma.category.findFirst({ where: { type: txType, isActive: true }, orderBy: { id: 'asc' } });

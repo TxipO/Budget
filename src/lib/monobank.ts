@@ -92,19 +92,63 @@ export async function getCachedExchangeRate(fromCcy: number, toCcy: number): Pro
 }
 
 // First-pass category guess from the merchant category code Monobank already
-// sends in the webhook payload — free, no network call. Deliberately small
-// and only the unambiguous codes; Ф4 adds a Claude call as the real fallback
-// for everything else, this just shortcuts the obvious ones.
+// sends in the webhook payload — free, no network call, no external API.
+// Standard ISO 18245 MCC codes mapped to whatever this app's own category
+// names happen to be; only codes with an unambiguous, confident match to an
+// existing category are included — an uncertain guess is worse than none
+// (it falls through to keyword matching, then the safe fallback instead).
 const MCC_CATEGORY: Record<number, string> = {
-  5411: 'Їжа',       // grocery stores/supermarkets
-  5812: 'Їжа',       // restaurants
-  5814: 'Їжа',       // fast food
-  5912: 'Медицина',  // pharmacies
-  4900: 'Комунальні', // utilities
+  // Їжа
+  5411: 'Їжа', 5412: 'Їжа', 5422: 'Їжа', 5441: 'Їжа', 5451: 'Їжа',
+  5462: 'Їжа', 5499: 'Їжа', 5812: 'Їжа', 5813: 'Їжа', 5814: 'Їжа',
+  // Медицина
+  5912: 'Медицина', 8011: 'Медицина', 8021: 'Медицина', 8031: 'Медицина',
+  8042: 'Медицина', 8049: 'Медицина', 8062: 'Медицина', 8071: 'Медицина', 8099: 'Медицина',
+  // Комунальні
+  4900: 'Комунальні', 4814: 'Комунальні',
+  // Домашній хлам/одяг/etc
+  5200: 'Домашній хлам/одяг/etc', 5211: 'Домашній хлам/одяг/etc', 5251: 'Домашній хлам/одяг/etc',
+  5399: 'Домашній хлам/одяг/etc', 5651: 'Домашній хлам/одяг/etc', 5661: 'Домашній хлам/одяг/etc',
+  5697: 'Домашній хлам/одяг/etc', 5732: 'Домашній хлам/одяг/etc',
+  // Підписки
+  5815: 'Підписки', 5968: 'Підписки', 4899: 'Підписки',
+  // Навчання
+  8211: 'Навчання', 8220: 'Навчання', 8241: 'Навчання', 8244: 'Навчання',
+  8249: 'Навчання', 8299: 'Навчання',
+  // Кредит
+  6012: 'Кредит', 6051: 'Кредит',
+  // Залежності (алкоголь/тютюн/азартні ігри)
+  5921: 'Залежності', 5993: 'Залежності', 7995: 'Залежності',
+  // Подарунки
+  5947: 'Подарунки', 5992: 'Подарунки',
 };
 
 export function guessCategoryByMcc(mcc: number | undefined): string | null {
   return mcc ? MCC_CATEGORY[mcc] ?? null : null;
+}
+
+// Second-pass free guess: substring match against the merchant description
+// Monobank sends. Deliberately conservative — only patterns that map
+// confidently onto an EXISTING category name, grounded in common Ukrainian
+// merchant naming (grocery chains, pharmacy chains, well-known subscription
+// services). An unmatched merchant falls through to the safe fallback
+// rather than getting a low-confidence guess.
+const KEYWORD_CATEGORY: [RegExp, string][] = [
+  [/аптек|pharmacy|фармаці/i, 'Медицина'],
+  [/сільпо|silpo|атб|фора|ашан|novus|варус|ваш ?формат|вест ?лайн|кошик/i, 'Їжа'],
+  [/netflix|spotify|youtube ?premium|apple\.com\/bill|google ?(play|one)|playstation|xbox|patreon|подпис|підписк/i, 'Підписки'],
+  [/coursera|udemy|prometheus|школа|курси|university|college|навчанн/i, 'Навчання'],
+  [/vape|вейп|сигарет|tobacco|casino|казино|bet|parimatch|букмекер/i, 'Залежності'],
+  [/квіти|flowers|подарун|gift/i, 'Подарунки'],
+  [/zara|h&m|lc waikiki|epicentr|епіцентр|leroy merlin|ikea|одяг|взуття/i, 'Домашній хлам/одяг/etc'],
+];
+
+export function guessCategoryByKeyword(description: string): string | null {
+  const text = description.toLowerCase();
+  for (const [pattern, category] of KEYWORD_CATEGORY) {
+    if (pattern.test(text)) return category;
+  }
+  return null;
 }
 
 // Consciously simple in v1 (lowercase + trim + collapse whitespace) — the
