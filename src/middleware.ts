@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const PUBLIC_PATHS = ['/login', '/api/auth', '/manifest.json', '/icon-192.png', '/icon-512.png', '/favicon.ico'];
 
+// Prefix matches, kept separate from the exact-match list above so widening
+// one never accidentally widens the other. Monobank calls this URL directly
+// (GET to verify it's alive, POST to push transactions) — it can't send our
+// session cookie, so it must bypass PIN auth entirely. Safe because the
+// route itself is the real gate: it only acts on a request whose :secret
+// matches a per-user 192-bit random value stored in the DB, and no-ops
+// (still 200) on anything else.
+const PUBLIC_PREFIXES = ['/api/webhooks/monobank/'];
+
 // Must match SESSION_MAX_AGE_MS / the cookie's maxAge in api/auth/route.ts.
 const SESSION_MAX_AGE_MS = 60 * 60 * 24 * 30 * 1000; // 30 днів
 // The cookie is issued by a Node.js serverless function (api/auth/route.ts)
@@ -94,7 +103,7 @@ export async function middleware(req: NextRequest) {
 
   const secret = process.env.AUTH_SECRET;
   const { pathname } = req.nextUrl;
-  if (PUBLIC_PATHS.some(p => pathname === p)) {
+  if (PUBLIC_PATHS.some(p => pathname === p) || PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) {
     return withCsp(NextResponse.next({ request: { headers: requestHeaders } }), nonce);
   }
 

@@ -1,3 +1,5 @@
+import { prisma } from '@/lib/prisma';
+
 const BASE = 'https://api.monobank.ua';
 
 export class MonobankError extends Error {
@@ -62,4 +64,53 @@ export async function getExchangeRate(fromCcy: number, toCcy: number): Promise<n
   const inverse = rates.find(r => r.currencyCodeA === toCcy && r.currencyCodeB === fromCcy);
   const inverseRate = inverse?.rateCross ?? inverse?.rateBuy ?? inverse?.rateSell;
   return inverseRate ? 1 / inverseRate : null;
+}
+
+export const ISO_4217 = { UAH: 980, NOK: 578 };
+const FX_CACHE_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
+
+// Monobank's currency endpoint has no auth but is still a live network call
+// on every webhook delivery if uncached — cache in AppSetting (already used
+// for the PIN hash and auth lockout) keyed by currency pair, refreshed at
+// most once an hour. A stale-by-an-hour FX rate is an acceptable trade for
+// not hitting an external API on every single imported transaction.
+export async function getCachedExchangeRate(fromCcy: number, toCcy: number): Promise<number | null> {
+  const key = `fxRate:${fromCcy}:${toCcy}`;
+  const cached = await prisma.appSetting.findUnique({ where: { key } });
+  if (cached) {
+    const parsed = JSON.parse(cached.value) as { rate: number; fetchedAt: number };
+    if (Date.now() - parsed.fetchedAt < FX_CACHE_MAX_AGE_MS) return parsed.rate;
+  }
+  const rate = await getExchangeRate(fromCcy, toCcy);
+  if (rate === null) return cached ? (JSON.parse(cached.value) as { rate: number }).rate : null; // serve stale rather than fail the import
+  await prisma.appSetting.upsert({
+    where: { key },
+    update: { value: JSON.stringify({ rate, fetchedAt: Date.now() }) },
+    create: { key, value: JSON.stringify({ rate, fetchedAt: Date.now() }) },
+  });
+  return rate;
+}
+
+// First-pass category guess from the merchant category code Monobank already
+// sends in the webhook payload — free, no network call. Deliberately small
+// and only the unambiguous codes; Ф4 adds a Claude call as the real fallback
+// for everything else, this just shortcuts the obvious ones.
+const MCC_CATEGORY: Record<number, string> = {
+  5411: 'Їжа',       // grocery stores/supermarkets
+  5812: 'Їжа',       // restaurants
+  5814: 'Їжа',       // fast food
+  5912: 'Медицина',  // pharmacies
+  4900: 'Комунальні', // utilities
+};
+
+export function guessCategoryByMcc(mcc: number | undefined): string | null {
+  return mcc ? MCC_CATEGORY[mcc] ?? null : null;
+}
+
+// Consciously simple in v1 (lowercase + trim + collapse whitespace) — the
+// same merchant can appear with slightly different formatting across
+// transactions (extra spaces, trailing terminal IDs); refine only if that
+// turns out to actually fragment MonoCategoryRule matches in practice.
+export function normalizeMerchantKey(description: string): string {
+  return description.trim().toLowerCase().replace(/\s+/g, ' ');
 }
