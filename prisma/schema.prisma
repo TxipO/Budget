@@ -13,6 +13,33 @@ model User {
   transactions       Transaction[]
   recurringTemplates RecurringTemplate[]
   createdAt          DateTime             @default(now())
+
+  // Monobank integration (see lib/crypto.ts). monoTokenEnc is the personal
+  // API token, AES-256-GCM encrypted — never stored or logged in plaintext.
+  // monoWebhookSecret is a per-user random path segment for the webhook
+  // receiver URL, so the real bank token is never exposed via a URL.
+  monoTokenEnc      String? @unique
+  monoWebhookSecret String? @unique
+  monoAccountId     String?
+  monoCategoryRules MonoCategoryRule[]
+}
+
+// Learned merchant → category mappings, populated ONLY from manual
+// corrections a user makes to an imported Monobank transaction (never from
+// Claude's own guesses — otherwise a bad guess could poison future guesses
+// for the same merchant). Checked before MCC lookup and before calling
+// Claude, so a merchant seen once and corrected is never re-guessed.
+model MonoCategoryRule {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  merchantKey String   // normalized: lowercase, trimmed, collapsed whitespace
+  categoryId  Int
+  hitCount    Int      @default(0)
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id])
+  category    Category @relation(fields: [categoryId], references: [id])
+
+  @@unique([userId, merchantKey])
 }
 
 model Category {
@@ -25,6 +52,7 @@ model Category {
   transactions       Transaction[]
   plans              MonthlyPlan[]
   recurringTemplates RecurringTemplate[]
+  monoCategoryRules  MonoCategoryRule[]
 
   @@unique([name, type])
 }
@@ -41,6 +69,20 @@ model Transaction {
   category            Category           @relation(fields: [categoryId], references: [id])
   user                User?              @relation(fields: [userId], references: [id])
   recurringTemplate   RecurringTemplate? @relation(fields: [recurringTemplateId], references: [id])
+
+  // Which subsystem wrote this row — manual entry, Excel plan import,
+  // recurring-template apply, or Monobank webhook. Lets Ф5's double-count
+  // guard tell "two independent writers recorded the same real payment"
+  // apart from "two genuinely separate transactions."
+  source String @default("manual")
+
+  // Monobank fields — all null for non-mono rows.
+  monoStatementId    String? @unique // dedup key: Monobank's own transaction id
+  monoMerchant       String?         // raw merchant description, for MonoCategoryRule matching
+  monoMcc            Int?            // merchant category code, first-pass category guess
+  monoAmountOriginal Float?          // original amount in the card's currency (before FX)
+  monoCurrency       String?         // ISO code of the original currency, e.g. "UAH"
+  fxRate             Float?          // rate applied at import time (original * fxRate = amount)
 
   @@index([date])
   // Guards against the recurring/apply race: concurrent requests applying the
