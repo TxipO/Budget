@@ -48,64 +48,88 @@ export default function SettingsPage() {
   async function addTemplate(e: React.FormEvent) {
     e.preventDefault();
     if (!tplForm.name || !tplForm.amount || !tplForm.categoryId || !tplForm.userId) return;
-    const res = await fetch('/api/recurring', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...tplForm, amount: Number(tplForm.amount), categoryId: Number(tplForm.categoryId), userId: Number(tplForm.userId) }),
-    });
-    if (!res.ok) { toast('Помилка додавання шаблону', 'error'); return; }
-    toast(`Шаблон "${tplForm.name}" додано`);
-    setTplForm({ name: '', amount: '', categoryId: '', userId: '' });
-    loadTemplates();
+    try {
+      const res = await fetch('/api/recurring', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...tplForm, amount: Number(tplForm.amount), categoryId: Number(tplForm.categoryId), userId: Number(tplForm.userId) }),
+      });
+      if (!res.ok) { toast('Помилка додавання шаблону', 'error'); return; }
+      toast(`Шаблон "${tplForm.name}" додано`);
+      setTplForm({ name: '', amount: '', categoryId: '', userId: '' });
+      loadTemplates();
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    }
   }
 
   async function deleteTemplate(id: number, name: string) {
-    const res = await fetch(`/api/recurring/${id}`, { method: 'DELETE' });
-    if (!res.ok) { toast('Помилка видалення шаблону', 'error'); return; }
-    toast(`Шаблон "${name}" видалено`, 'info');
-    loadTemplates();
+    try {
+      const res = await fetch(`/api/recurring/${id}`, { method: 'DELETE' });
+      if (!res.ok) { toast('Помилка видалення шаблону', 'error'); return; }
+      toast(`Шаблон "${name}" видалено`, 'info');
+      loadTemplates();
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    }
   }
 
   async function addCat(e: React.FormEvent) {
     e.preventDefault();
-    const res = await fetch('/api/categories', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    });
-    if (!res.ok) { toast('Помилка додавання категорії', 'error'); return; }
-    toast(`Категорію "${form.name}" додано`);
-    setForm({ name: '', type: 'expense', color: CATEGORY_PALETTE[0], icon: 'circle' });
-    loadCats();
+    try {
+      const res = await fetch('/api/categories', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) { toast('Помилка додавання категорії', 'error'); return; }
+      toast(`Категорію "${form.name}" додано`);
+      setForm({ name: '', type: 'expense', color: CATEGORY_PALETTE[0], icon: 'circle' });
+      loadCats();
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    }
   }
 
   async function deleteCat(id: number) {
     const cat = cats.find(c => c.id === id);
     if (!confirm('Видалити категорію?')) return;
-    const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' });
-    if (!res.ok) { toast('Помилка видалення категорії', 'error'); return; }
-    toast(`Категорію "${cat?.name}" видалено`, 'info');
-    loadCats();
+    try {
+      const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+      if (!res.ok) { toast('Помилка видалення категорії', 'error'); return; }
+      toast(`Категорію "${cat?.name}" видалено`, 'info');
+      loadCats();
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    }
   }
 
   async function updateColor(id: number, color: string) {
-    const res = await fetch(`/api/categories/${id}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ color }),
-    });
-    if (!res.ok) { toast('Помилка оновлення кольору', 'error'); return; }
-    setCats(prev => prev.map(c => c.id === id ? { ...c, color } : c));
-    setEditingColorId(null);
-    toast('Колір оновлено');
+    try {
+      const res = await fetch(`/api/categories/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ color }),
+      });
+      if (!res.ok) { toast('Помилка оновлення кольору', 'error'); return; }
+      setCats(prev => prev.map(c => c.id === id ? { ...c, color } : c));
+      setEditingColorId(null);
+      toast('Колір оновлено');
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    }
   }
 
   async function updateIcon(id: number, icon: string) {
-    const res = await fetch(`/api/categories/${id}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ icon }),
-    });
-    if (!res.ok) { toast('Помилка оновлення іконки', 'error'); return; }
-    setCats(prev => prev.map(c => c.id === id ? { ...c, icon } : c));
-    setEditingIconId(null);
-    toast('Іконку оновлено');
+    try {
+      const res = await fetch(`/api/categories/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ icon }),
+      });
+      if (!res.ok) { toast('Помилка оновлення іконки', 'error'); return; }
+      setCats(prev => prev.map(c => c.id === id ? { ...c, icon } : c));
+      setEditingIconId(null);
+      toast('Іконку оновлено');
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    }
   }
 
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
@@ -114,9 +138,14 @@ export default function SettingsPage() {
     setImportStatus('loading');
     const formData = new FormData();
     formData.append('file', file);
-    const res = await fetch('/api/import', { method: 'POST', body: formData });
-    if (res.ok) { setImportStatus('done'); loadCats(); toast('Імпорт завершено успішно'); }
-    else { setImportStatus('error'); toast('Помилка імпорту', 'error'); }
+    try {
+      const res = await fetch('/api/import', { method: 'POST', body: formData });
+      if (res.ok) { setImportStatus('done'); loadCats(); toast('Імпорт завершено успішно'); }
+      else { setImportStatus('error'); toast('Помилка імпорту', 'error'); }
+    } catch {
+      setImportStatus('error');
+      toast('Помилка з’єднання', 'error');
+    }
   }
 
   const [theme, toggleTheme] = useTheme();

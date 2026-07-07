@@ -82,9 +82,14 @@ export default function TransactionsPage() {
 
     const timeoutId = setTimeout(async () => {
       pendingDels.current.delete(id);
-      const res = await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        toast('Помилка видалення', 'error');
+      try {
+        const res = await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          toast('Помилка видалення', 'error');
+          load();
+        }
+      } catch {
+        toast('Помилка з’єднання', 'error');
         load();
       }
     }, 5000);
@@ -144,16 +149,20 @@ export default function TransactionsPage() {
 
   async function exportExcel() {
     const url = `/api/export?year=${year}&month=${month}`;
-    const res = await fetch(url);
-    if (!res.ok) { toast('Помилка експорту'); return; }
-    const blob = await res.blob();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `Ведення_${MONTH_NAMES[month - 1]}_${year}.xlsx`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    setShowExport(false);
-    toast('Excel збережено');
+    try {
+      const res = await fetch(url);
+      if (!res.ok) { toast('Помилка експорту'); return; }
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `Ведення_${MONTH_NAMES[month - 1]}_${year}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      setShowExport(false);
+      toast('Excel збережено');
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    }
   }
 
   const filtered = txs.filter(tx =>
