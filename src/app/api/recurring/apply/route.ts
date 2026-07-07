@@ -11,8 +11,8 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(templateIds) || templateIds.length === 0 || !templateIds.every(id => isPositiveInt(id)))
       return badRequest('Невалідний список шаблонів');
 
-    const start = new Date(year, month - 1, 1);
-    const end   = new Date(year, month, 1);
+    const start = new Date(Date.UTC(year, month - 1, 1));
+    const end   = new Date(Date.UTC(year, month, 1));
 
     const alreadyApplied = await prisma.transaction.findMany({
       where: { recurringTemplateId: { in: templateIds }, date: { gte: start, lt: end } },

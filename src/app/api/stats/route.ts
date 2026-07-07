@@ -30,38 +30,42 @@ export async function GET(req: NextRequest) {
   let prevEnd: Date;
   let trendMonths: number;
 
+  // All range boundaries use Date.UTC so month buckets are identical no
+  // matter what timezone the Node process itself is running in (local dev
+  // vs Vercel's UTC) — otherwise the same transaction can land in a
+  // different month depending on where the server happens to run.
   if (period === 'month') {
-    rangeStart = new Date(year, month - 1, 1);
-    rangeEnd   = new Date(year, month, 1);
-    prevStart  = new Date(year, month - 2, 1);
-    prevEnd    = new Date(year, month - 1, 1);
+    rangeStart = new Date(Date.UTC(year, month - 1, 1));
+    rangeEnd   = new Date(Date.UTC(year, month, 1));
+    prevStart  = new Date(Date.UTC(year, month - 2, 1));
+    prevEnd    = new Date(Date.UTC(year, month - 1, 1));
     trendMonths = 6;
   } else if (period === 'quarter') {
-    rangeEnd   = new Date(year, month, 1);
-    rangeStart = new Date(year, month - 3, 1);
+    rangeEnd   = new Date(Date.UTC(year, month, 1));
+    rangeStart = new Date(Date.UTC(year, month - 3, 1));
     prevEnd    = rangeStart;
-    prevStart  = new Date(year, month - 6, 1);
+    prevStart  = new Date(Date.UTC(year, month - 6, 1));
     trendMonths = 3;
   } else if (period === '6m') {
-    rangeEnd   = new Date(year, month, 1);
-    rangeStart = new Date(year, month - 6, 1);
+    rangeEnd   = new Date(Date.UTC(year, month, 1));
+    rangeStart = new Date(Date.UTC(year, month - 6, 1));
     prevEnd    = rangeStart;
-    prevStart  = new Date(year, month - 12, 1);
+    prevStart  = new Date(Date.UTC(year, month - 12, 1));
     trendMonths = 6;
   } else if (period === 'year') {
-    rangeStart = new Date(year, 0, 1);
-    rangeEnd   = new Date(year + 1, 0, 1);
-    prevStart  = new Date(year - 1, 0, 1);
-    prevEnd    = new Date(year, 0, 1);
+    rangeStart = new Date(Date.UTC(year, 0, 1));
+    rangeEnd   = new Date(Date.UTC(year + 1, 0, 1));
+    prevStart  = new Date(Date.UTC(year - 1, 0, 1));
+    prevEnd    = new Date(Date.UTC(year, 0, 1));
     trendMonths = 12;
   } else { // all
     const first = await prisma.transaction.findFirst({ orderBy: { date: 'asc' } });
-    rangeStart  = first ? new Date(first.date.getFullYear(), first.date.getMonth(), 1) : new Date(year, 0, 1);
-    rangeEnd    = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    rangeStart  = first ? new Date(Date.UTC(first.date.getUTCFullYear(), first.date.getUTCMonth(), 1)) : new Date(Date.UTC(year, 0, 1));
+    rangeEnd    = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
     prevStart   = rangeStart;
     prevEnd     = rangeStart;
-    const diffMonths = (rangeEnd.getFullYear() - rangeStart.getFullYear()) * 12
-                     + rangeEnd.getMonth() - rangeStart.getMonth();
+    const diffMonths = (rangeEnd.getUTCFullYear() - rangeStart.getUTCFullYear()) * 12
+                     + rangeEnd.getUTCMonth() - rangeStart.getUTCMonth();
     trendMonths = Math.max(diffMonths, 1);
   }
 
@@ -122,24 +126,24 @@ export async function GET(req: NextRequest) {
   const byCategory = Object.values(expenseByCategory).sort((a, b) => b.amount - a.amount);
 
   // Trend — single query, then bucket by month in memory
-  const trendStart = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() - trendMonths, 1);
+  const trendStart = new Date(Date.UTC(rangeEnd.getUTCFullYear(), rangeEnd.getUTCMonth() - trendMonths, 1));
   const trendTxs = await prisma.transaction.findMany({
     where: { date: { gte: trendStart, lt: rangeEnd } },
     include: { category: true },
   });
   const trend = [];
   for (let i = trendMonths - 1; i >= 0; i--) {
-    const d   = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() - 1 - i, 1);
-    const ym  = d.getFullYear() * 100 + d.getMonth();
+    const d   = new Date(Date.UTC(rangeEnd.getUTCFullYear(), rangeEnd.getUTCMonth() - 1 - i, 1));
+    const ym  = d.getUTCFullYear() * 100 + d.getUTCMonth();
     const mTxs = trendTxs.filter(t => {
       const td = new Date(t.date);
-      return td.getFullYear() * 100 + td.getMonth() === ym;
+      return td.getUTCFullYear() * 100 + td.getUTCMonth() === ym;
     });
     const inc = mTxs.filter(t => t.category.type === 'income') .reduce((s, t) => s + t.amount, 0);
     const exp = mTxs.filter(t => t.category.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const sav = mTxs.filter(t => t.category.type === 'savings').reduce((s, t) => s + t.amount, 0);
     trend.push({
-      month: MONTHS_SHORT[d.getMonth()] + (period === 'year' || period === 'all' ? ` '${String(d.getFullYear()).slice(2)}` : ''),
+      month: MONTHS_SHORT[d.getUTCMonth()] + (period === 'year' || period === 'all' ? ` '${String(d.getUTCFullYear()).slice(2)}` : ''),
       income: inc, expenses: exp, savings: sav, balance: inc - exp - sav,
     });
   }
@@ -156,10 +160,10 @@ export async function GET(req: NextRequest) {
   let forecast: number | null = null;
   if (period === 'month') {
     const today       = new Date();
-    const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month;
-    if (isCurrentMonth && today.getDate() > 1) {
-      const dayOfMonth  = today.getDate();
-      const daysInMonth = new Date(year, month, 0).getDate();
+    const isCurrentMonth = today.getUTCFullYear() === year && today.getUTCMonth() + 1 === month;
+    if (isCurrentMonth && today.getUTCDate() > 1) {
+      const dayOfMonth  = today.getUTCDate();
+      const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
       // Income and savings usually land as one-off payments (salary, transfers),
       // not a steady daily trickle — extrapolating them by day/month wildly
       // overshoots early in the month. Only expenses accrue gradually, so only

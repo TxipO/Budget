@@ -15,8 +15,8 @@ export async function GET(req: NextRequest) {
     });
 
     if (year && month) {
-      const start = new Date(year, month - 1, 1);
-      const end   = new Date(year, month, 1);
+      const start = new Date(Date.UTC(year, month - 1, 1));
+      const end   = new Date(Date.UTC(year, month, 1));
       const applied = await prisma.transaction.findMany({
         where: { recurringTemplateId: { not: null }, date: { gte: start, lt: end } },
         select: { recurringTemplateId: true, id: true },

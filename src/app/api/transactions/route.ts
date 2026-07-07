@@ -17,11 +17,11 @@ export async function GET(req: NextRequest) {
       const y = parseInt(year), m = parseInt(month);
       if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12)
         return badRequest('Невалідний рік або місяць');
-      where.date = { gte: new Date(y, m - 1, 1), lt: new Date(y, m, 1) };
+      where.date = { gte: new Date(Date.UTC(y, m - 1, 1)), lt: new Date(Date.UTC(y, m, 1)) };
     } else if (year) {
       const y = parseInt(year);
       if (!Number.isFinite(y)) return badRequest('Невалідний рік');
-      where.date = { gte: new Date(y, 0, 1), lt: new Date(y + 1, 0, 1) };
+      where.date = { gte: new Date(Date.UTC(y, 0, 1)), lt: new Date(Date.UTC(y + 1, 0, 1)) };
       const lim = limitParam ? parseInt(limitParam) : 500;
       take = Number.isFinite(lim) && lim > 0 ? lim : 500;
     } else {

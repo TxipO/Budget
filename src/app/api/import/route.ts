@@ -115,14 +115,17 @@ export async function POST(req: NextRequest) {
         const amount = cellNumber(row.getCell(YEAR_COL + m).value);
         if (amount === null || amount <= 0) continue;
 
-        // Create a monthly summary transaction on the 1st of each month
-        const date = new Date(2026, m, 1);
+        // Create a monthly summary transaction on the 1st of each month.
+        // UTC explicitly so this doesn't depend on the server process's
+        // timezone (local dev vs Vercel) — see stats/route.ts for the bug
+        // this class of mistake caused when those didn't match.
+        const date = new Date(Date.UTC(2026, m, 1));
 
         // Upsert: avoid duplicates on re-import (delete existing for this cat/month then re-create)
         await prisma.transaction.deleteMany({
           where: {
             categoryId: cat.id,
-            date: { gte: new Date(2026, m, 1), lt: new Date(2026, m + 1, 1) },
+            date: { gte: new Date(Date.UTC(2026, m, 1)), lt: new Date(Date.UTC(2026, m + 1, 1)) },
             details: '[імпорт]',
           },
         });

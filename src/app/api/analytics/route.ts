@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
     const txs = await prisma.transaction.findMany({
       where: {
-        date: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) },
+        date: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) },
       },
       select: { date: true, amount: true, details: true, category: { select: { name: true, type: true } } },
     });
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     let biggestExpense: { amount: number; details: string; name: string; date: Date } | null = null;
 
     for (const tx of txs) {
-      const m = tx.date.getMonth();
+      const m = tx.date.getUTCMonth();
       const { type, name } = tx.category;
       if (type === 'income')  { months[m].income   += tx.amount; }
       if (type === 'expense') {
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
       // Biggest single expense
       if (biggestExpense) {
         const d = biggestExpense.date;
-        const dateStr = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const dateStr = `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
         const label = biggestExpense.details ? `${biggestExpense.details} (${biggestExpense.name})` : biggestExpense.name;
         insights.push({ text: `Найбільша разова витрата — ${label}: ${fmt(biggestExpense.amount)}, ${dateStr}`, tone: 'info' });
       }
