@@ -44,10 +44,52 @@ async function verifySession(cookieValue: string, secret: string): Promise<boole
   return timingSafeEqual(sig, expected);
 }
 
+// CSP must use a per-request NONCE, not a fixed sha256 hash: Next.js App
+// Router injects its own inline scripts for RSC-streaming hydration
+// (`self.__next_f.push(...)`), and their content is different on every
+// single request. A hash can only allowlist unchanging content (fine for
+// the one static theme-detection script in layout.tsx, but hashing was
+// tried here first and it broke ALL client-side interactivity in
+// production — hydration scripts got blocked, so no event handlers ever
+// attached, and clicking "Увійти" silently did nothing). Next.js
+// recognizes a nonce-based CSP response header and automatically applies
+// the same nonce to every script it injects itself.
+function buildCsp(nonce: string): string {
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+  ].join('; ');
+}
+
+function withCsp(res: NextResponse, nonce: string): NextResponse {
+  // Dev mode's HMR bundle needs 'unsafe-eval', which a strict CSP can't
+  // grant without also weakening script-src for prod — so CSP is
+  // production-only, same call as next.config.mjs's other headers.
+  if (process.env.NODE_ENV === 'production') {
+    res.headers.set('Content-Security-Policy', buildCsp(nonce));
+  }
+  return res;
+}
+
 export async function middleware(req: NextRequest) {
+  const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-nonce', nonce);
+
   const secret = process.env.AUTH_SECRET;
   const { pathname } = req.nextUrl;
-  if (PUBLIC_PATHS.some(p => pathname === p)) return NextResponse.next();
+  if (PUBLIC_PATHS.some(p => pathname === p)) {
+    return withCsp(NextResponse.next({ request: { headers: requestHeaders } }), nonce);
+  }
 
   // Fail CLOSED, not open: without a secret we cannot verify any cookie, so
   // granting access would mean anyone gets in with no PIN at all. This is
@@ -58,21 +100,23 @@ export async function middleware(req: NextRequest) {
   // the door.
   if (!secret) {
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Автентифікацію не налаштовано' }, { status: 500 });
+      return withCsp(NextResponse.json({ error: 'Автентифікацію не налаштовано' }, { status: 500 }), nonce);
     }
-    return new NextResponse('Автентифікацію не налаштовано. Зверніться до адміністратора.', { status: 500 });
+    return withCsp(new NextResponse('Автентифікацію не налаштовано. Зверніться до адміністратора.', { status: 500 }), nonce);
   }
 
   const cookie = req.cookies.get('budget-auth')?.value;
-  if (cookie && await verifySession(cookie, secret)) return NextResponse.next();
+  if (cookie && await verifySession(cookie, secret)) {
+    return withCsp(NextResponse.next({ request: { headers: requestHeaders } }), nonce);
+  }
 
   if (pathname.startsWith('/api/')) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return withCsp(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), nonce);
   }
   const url = req.nextUrl.clone();
   url.pathname = '/login';
   url.search = '';
-  return NextResponse.redirect(url);
+  return withCsp(NextResponse.redirect(url), nonce);
 }
 
 export const config = {
