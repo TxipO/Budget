@@ -34,12 +34,19 @@ Places where a caught exception discards information without surfacing it (empty
 ### 7. Trust boundary violations
 Any place client-supplied data reaches a query or write without validation that a previous reviewer might have assumed was "obviously fine" — re-check assumptions, don't just check presence of a validation function call.
 
+### 8. Independent subsystems modeling the same real-world concept
+Found live: the Excel-plan import and the recurring-template "Застосувати" button both independently write a transaction for "this category, this month" with no awareness of each other — so the same real payment (rent) got counted twice, once from each source. This isn't a race and isn't a validation gap; it's two features that each assume they're the only writer. Ask, for every place the app writes a transaction: what *other* code path could also write a transaction meaning the same real-world event? Cross-reference `details === '[імпорт]'` rows against `recurringTemplateId !== null` rows for the same category+month as one concrete check; there may be other pairs of subsystems with the same shape.
+
+## A rule learned the hard way: a data-repair scope is only as good as its WHERE clause
+When a bug has already corrupted stored data, fixing the code is not enough — the fix's data-repair query needs to cover *every* row that got corrupted, not just the obvious majority. Session precedent: the timezone bug was fixed by repairing all `details = '[імпорт]'` rows (87 of them) — but a recurring-template-generated row (`recurringTemplateId != null`) had the *exact same* corruption from the *same root cause* (a stale local-dev-server write, migrated as-is) and was missed because the repair query filtered on `details`, not on "does this timestamp look wrong." Before declaring a data-repair done, write the detection query as broadly as the bug's actual mechanism (e.g. "any timestamp not on a clean UTC boundary"), not as narrowly as the first example you happened to find.
+
 ## Process
 
 1. Read every file under `src/app/api/**/*.ts` in full (not excerpts) — this is where money math and dates live, the highest-consequence code in the app.
 2. For each category above, actively look for it rather than waiting to notice it.
 3. When you find a candidate bug, **prove it** with a concrete before/after example or a live query against the database — the way the timezone bug was proven with an actual UTC-vs-Kyiv boundary calculation, not just "this looks suspicious."
 4. Distinguish confirmed bugs (proven with a concrete failing case) from suspicions (plausible but unverified) — report both, labeled differently.
+5. Run `node scripts/verify-data-integrity.mjs` (add `VERIFY_URL=<deployment> VERIFY_PIN=<pin>` env vars to include the live-API cross-check step) both *before* starting — to catch anything already wrong — and *after* fixes — to confirm nothing regressed and nothing was missed by too-narrow a repair query. This script is the accumulated checklist from past reviews; extend it whenever a new category of corruption is found rather than only checking it ad hoc.
 
 ## Report format
 

@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "node scripts/seed.js",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "verify:data": "node scripts/verify-data-integrity.mjs"
   },
   "keywords": [],
   "author": "",
