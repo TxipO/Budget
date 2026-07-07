@@ -16,3 +16,6 @@ dist/
 *.log
 .claude/scheduled_tasks.lock
 .claude/logs/
+
+.vercel
+.env*

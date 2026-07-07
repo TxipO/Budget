@@ -41,6 +41,8 @@ model Transaction {
   category            Category           @relation(fields: [categoryId], references: [id])
   user                User?              @relation(fields: [userId], references: [id])
   recurringTemplate   RecurringTemplate? @relation(fields: [recurringTemplateId], references: [id])
+
+  @@index([date])
 }
 
 model RecurringTemplate {

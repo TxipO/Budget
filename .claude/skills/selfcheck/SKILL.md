@@ -1,9 +1,11 @@
 # Selfcheck skill
 
-Budget tracker (Next.js 14 + Prisma + SQLite) auto-debug scan.
+Budget tracker (Next.js 14 + Prisma + Postgres/Neon, deployed on Vercel serverless).
 Project root: `C:\Users\doter\Budget`, source in `src/`.
 
 **Token rule:** use Grep only — never Read a file unless a grep match needs 5+ lines of context to judge. One Read = one specific file + specific line range. No full-file reads.
+
+**Deployment context:** the app runs both locally (`npm run dev`/`start`) and on Vercel (serverless functions, each invocation potentially a different isolate) against a shared Neon Postgres database. Checks #11–#12 exist specifically because bugs that are invisible on a single long-running local process can be silent, real regressions once deployed serverless — module-level mutable state is the classic example (worked locally, silently stopped protecting anything in prod).
 
 ## Run these grep checks in order
 
@@ -77,6 +79,19 @@ glob: src/app/api/**/*.ts
 ```
 Check that JS `month` parameter uses 0-indexed (`month - 1`) consistently.
 
+### 11. Module-level mutable state in API routes (serverless-breaking)
+```
+pattern: ^(let|var) [a-zA-Z]
+glob: src/app/api/**/*.ts
+```
+Any top-level (not inside a function) `let`/`var` in a route file is suspect — Vercel serverless functions do not guarantee shared memory across invocations/isolates. Rate limits, counters, caches, or locks kept this way silently stop working once deployed, even though they work fine in local `npm start`. Real example already fixed: brute-force lockout counter in `api/auth/route.ts` used to live in module state — moved to the `AppSetting` table. Fix = persist the state in Postgres (or another shared store), never in a module-level variable.
+
+### 12. Neon connection uses the pooled endpoint
+```bash
+grep DATABASE_URL .env
+```
+Hostname must contain `-pooler` (e.g. `ep-xxx-pooler.c-9.us-east-1.aws.neon.tech`). Serverless functions can spin up many concurrent instances; each one opens its own Postgres connection, and the *direct* (non-pooled) endpoint has a low connection ceiling that concurrent traffic can exhaust. The pooled endpoint (PgBouncer) is free and handles this — there's no reason not to use it. If the hostname is missing `-pooler`, treat it as a Critical: fix both `.env` and the `DATABASE_URL` Vercel env var (`vercel env add DATABASE_URL production`, or via the dashboard), then `vercel deploy --prod`.
+
 ---
 
 ## Report format
@@ -97,3 +112,5 @@ Checks that found nothing: #3, #8, #9
 After reporting: **fix every Critical immediately**, commit, push. For Warnings — fix if clearly wrong, otherwise list for human review. Do NOT ask permission to fix Criticals.
 
 After all fixes: `git add -A && git commit -m "Selfcheck fixes <date>" && git push`.
+
+If a Critical fix changes anything Vercel needs (env vars, schema), also redeploy: `vercel deploy --prod --token=$env:VERCEL_TOKEN` and re-verify the live URL before considering the fix done.

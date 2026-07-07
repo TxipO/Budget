@@ -34,8 +34,8 @@ export function isValidMonth(val: unknown): val is number {
   return Number.isInteger(val) && (val as number) >= 1 && (val as number) <= 12;
 }
 
-// SQLite has no true DECIMAL type (NUMERIC affinity stores fractions as
-// binary REAL), so money is kept exact by rounding to 2 decimals at every
+// Schema stores money as Float (Postgres double precision), so binary
+// floating-point drift is still possible. Round to 2 decimals at every
 // write boundary instead. Never store an unrounded float.
 export function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
