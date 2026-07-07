@@ -59,6 +59,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   try {
     const id = parseInt(params.id);
     if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
+    // possibleDuplicateOf is a plain Int, not a real FK relation (deliberately —
+    // see Ф5), so Postgres won't clean up references to this row on its own.
+    // Clear them first so deleting the "original" of a flagged pair never
+    // leaves the flagged row pointing at a transaction that no longer exists.
+    await prisma.transaction.updateMany({ where: { possibleDuplicateOf: id }, data: { possibleDuplicateOf: null } });
     await prisma.transaction.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (e: any) {

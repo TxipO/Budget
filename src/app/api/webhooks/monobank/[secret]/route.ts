@@ -79,7 +79,17 @@ export async function POST(req: NextRequest, { params }: { params: { secret: str
 
     let fxRate = 1;
     if (item.currencyCode !== ISO_4217.NOK) {
-      fxRate = (await getCachedExchangeRate(item.currencyCode, ISO_4217.NOK)) ?? 1;
+      const rate = await getCachedExchangeRate(item.currencyCode, ISO_4217.NOK);
+      // No silent 1.0 fallback: defaulting to "1 UAH = 1 kr" when the rate
+      // is genuinely unavailable (no cache yet AND the live endpoint is
+      // down) would record a real ~4-5x overstatement of the amount with
+      // no error anywhere — a valid-looking number, so nothing downstream
+      // would ever catch it. Throwing here routes through the same 500 +
+      // Monobank-retry path as any other failure, so the transaction gets
+      // recorded correctly once the rate is available again instead of
+      // being recorded wrong forever.
+      if (rate === null) throw new Error(`No exchange rate available for currency ${item.currencyCode} -> NOK`);
+      fxRate = rate;
     }
     const amount = roundMoney(amountOriginal * fxRate);
 
