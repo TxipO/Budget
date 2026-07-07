@@ -6,7 +6,7 @@ const MONTHS_SHORT = ['Січ','Лют','Бер','Кві','Тра','Чер','Л�
 async function sumByType(start: Date, end: Date) {
   const txs = await prisma.transaction.findMany({
     where: { date: { gte: start, lt: end } },
-    include: { category: true, user: true },
+    include: { category: true, user: { select: { id: true, name: true } } },
   });
   const income   = txs.filter(t => t.category.type === 'income')  .reduce((s, t) => s + t.amount, 0);
   const expenses = txs.filter(t => t.category.type === 'expense') .reduce((s, t) => s + t.amount, 0);
@@ -151,7 +151,7 @@ export async function GET(req: NextRequest) {
   // Recent (last 8)
   const recent = await prisma.transaction.findMany({
     where: { date: { gte: rangeStart, lt: rangeEnd } },
-    include: { category: true, user: true },
+    include: { category: true, user: { select: { id: true, name: true } } },
     orderBy: { date: 'desc' },
     take: 8,
   });

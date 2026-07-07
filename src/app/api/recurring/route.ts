@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
     const templates = await prisma.recurringTemplate.findMany({
       where: { isActive: true },
-      include: { category: true, user: true },
+      include: { category: true, user: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
     const template = await prisma.recurringTemplate.create({
       data: { name: trimmedName, amount: roundMoney(Number(amount)), categoryId: Number(categoryId), userId: Number(userId), details: details ?? '' },
-      include: { category: true, user: true },
+      include: { category: true, user: { select: { id: true, name: true } } },
     });
     return NextResponse.json(template);
   } catch (e) {

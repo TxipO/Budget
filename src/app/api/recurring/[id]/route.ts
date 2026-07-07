@@ -29,7 +29,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         ...(details    !== undefined && { details }),
         ...(isActive   !== undefined && { isActive: Boolean(isActive) }),
       },
-      include: { category: true, user: true },
+      include: { category: true, user: { select: { id: true, name: true } } },
     });
     return NextResponse.json(template);
   } catch (e: any) {

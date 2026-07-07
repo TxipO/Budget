@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
   const [categories, allTxs, allPlans] = await Promise.all([
     prisma.category.findMany({ where: { isActive: true }, orderBy: { id: 'asc' } }),
     prisma.transaction.findMany({
-      include: { category: true, user: true },
+      include: { category: true, user: { select: { id: true, name: true } } },
       orderBy: { date: 'asc' },
     }),
     prisma.monthlyPlan.findMany({ where: { notes: { not: '' } } }),

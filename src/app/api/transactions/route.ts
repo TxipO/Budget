@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 
     const txs = await prisma.transaction.findMany({
       where,
-      include: { category: true, user: true },
+      include: { category: true, user: { select: { id: true, name: true } } },
       orderBy: { date: 'desc' },
       ...(take !== undefined ? { take } : {}),
     });
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
         details:    details || '',
         userId:     userId ? parseInt(userId) : null,
       },
-      include: { category: true, user: true },
+      include: { category: true, user: { select: { id: true, name: true } } },
     });
     return NextResponse.json(tx, { status: 201 });
   } catch (e) {
