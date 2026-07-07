@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, RefreshCw, Landmark } from 'lucide-react';
 import { CATEGORY_PALETTE, formatMoney } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { useTheme } from '@/lib/theme';
@@ -28,6 +28,50 @@ export default function SettingsPage() {
   const [tplForm, setTplForm] = useState({ name: '', amount: '', categoryId: '', userId: '' });
   const [savingTpl, setSavingTpl] = useState(false);
 
+  const [monoStatus, setMonoStatus] = useState<{ userId: number; name: string; connected: boolean; accountId: string | null }[]>([]);
+  const [monoTokenInput, setMonoTokenInput] = useState<Record<number, string>>({});
+  const [monoConnecting, setMonoConnecting] = useState<number | null>(null);
+
+  function loadMonoStatus() {
+    fetch('/api/monobank/status').then(r => r.ok ? r.json() : Promise.reject()).then(setMonoStatus).catch(() => {});
+  }
+
+  async function connectMono(userId: number) {
+    const token = monoTokenInput[userId]?.trim();
+    if (!token || monoConnecting) return;
+    setMonoConnecting(userId);
+    try {
+      const res = await fetch('/api/monobank/connect', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, token }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { toast(data?.error || 'Помилка підключення', 'error'); return; }
+      toast('Monobank підключено');
+      setMonoTokenInput(prev => ({ ...prev, [userId]: '' }));
+      loadMonoStatus();
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setMonoConnecting(null);
+    }
+  }
+
+  async function disconnectMono(userId: number, name: string) {
+    if (!confirm(`Відключити Monobank для ${name}?`)) return;
+    try {
+      const res = await fetch('/api/monobank/disconnect', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      if (!res.ok) { toast('Помилка відключення', 'error'); return; }
+      toast('Monobank відключено', 'info');
+      loadMonoStatus();
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    }
+  }
+
   function loadCats() {
     fetch('/api/categories')
       .then(r => r.ok ? r.json() : Promise.reject())
@@ -43,6 +87,7 @@ export default function SettingsPage() {
   useEffect(() => {
     loadCats();
     loadTemplates();
+    loadMonoStatus();
     fetch('/api/users').then(r => r.ok ? r.json() : Promise.reject()).then(setUsers).catch(() => {});
   }, []);
 
@@ -281,6 +326,56 @@ export default function SettingsPage() {
         <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginTop: 10 }}>
           Новий PIN діє одразу для наступних входів. Уже виконані входи лишаються активними до 30 днів.
         </p>
+      </div>
+
+      {/* Monobank */}
+      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Landmark size={16} color="#000000" /> Monobank
+        </h2>
+        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>
+          Токен беріть у своєму кабінеті на{' '}
+          <a href="https://api.monobank.ua/" target="_blank" rel="noopener noreferrer" style={{ color: '#F97316' }}>
+            api.monobank.ua
+          </a>
+          . У кожного своя картка — токен підключається окремо для Паші й Жені.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {monoStatus.map(m => (
+            <div key={m.userId} style={{ borderTop: '1px solid var(--c-border)', paddingTop: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: m.connected ? 0 : 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-sec)' }}>{m.name}</span>
+                {m.connected && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#4ADE80' }}>
+                      <CheckCircle size={13} /> Підключено
+                    </span>
+                    <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => disconnectMono(m.userId, m.name)}>
+                      Відключити
+                    </button>
+                  </div>
+                )}
+              </div>
+              {!m.connected && (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    className="input-field" type="password" placeholder="Персональний токен Monobank"
+                    value={monoTokenInput[m.userId] ?? ''}
+                    onChange={e => setMonoTokenInput(prev => ({ ...prev, [m.userId]: e.target.value }))}
+                    style={{ fontSize: 13 }}
+                  />
+                  <button
+                    className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap' }}
+                    disabled={monoConnecting === m.userId || !monoTokenInput[m.userId]?.trim()}
+                    onClick={() => connectMono(m.userId)}
+                  >
+                    {monoConnecting === m.userId ? 'Підключення…' : 'Підключити'}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Import section */}
