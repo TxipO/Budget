@@ -89,6 +89,27 @@ async function main() {
     }
   } else pass('no category+month combo double-counted between import and recurring sources');
 
+  // Broader version of the same class of bug: the check above only catches
+  // the [імпорт]-vs-recurring pair we already found once. But the same "two
+  // independent writers for one real-world event" shape applies to ANY
+  // manually-entered or Ведення-imported transaction (recurringTemplateId
+  // null, not an [імпорт] summary row) landing in the same category+month as
+  // a recurring-template row — e.g. someone logs "Оренда" by hand the same
+  // month the rent template gets applied. Deliberately as broad as the bug's
+  // actual mechanism, not just the first example that triggered it (see the
+  // WHERE-clause lesson in the deep-review skill).
+  const doubledAny = Object.entries(byKey).filter(([, group]) =>
+    group.some(t => t.recurringTemplateId !== null) &&
+    group.some(t => t.recurringTemplateId === null && t.details !== '[імпорт]')
+  );
+  if (doubledAny.length) {
+    warn(`${doubledAny.length} category+month combos have BOTH a recurring-template row and an unrelated manual/imported row — verify these aren't the same real payment counted twice:`);
+    for (const [key, group] of doubledAny) {
+      console.log(`      ${key} ${group[0].category.name}:`);
+      group.forEach(t => console.log(`        #${t.id} ${t.date.toISOString()} "${t.details}" ${t.amount} (recurringTemplateId=${t.recurringTemplateId})`));
+    }
+  } else pass('no category+month combo mixes a recurring-template row with an unrelated manual/imported row');
+
   // ── Step 5: duplicate recurring applications ───────────────────────────
   step(5, 'Duplicate recurring-template applications');
   const byTplMonth = {};
@@ -108,6 +129,22 @@ async function main() {
   else pass('all plan categoryId references valid');
   if (badPlanMonth.length) fail(`${badPlanMonth.length} plans have an out-of-range month`);
   else pass('all plan months in 1..12');
+
+  // ── Step 6b: export template row capacity ───────────────────────────────
+  step('6b', 'Excel export template capacity (Планування sheet)');
+  // src/app/api/export/route.ts writes one row per active category into a
+  // FIXED number of template rows per section (income/expense/savings). Once
+  // a section has more active categories than rows, the export route now
+  // fails loudly (see the fix) instead of silently dropping the extras — but
+  // catching it here too means it shows up before anyone tries to export.
+  const EXPORT_CAPACITY = { income: 10, expense: 13, savings: 10 }; // must match SECTIONS in export/route.ts
+  const activeCats = cats.filter(c => c.isActive);
+  for (const [type, capacity] of Object.entries(EXPORT_CAPACITY)) {
+    const count = activeCats.filter(c => c.type === type).length;
+    if (count > capacity) fail(`${count} active "${type}" categories but the export template only has ${capacity} rows for that section`);
+    else if (count === capacity) warn(`${count}/${capacity} "${type}" category rows used in the export template — next category added will overflow it`);
+    else pass(`${count}/${capacity} "${type}" category rows used in the export template`);
+  }
 
   // ── Step 7: cross-check aggregate math ──────────────────────────────────
   step(7, 'Aggregate cross-check (manual sum vs a fresh independent calculation)');

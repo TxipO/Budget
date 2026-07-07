@@ -76,7 +76,12 @@ export default function TransactionsPage() {
 
   function del(id: number) {
     const tx = txs.find(t => t.id === id);
-    if (!tx) return;
+    // Guards a double-click/double-tap on the same row: without this, two
+    // fast clicks (React batches setTxs, so both see the same pre-update
+    // txs) each schedule their own delete timer, and pendingDels.current.set
+    // below overwrites the map entry — so "Скасувати" only cancels the
+    // second timer while the first still fires and deletes anyway.
+    if (!tx || pendingDels.current.has(id)) return;
 
     setTxs(prev => prev.filter(t => t.id !== id));
 

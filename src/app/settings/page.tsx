@@ -26,6 +26,7 @@ export default function SettingsPage() {
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
   const [tplForm, setTplForm] = useState({ name: '', amount: '', categoryId: '', userId: '' });
+  const [savingTpl, setSavingTpl] = useState(false);
 
   function loadCats() {
     fetch('/api/categories')
@@ -47,7 +48,8 @@ export default function SettingsPage() {
 
   async function addTemplate(e: React.FormEvent) {
     e.preventDefault();
-    if (!tplForm.name || !tplForm.amount || !tplForm.categoryId || !tplForm.userId) return;
+    if (!tplForm.name || !tplForm.amount || !tplForm.categoryId || !tplForm.userId || savingTpl) return;
+    setSavingTpl(true);
     try {
       const res = await fetch('/api/recurring', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -59,6 +61,8 @@ export default function SettingsPage() {
       loadTemplates();
     } catch {
       toast('Помилка з’єднання', 'error');
+    } finally {
+      setSavingTpl(false);
     }
   }
 
@@ -334,7 +338,7 @@ export default function SettingsPage() {
               {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>
-          <button type="submit" className="btn-primary"><Plus size={15} /> Додати</button>
+          <button type="submit" className="btn-primary" disabled={savingTpl}><Plus size={15} /> {savingTpl ? 'Збереження…' : 'Додати'}</button>
         </form>
 
         {templates.length === 0 && <p style={{ fontSize: 13, color: '#475569' }}>Шаблонів ще немає</p>}

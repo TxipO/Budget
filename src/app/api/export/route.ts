@@ -41,13 +41,27 @@ export async function GET(req: NextRequest) {
 
   // ── Fetch all data ──────────────────────────────────────────────────────
   const [categories, allTxs, allPlans] = await Promise.all([
-    prisma.category.findMany({ orderBy: { id: 'asc' } }),
+    prisma.category.findMany({ where: { isActive: true }, orderBy: { id: 'asc' } }),
     prisma.transaction.findMany({
       include: { category: true, user: true },
       orderBy: { date: 'asc' },
     }),
     prisma.monthlyPlan.findMany({ where: { notes: { not: '' } } }),
   ]);
+
+  // The Планування sheet has a fixed number of category rows per section
+  // (template constraint, see SECTIONS above). If a section ever has more
+  // active categories than rows, the extras would silently be left out of
+  // the export with no error — fail loudly instead so it's never invisible.
+  for (const section of SECTIONS) {
+    const capacity = section.dataEnd - section.dataStart + 1;
+    const count = categories.filter(c => c.type === section.type).length;
+    if (count > capacity) {
+      return NextResponse.json({
+        error: `Категорій типу "${TYPE_UA[section.type]}" (${count}) більше, ніж рядків у шаблоні (${capacity}). Розширте шаблон Excel перед експортом.`,
+      }, { status: 500 });
+    }
+  }
 
   // actuals[catId][year][month] = total
   const actuals: Record<number, Record<number, Record<number, number>>> = {};
