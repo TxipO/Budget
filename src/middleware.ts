@@ -4,6 +4,13 @@ const PUBLIC_PATHS = ['/login', '/api/auth', '/manifest.json', '/icon-192.png', 
 
 // Must match SESSION_MAX_AGE_MS / the cookie's maxAge in api/auth/route.ts.
 const SESSION_MAX_AGE_MS = 60 * 60 * 24 * 30 * 1000; // 30 днів
+// The cookie is issued by a Node.js serverless function (api/auth/route.ts)
+// and verified here in a separate Edge runtime instance — different
+// infrastructure, not guaranteed to have perfectly synced clocks. Without
+// this tolerance, the very first request right after a successful login
+// could get bounced back to /login if the issuing clock is even 1ms ahead
+// of the verifying one (age computes negative and gets rejected outright).
+const CLOCK_SKEW_TOLERANCE_MS = 5000;
 
 // Session cookie = "<issuedAt>.<HMAC-SHA256(AUTH_SECRET, 'budget-session:'+issuedAt)>".
 // issuedAt is embedded and signed (not just relied on the browser's Max-Age)
@@ -39,7 +46,7 @@ async function verifySession(cookieValue: string, secret: string): Promise<boole
   const sig = cookieValue.slice(dot + 1);
   if (!Number.isFinite(issuedAt)) return false;
   const age = Date.now() - issuedAt;
-  if (age < 0 || age > SESSION_MAX_AGE_MS) return false; // expired, or issued in the future (tampered)
+  if (age < -CLOCK_SKEW_TOLERANCE_MS || age > SESSION_MAX_AGE_MS) return false; // expired, or issued implausibly far in the future (tampered)
   const expected = await sign(secret, String(issuedAt));
   return timingSafeEqual(sig, expected);
 }
