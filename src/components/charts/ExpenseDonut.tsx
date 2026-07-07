@@ -35,9 +35,9 @@ export default function ExpenseDonut({ data, total }: Props) {
   const chartData = data.map(d => ({ ...d, value: d.amount, total }));
 
   return (
-    <div style={{ display: 'flex', gap: 20, alignItems: 'center', minHeight: 240 }}>
+    <div className="donut-row" style={{ display: 'flex', gap: 20, alignItems: 'center', minHeight: 240 }}>
       {/* Pie */}
-      <div style={{ width: 180, height: 180, flexShrink: 0 }}>
+      <div className="donut-chart-box" style={{ width: 180, height: 180, flexShrink: 0 }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
@@ -59,8 +59,8 @@ export default function ExpenseDonut({ data, total }: Props) {
       </div>
 
       {/* Custom legend */}
-      <div style={{
-        flex: 1, overflowY: 'auto', maxHeight: 240,
+      <div className="donut-legend" style={{
+        flex: 1, minWidth: 0, overflowY: 'auto', maxHeight: 240,
         display: 'flex', flexDirection: 'column', gap: 5,
       }}>
         {chartData.map(item => {

@@ -246,6 +246,15 @@ select.input-field option {
 
   .grid-4 { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .grid-2 { grid-template-columns: 1fr; gap: 12px; }
+
+  .hide-on-xs { display: none !important; }
+
+  .donut-row { flex-direction: column; align-items: stretch !important; }
+  .donut-chart-box { width: 140px !important; height: 140px !important; align-self: center; }
+  .donut-legend { max-height: none !important; width: 100%; }
+
+  .tx-row-desktop { display: none !important; }
+  .tx-row-mobile  { display: flex !important; }
 }
 
 /* ── Light mode extras ── */

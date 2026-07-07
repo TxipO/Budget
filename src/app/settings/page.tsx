@@ -346,7 +346,7 @@ export default function SettingsPage() {
           </div>
           <div>
             <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Колір</label>
-            <div style={{ display: 'flex', gap: 6 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {CATEGORY_PALETTE.map(c => (
                 <button
                   key={c} type="button"

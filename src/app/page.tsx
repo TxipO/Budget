@@ -134,19 +134,19 @@ export default function Dashboard() {
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Головна</h1>
           <p style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>Огляд фінансів · {periodLabel()}</p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <button
             onClick={() => setShowRecurring(true)}
             className="btn-ghost"
             style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600, position: 'relative' }}
           >
             <RefreshCw size={15} />
-            Шаблони
+            <span className="hide-on-xs">Шаблони</span>
             {pendingRecurring > 0 && (
               <span style={{
                 position: 'absolute', top: -6, right: -6,
@@ -166,7 +166,7 @@ export default function Dashboard() {
             className="btn-ghost"
             style={{ display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none', fontSize: 14, fontWeight: 600 }}
           >
-            <Download size={15} /> Експорт
+            <Download size={15} /> <span className="hide-on-xs">Експорт</span>
           </a>
           <button className="btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>
             <Plus size={16} /> Додати

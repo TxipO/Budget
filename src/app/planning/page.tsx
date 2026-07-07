@@ -116,12 +116,12 @@ export default function PlanningPage() {
 
   return (
     <div style={{ maxWidth: 1200 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Планування</h1>
           <p style={{ color: '#475569', fontSize: 14 }}>Клікніть на клітинку, щоб задати план та коментар</p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {[2025, 2026, 2027, 2028].map(y => (
             <button
               key={y} onClick={() => setYear(y)} className="btn-ghost"
@@ -139,7 +139,11 @@ export default function PlanningPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
-              <th style={{ ...headerStyle, textAlign: 'left', padding: '14px 20px', width: 180 }}>Категорія</th>
+              <th style={{
+                ...headerStyle, textAlign: 'left', padding: '14px 20px', width: 180,
+                position: 'sticky', left: 0, zIndex: 2, background: 'var(--c-elevated)',
+                boxShadow: '1px 0 0 var(--c-border)',
+              }}>Категорія</th>
               {MONTH_SHORT.map((m, i) => (
                 <th key={i} style={{ ...headerStyle, width: 72 }}>{m}</th>
               ))}
@@ -174,7 +178,11 @@ export default function PlanningPage() {
                   const yearPlanned = MONTH_SHORT.reduce((s, _, i) => s + getPlanned(cat.id, i + 1), 0);
                   return (
                     <tr key={cat.id} className="table-row">
-                      <td style={{ padding: '10px 20px' }}>
+                      <td style={{
+                        padding: '10px 20px',
+                        position: 'sticky', left: 0, zIndex: 1, background: 'var(--c-elevated)',
+                        boxShadow: '1px 0 0 var(--c-border)',
+                      }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ width: 7, height: 7, borderRadius: '50%', background: cat.color }} />
                           <span style={{ fontSize: 13, color: 'var(--c-text-sec)', fontWeight: 500 }}>{cat.name}</span>
@@ -296,7 +304,11 @@ export default function PlanningPage() {
                   );
                 }),
                 <tr key={`tot-${type}`} style={{ background: 'var(--c-hover)', borderTop: '1px solid var(--c-border)' }}>
-                  <td style={{ padding: '10px 20px', fontSize: 13, fontWeight: 700, color: 'var(--c-text-muted)' }}>
+                  <td style={{
+                    padding: '10px 20px', fontSize: 13, fontWeight: 700, color: 'var(--c-text-muted)',
+                    position: 'sticky', left: 0, zIndex: 1, background: 'var(--c-hover)',
+                    boxShadow: '1px 0 0 var(--c-border)',
+                  }}>
                     Сума {label.toLowerCase()}
                   </td>
                   {sectionTotalByMonth.map((tot, i) => (

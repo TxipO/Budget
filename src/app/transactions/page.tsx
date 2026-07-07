@@ -179,12 +179,12 @@ export default function TransactionsPage() {
   return (
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Транзакції</h1>
           <p style={{ color: '#475569', fontSize: 14 }}>{filtered.length} записів</p>
         </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 2,
             background: 'var(--c-elevated)', border: '1px solid var(--c-border)',
@@ -208,7 +208,7 @@ export default function TransactionsPage() {
               onClick={() => setShowExport(v => !v)}
               style={{ gap: 6 }}
             >
-              <Download size={15} /> Експорт
+              <Download size={15} /> <span className="hide-on-xs">Експорт</span>
             </button>
             {showExport && (
               <div style={{
@@ -298,13 +298,13 @@ export default function TransactionsPage() {
       </div>
 
       {/* Summary row */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
         {[
           { label: 'Дохід', value: totals.income, color: '#4ADE80' },
           { label: 'Витрати', value: totals.expenses, color: '#FCA5A5' },
           { label: 'Збереження', value: totals.savings, color: '#FCD34D' },
         ].map(s => (
-          <div key={s.label} className="card" style={{ flex: 1, padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div key={s.label} className="card" style={{ flex: '1 1 100px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: '#64748B' }}>{s.label}</span>
             <span style={{ fontSize: 16, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums' }}>
               {formatMoney(s.value)}
@@ -315,8 +315,8 @@ export default function TransactionsPage() {
 
       {/* Table */}
       <div className="card" style={{ overflow: 'hidden' }}>
-        {/* Table header */}
-        <div style={{
+        {/* Table header (desktop only — mobile rows are self-describing cards) */}
+        <div className="hide-on-xs" style={{
           display: 'grid', gridTemplateColumns: '100px 1fr 120px 90px 80px 72px',
           padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)',
           fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em',
@@ -335,71 +335,108 @@ export default function TransactionsPage() {
           </div>
         )}
 
-        {paged.map(tx => (
-          <div
-            key={tx.id}
-            className="table-row"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '100px 1fr 120px 90px 80px 72px',
-              padding: '14px 20px',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <span style={{ fontSize: 13, color: '#64748B' }}>
-              {new Date(tx.date).toLocaleDateString('uk-UA', globalSearch
-                ? { day: '2-digit', month: '2-digit', year: '2-digit' }
-                : { day: '2-digit', month: '2-digit' })}
-            </span>
+        {paged.map(tx => {
+          const dateStr = new Date(tx.date).toLocaleDateString('uk-UA', globalSearch
+            ? { day: '2-digit', month: '2-digit', year: '2-digit' }
+            : { day: '2-digit', month: '2-digit' });
+          const amountStr = `${tx.category.type === 'income' ? '+' : '-'}${formatMoney(tx.amount)}`;
+          const amountColor = tx.category.type === 'income' ? '#4ADE80'
+                             : tx.category.type === 'expense' ? '#FCA5A5' : '#FCD34D';
+          return (
+          <div key={tx.id} className="table-row">
+            {/* Desktop: fixed-column grid */}
+            <div
+              className="tx-row-desktop"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '100px 1fr 120px 90px 80px 72px',
+                padding: '14px 20px',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              <span style={{ fontSize: 13, color: '#64748B' }}>{dateStr}</span>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-              <CategoryIcon name={tx.category.icon} color={tx.category.color} size={15} />
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
-                  {tx.category.name}
-                  {tx.recurringTemplateId && <span title="Recurring" style={{ display: 'flex' }}><RefreshCw size={11} color="#F97316" /></span>}
-                </div>
-                {tx.details && (
-                  <div style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {tx.details}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <CategoryIcon name={tx.category.icon} color={tx.category.color} size={15} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    {tx.category.name}
+                    {tx.recurringTemplateId && <span title="Recurring" style={{ display: 'flex' }}><RefreshCw size={11} color="#F97316" /></span>}
                   </div>
-                )}
+                  {tx.details && (
+                    <div style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {tx.details}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <span className={`badge badge-${tx.category.type}`}>
+                {TYPE_LABELS[tx.category.type]}
+              </span>
+
+              <span style={{ textAlign: 'right', fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: amountColor }}>
+                {amountStr}
+              </span>
+
+              <span style={{ fontSize: 12, color: '#475569' }}>{tx.user?.name || '—'}</span>
+
+              <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                <button
+                  className="btn-ghost"
+                  style={{ padding: '5px 7px', border: 'none' }}
+                  onClick={() => { setEditing(tx); setShowForm(true); }}
+                >
+                  <Pencil size={13} />
+                </button>
+                <button
+                  className="btn-ghost"
+                  style={{ padding: '5px 7px', border: 'none', color: '#EF4444' }}
+                  onClick={() => del(tx.id)}
+                >
+                  <Trash2 size={13} />
+                </button>
               </div>
             </div>
 
-            <span className={`badge badge-${tx.category.type}`}>
-              {TYPE_LABELS[tx.category.type]}
-            </span>
-
-            <span style={{
-              textAlign: 'right', fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-              color: tx.category.type === 'income' ? '#4ADE80'
-                   : tx.category.type === 'expense' ? '#FCA5A5' : '#FCD34D',
-            }}>
-              {tx.category.type === 'income' ? '+' : '-'}{formatMoney(tx.amount)}
-            </span>
-
-            <span style={{ fontSize: 12, color: '#475569' }}>{tx.user?.name || '—'}</span>
-
-            <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-              <button
-                className="btn-ghost"
-                style={{ padding: '5px 7px', border: 'none' }}
-                onClick={() => { setEditing(tx); setShowForm(true); }}
-              >
-                <Pencil size={13} />
-              </button>
-              <button
-                className="btn-ghost"
-                style={{ padding: '5px 7px', border: 'none', color: '#EF4444' }}
-                onClick={() => del(tx.id)}
-              >
-                <Trash2 size={13} />
-              </button>
+            {/* Mobile: stacked card row — icon, category+meta (grows/truncates), amount+actions */}
+            <div className="tx-row-mobile" style={{ display: 'none', alignItems: 'center', gap: 10, padding: '12px 16px' }}>
+              <CategoryIcon name={tx.category.icon} color={tx.category.color} size={16} tile />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {tx.category.name}
+                  {tx.recurringTemplateId && <span title="Recurring" style={{ display: 'flex', flexShrink: 0 }}><RefreshCw size={10} color="#F97316" /></span>}
+                </div>
+                <div style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {dateStr}{tx.details && ` · ${tx.details}`}{tx.user && ` · ${tx.user.name}`}
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: amountColor }}>
+                  {amountStr}
+                </span>
+                <div style={{ display: 'flex', gap: 2 }}>
+                  <button
+                    className="btn-ghost"
+                    style={{ padding: '4px 6px', border: 'none' }}
+                    onClick={() => { setEditing(tx); setShowForm(true); }}
+                  >
+                    <Pencil size={12} />
+                  </button>
+                  <button
+                    className="btn-ghost"
+                    style={{ padding: '4px 6px', border: 'none', color: '#EF4444' }}
+                    onClick={() => del(tx.id)}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        ))}
+          );
+        })}
 
         {/* Pagination */}
         {totalPages > 1 && (

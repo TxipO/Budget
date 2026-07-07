@@ -59,7 +59,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Year totals */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
+      <div className="grid-4" style={{ marginBottom: 28 }}>
         {[
           { label: 'Всього дохід', value: totalIncome, color: '#22C55E' },
           { label: 'Всього витрати', value: totalExpenses, color: '#EF4444' },
