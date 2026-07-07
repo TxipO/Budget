@@ -5,6 +5,7 @@ import Sidebar from '@/components/Sidebar';
 import MobileNav from '@/components/MobileNav';
 import dynamic from 'next/dynamic';
 import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 const Particles = dynamic(() => import('@/components/Particles'), { ssr: false });
 const ToastContainer = dynamic(() => import('@/components/ToastContainer'), { ssr: false });
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MobileNav />
         <ToastContainer />
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
