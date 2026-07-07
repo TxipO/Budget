@@ -4,6 +4,7 @@ import './globals.css';
 import Sidebar from '@/components/Sidebar';
 import MobileNav from '@/components/MobileNav';
 import dynamic from 'next/dynamic';
+import { Analytics } from '@vercel/analytics/next';
 
 const Particles = dynamic(() => import('@/components/Particles'), { ssr: false });
 const ToastContainer = dynamic(() => import('@/components/ToastContainer'), { ssr: false });
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </main>
         <MobileNav />
         <ToastContainer />
+        <Analytics />
       </body>
     </html>
   );
