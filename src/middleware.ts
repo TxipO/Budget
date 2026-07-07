@@ -2,28 +2,69 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const PUBLIC_PATHS = ['/login', '/api/auth', '/manifest.json', '/icon-192.png', '/icon-512.png', '/favicon.ico'];
 
-// Session cookie = HMAC-SHA256(AUTH_SECRET, 'budget-session').
+// Must match SESSION_MAX_AGE_MS / the cookie's maxAge in api/auth/route.ts.
+const SESSION_MAX_AGE_MS = 60 * 60 * 24 * 30 * 1000; // 30 днів
+
+// Session cookie = "<issuedAt>.<HMAC-SHA256(AUTH_SECRET, 'budget-session:'+issuedAt)>".
+// issuedAt is embedded and signed (not just relied on the browser's Max-Age)
+// so a raw copied cookie value can't be replayed forever via a plain HTTP
+// client that ignores Max-Age — the server itself enforces expiry here.
 // The PIN itself lives in the DB (AppSetting) and is checked only at login,
 // so it can be changed from Settings without restarting the server.
-async function sessionToken(secret: string): Promise<string> {
+async function sign(secret: string, issuedAt: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw', new TextEncoder().encode(secret),
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
   );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode('budget-session'));
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`budget-session:${issuedAt}`));
   return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Constant-time string compare — Web Crypto has no built-in timing-safe
+// compare, so this is the manual edge-runtime equivalent of
+// crypto.timingSafeEqual. Both expected inputs here are fixed-length hex
+// hashes, so comparing .length first leaks nothing an attacker doesn't
+// already know.
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function verifySession(cookieValue: string, secret: string): Promise<boolean> {
+  const dot = cookieValue.indexOf('.');
+  if (dot < 0) return false;
+  const issuedAt = Number(cookieValue.slice(0, dot));
+  const sig = cookieValue.slice(dot + 1);
+  if (!Number.isFinite(issuedAt)) return false;
+  const age = Date.now() - issuedAt;
+  if (age < 0 || age > SESSION_MAX_AGE_MS) return false; // expired, or issued in the future (tampered)
+  const expected = await sign(secret, String(issuedAt));
+  return timingSafeEqual(sig, expected);
 }
 
 export async function middleware(req: NextRequest) {
   const secret = process.env.AUTH_SECRET;
-  // No secret configured — fail open so a missing .env never locks the owners out
-  if (!secret) return NextResponse.next();
-
   const { pathname } = req.nextUrl;
   if (PUBLIC_PATHS.some(p => pathname === p)) return NextResponse.next();
 
+  // Fail CLOSED, not open: without a secret we cannot verify any cookie, so
+  // granting access would mean anyone gets in with no PIN at all. This is
+  // exactly what happened on Preview deployments — AUTH_SECRET is only
+  // configured for the Production environment in Vercel, so every Preview
+  // build served the full dashboard to anyone with the URL, no login
+  // required. A misconfigured env var must break loudly, not silently open
+  // the door.
+  if (!secret) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Автентифікацію не налаштовано' }, { status: 500 });
+    }
+    return new NextResponse('Автентифікацію не налаштовано. Зверніться до адміністратора.', { status: 500 });
+  }
+
   const cookie = req.cookies.get('budget-auth')?.value;
-  if (cookie && cookie === await sessionToken(secret)) return NextResponse.next();
+  if (cookie && await verifySession(cookie, secret)) return NextResponse.next();
 
   if (pathname.startsWith('/api/')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

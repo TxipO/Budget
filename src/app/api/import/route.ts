@@ -193,7 +193,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, categories: importedCats.size });
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    console.error('[import POST]', e);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

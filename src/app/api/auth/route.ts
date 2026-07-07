@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createHash, createHmac } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { prisma } from '@/lib/prisma';
 
 const PIN_KEY = 'pinHash';
+// Must match SESSION_MAX_AGE_MS in middleware.ts and the cookie's maxAge below.
+const SESSION_MAX_AGE_S = 60 * 60 * 24 * 30; // 30 днів
 
 function hashPin(pin: string): string {
   return createHash('sha256').update(`budget-pin:${pin}`).digest('hex');
+}
+
+// Both inputs here are always fixed-length hex digests (sha256/hmac-sha256
+// output), so comparing .length first leaks nothing an attacker doesn't
+// already know — this just guards Buffer.from()/timingSafeEqual, which
+// throws on mismatched lengths rather than returning false.
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
 }
 
 async function currentPinHash(): Promise<string | null> {
@@ -16,8 +28,14 @@ async function currentPinHash(): Promise<string | null> {
   return envPin ? hashPin(envPin) : null;
 }
 
-function sessionToken(secret: string): string {
-  return createHmac('sha256', secret).update('budget-session').digest('hex');
+// issuedAt is embedded and signed so the server can enforce expiry itself
+// (see middleware.ts's verifySession) instead of relying solely on the
+// browser honoring the cookie's Max-Age — a raw copied cookie value used
+// directly via curl/an API client ignores Max-Age entirely otherwise.
+function sessionCookieValue(secret: string): string {
+  const issuedAt = Date.now();
+  const sig = createHmac('sha256', secret).update(`budget-session:${issuedAt}`).digest('hex');
+  return `${issuedAt}.${sig}`;
 }
 
 // Brute-force guard: a 4-digit PIN is only 10k combinations, so the login
@@ -85,18 +103,19 @@ export async function POST(req: NextRequest) {
     if (!stored) return NextResponse.json({ error: 'PIN не налаштовано' }, { status: 500 });
 
     const body = await req.json();
-    if (typeof body.pin !== 'string' || hashPin(body.pin) !== stored) {
+    if (typeof body.pin !== 'string' || !safeEqual(hashPin(body.pin), stored)) {
       await registerFailure();
       return NextResponse.json({ error: 'Невірний PIN' }, { status: 401 });
     }
     await clearFailures();
 
     const res = NextResponse.json({ ok: true });
-    res.cookies.set('budget-auth', sessionToken(secret), {
+    res.cookies.set('budget-auth', sessionCookieValue(secret), {
       httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 24 * 30, // 30 днів
+      maxAge: SESSION_MAX_AGE_S,
     });
     return res;
   } catch (e) {
@@ -115,7 +134,7 @@ export async function PUT(req: NextRequest) {
     if (!stored) return NextResponse.json({ error: 'PIN не налаштовано' }, { status: 500 });
 
     const body = await req.json();
-    if (typeof body.current !== 'string' || hashPin(body.current) !== stored) {
+    if (typeof body.current !== 'string' || !safeEqual(hashPin(body.current), stored)) {
       await registerFailure();
       return NextResponse.json({ error: 'Невірний поточний PIN' }, { status: 401 });
     }
