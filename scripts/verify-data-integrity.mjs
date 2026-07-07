@@ -110,6 +110,19 @@ async function main() {
     }
   } else pass('no category+month combo mixes a recurring-template row with an unrelated manual/imported row');
 
+  // ── Step 4c: Ф5's possibleDuplicateOf flag ──────────────────────────────
+  step('4c', 'Mono possibleDuplicateOf flags');
+  // The webhook receiver (src/app/api/webhooks/monobank/[secret]/route.ts)
+  // sets this at write time when a new mono transaction lands in the same
+  // category+month as an existing recurring/import row — a human still has
+  // to glance at these (shown as a badge in the transactions list), this
+  // just checks the flag itself points at something real.
+  const flagged = txs.filter(t => t.possibleDuplicateOf !== null);
+  const txIds = new Set(txs.map(t => t.id));
+  const danglingFlags = flagged.filter(t => !txIds.has(t.possibleDuplicateOf));
+  if (danglingFlags.length) fail(`${danglingFlags.length} possibleDuplicateOf values point at a non-existent transaction id`);
+  else pass(`${flagged.length} transaction(s) flagged as a possible duplicate, all references valid`);
+
   // ── Step 5: duplicate recurring applications ───────────────────────────
   step(5, 'Duplicate recurring-template applications');
   const byTplMonth = {};

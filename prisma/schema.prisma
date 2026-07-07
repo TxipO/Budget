@@ -84,6 +84,14 @@ model Transaction {
   monoCurrency       String?         // ISO code of the original currency, e.g. "UAH"
   fxRate             Float?          // rate applied at import time (original * fxRate = amount)
 
+  // Set when a NEW mono transaction lands in the same category+month as an
+  // existing recurring/import row with a similar amount — the same shape of
+  // bug already found once this session (Excel import + recurring both
+  // silently writing "rent" for the same month). Never auto-blocks the
+  // write (blocking risks losing a real transaction that's just coincidentally
+  // similar); just flags it for a human to glance at in the transactions list.
+  possibleDuplicateOf Int?
+
   @@index([date])
   // Guards against the recurring/apply race: concurrent requests applying the
   // same template for the same month could both pass the "already applied"

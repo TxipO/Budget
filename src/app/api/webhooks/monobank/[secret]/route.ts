@@ -87,6 +87,24 @@ export async function POST(req: NextRequest, { params }: { params: { secret: str
     const raw = new Date(item.time * 1000);
     const date = new Date(Date.UTC(raw.getUTCFullYear(), raw.getUTCMonth(), raw.getUTCDate()));
 
+    // Ф5: the same real-world payment counted twice from two independent
+    // writers (already happened once this session — Excel import + a
+    // recurring template both silently wrote "rent" for the same month).
+    // A mono transaction landing in a category+month that already has a
+    // recurring-generated or Excel-imported row is a real signal something
+    // might double-count — flag it rather than block the write (blocking
+    // risks losing a genuine transaction that just happens to share a
+    // category with an unrelated recurring payment).
+    const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
+    const possibleDup = await prisma.transaction.findFirst({
+      where: {
+        categoryId,
+        date: { gte: monthStart, lt: monthEnd },
+        OR: [{ recurringTemplateId: { not: null } }, { details: '[імпорт]' }],
+      },
+    });
+
     await prisma.transaction.create({
       data: {
         date,
@@ -95,6 +113,7 @@ export async function POST(req: NextRequest, { params }: { params: { secret: str
         details: item.description || '',
         userId: user.id,
         source: 'mono',
+        possibleDuplicateOf: possibleDup?.id ?? null,
         monoStatementId: item.id,
         monoMerchant: item.description || null,
         monoMcc: item.mcc ?? null,
