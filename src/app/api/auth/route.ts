@@ -3,7 +3,6 @@ import { createHash, createHmac } from 'crypto';
 import { prisma } from '@/lib/prisma';
 
 const PIN_KEY = 'pinHash';
-const LOCKOUT_KEY = 'authLockout';
 
 function hashPin(pin: string): string {
   return createHash('sha256').update(`budget-pin:${pin}`).digest('hex');
@@ -25,34 +24,46 @@ function sessionToken(secret: string): string {
 // endpoint must not answer unlimited guesses. Deployed as Vercel serverless
 // functions, so in-memory module state is NOT shared across invocations —
 // state must live in the database instead. 5 straight failures => 30s lockout.
-interface LockoutState { failCount: number; lockedUntil: number }
-
-async function readLockout(): Promise<LockoutState> {
-  const row = await prisma.appSetting.findUnique({ where: { key: LOCKOUT_KEY } });
-  if (!row) return { failCount: 0, lockedUntil: 0 };
-  try { return JSON.parse(row.value); } catch { return { failCount: 0, lockedUntil: 0 }; }
-}
-async function writeLockout(state: LockoutState) {
-  await prisma.appSetting.upsert({
-    where: { key: LOCKOUT_KEY },
-    update: { value: JSON.stringify(state) },
-    create: { key: LOCKOUT_KEY, value: JSON.stringify(state) },
-  });
+//
+// registerFailure() used to do a read-then-write on a JSON string: read
+// state, mutate in JS, write back. Under concurrent requests (parallel
+// wrong-PIN attempts — exactly how a real brute-force script behaves, not
+// sequentially) multiple invocations could read the same stale count before
+// any of them committed, undercounting real attempts. Verified live: 5
+// parallel failures + a 6th only reached failCount=3 in the DB, no lockout
+// triggered. Fixed by using a single atomic SQL increment on a dedicated
+// integer column — Postgres serializes concurrent UPDATEs on the same row
+// via a row-level lock, so every failure counts exactly once.
+async function ensureLockoutRow() {
+  // Concurrent cold-start requests can both attempt the create half of this
+  // upsert before either commits, and Postgres/Prisma doesn't retry that as
+  // an update — one wins, the other throws P2002. Harmless here (the goal is
+  // just "the row exists"), so swallow it.
+  try {
+    await prisma.authLockout.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  } catch (e: any) {
+    if (e?.code !== 'P2002') throw e;
+  }
 }
 async function registerFailure() {
-  const state = await readLockout();
-  state.failCount++;
-  if (state.failCount >= 5) {
-    state.lockedUntil = Date.now() + 30_000;
-    state.failCount = 0;
+  await ensureLockoutRow();
+  const [{ failCount }] = await prisma.$queryRaw<{ failCount: number }[]>`
+    UPDATE "AuthLockout" SET "failCount" = "failCount" + 1 WHERE id = 1 RETURNING "failCount"
+  `;
+  if (failCount >= 5) {
+    await prisma.authLockout.update({
+      where: { id: 1 },
+      data: { lockedUntil: BigInt(Date.now() + 30_000), failCount: 0 },
+    });
   }
-  await writeLockout(state);
 }
 async function clearFailures() {
-  await writeLockout({ failCount: 0, lockedUntil: 0 });
+  await ensureLockoutRow();
+  await prisma.authLockout.update({ where: { id: 1 }, data: { failCount: 0, lockedUntil: BigInt(0) } });
 }
 async function tooManyAttempts(): Promise<NextResponse | null> {
-  const { lockedUntil } = await readLockout();
+  const row = await prisma.authLockout.findUnique({ where: { id: 1 } });
+  const lockedUntil = row ? Number(row.lockedUntil) : 0;
   const left = lockedUntil - Date.now();
   const wait = left > 0 ? Math.ceil(left / 1000) : 0;
   if (!wait) return null;

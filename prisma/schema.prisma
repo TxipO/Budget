@@ -43,6 +43,12 @@ model Transaction {
   recurringTemplate   RecurringTemplate? @relation(fields: [recurringTemplateId], references: [id])
 
   @@index([date])
+  // Guards against the recurring/apply race: concurrent requests applying the
+  // same template for the same month could both pass the "already applied"
+  // check before either commits. NULL recurringTemplateId (regular manual
+  // transactions) never conflicts with itself under Postgres unique-index
+  // semantics, so this only constrains recurring-generated rows.
+  @@unique([recurringTemplateId, date])
 }
 
 model RecurringTemplate {
@@ -62,6 +68,18 @@ model RecurringTemplate {
 model AppSetting {
   key   String @id
   value String
+}
+
+// Separate from AppSetting so the failure counter can be incremented with a
+// single atomic `UPDATE ... SET "failCount" = "failCount" + 1` — Postgres
+// serializes concurrent UPDATEs on the same row via a row-level lock, so
+// every failed attempt is guaranteed to count exactly once even under
+// concurrent requests. A read-then-write on a JSON string (the previous
+// approach) let concurrent requests read the same stale value and undercount.
+model AuthLockout {
+  id          Int    @id @default(1)
+  failCount   Int    @default(0)
+  lockedUntil BigInt @default(0)
 }
 
 model MonthlyPlan {

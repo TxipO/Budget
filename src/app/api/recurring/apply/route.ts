@@ -27,7 +27,12 @@ export async function POST(req: NextRequest) {
       where: { id: { in: toApply }, isActive: true },
     });
 
-    await prisma.transaction.createMany({
+    // skipDuplicates guards the race where two concurrent requests (e.g. two
+    // browser tabs) both pass the "already applied" check above before either
+    // commits — the @@unique([recurringTemplateId, date]) constraint then
+    // lets only one row through per template+month instead of creating
+    // duplicates, without the whole batch failing.
+    const created = await prisma.transaction.createMany({
       data: templates.map(t => ({
         date: new Date(Date.UTC(year, month - 1, 1, 12, 0, 0)),
         categoryId: t.categoryId,
@@ -36,9 +41,10 @@ export async function POST(req: NextRequest) {
         userId: t.userId,
         recurringTemplateId: t.id,
       })),
+      skipDuplicates: true,
     });
 
-    return NextResponse.json({ applied: templates.length, skipped: templateIds.length - templates.length });
+    return NextResponse.json({ applied: created.count, skipped: templateIds.length - created.count });
   } catch (e) {
     console.error('[recurring/apply POST]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

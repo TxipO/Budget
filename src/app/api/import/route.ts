@@ -80,6 +80,13 @@ export async function POST(req: NextRequest) {
     const planSheet = wb.getWorksheet('Планування');
     if (!planSheet) return NextResponse.json({ error: 'Sheet "Планування" not found' }, { status: 400 });
 
+    // Starting year comes from Налаштування!E7, not hardcoded — a hardcoded
+    // year here would silently misfile every future re-import (e.g. importing
+    // a 2027 template would still write everything into 2026) with no error.
+    const settingsSheet = wb.getWorksheet('Налаштування');
+    const yearCell = settingsSheet ? cellNumber(settingsSheet.getCell('E7').value) : null;
+    const baseYear = yearCell && yearCell >= 2000 && yearCell <= 2100 ? Math.trunc(yearCell) : new Date().getUTCFullYear();
+
     // Find section boundaries by scanning column C (index 3, exceljs is 1-based)
     type SectionType = 'income' | 'expense' | 'savings' | null;
     let currentSection: SectionType = null;
@@ -119,13 +126,13 @@ export async function POST(req: NextRequest) {
         // UTC explicitly so this doesn't depend on the server process's
         // timezone (local dev vs Vercel) — see stats/route.ts for the bug
         // this class of mistake caused when those didn't match.
-        const date = new Date(Date.UTC(2026, m, 1));
+        const date = new Date(Date.UTC(baseYear, m, 1));
 
         // Upsert: avoid duplicates on re-import (delete existing for this cat/month then re-create)
         await prisma.transaction.deleteMany({
           where: {
             categoryId: cat.id,
-            date: { gte: new Date(Date.UTC(2026, m, 1)), lt: new Date(Date.UTC(2026, m + 1, 1)) },
+            date: { gte: new Date(Date.UTC(baseYear, m, 1)), lt: new Date(Date.UTC(baseYear, m + 1, 1)) },
             details: '[імпорт]',
           },
         });
@@ -137,9 +144,9 @@ export async function POST(req: NextRequest) {
 
         // Create monthly plan
         await prisma.monthlyPlan.upsert({
-          where: { year_month_categoryId: { year: 2026, month: m + 1, categoryId: cat.id } },
+          where: { year_month_categoryId: { year: baseYear, month: m + 1, categoryId: cat.id } },
           update: { plannedAmount: amount },
-          create: { year: 2026, month: m + 1, categoryId: cat.id, plannedAmount: amount },
+          create: { year: baseYear, month: m + 1, categoryId: cat.id, plannedAmount: amount },
         });
       }
     }

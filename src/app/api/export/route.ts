@@ -53,8 +53,8 @@ export async function GET(req: NextRequest) {
   const actuals: Record<number, Record<number, Record<number, number>>> = {};
   for (const tx of allTxs) {
     const d = new Date(tx.date);
-    const y = d.getFullYear();
-    const m = d.getMonth() + 1;
+    const y = d.getUTCFullYear();
+    const m = d.getUTCMonth() + 1;
     const c = tx.categoryId;
     actuals[c] ??= {};
     actuals[c][y] ??= {};
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
     const det = (tx.details ?? '').trim();
     if (!det || det === '[імпорт]') continue;
     const d = new Date(tx.date);
-    const key = `${tx.categoryId}:${d.getFullYear()}:${d.getMonth() + 1}`;
+    const key = `${tx.categoryId}:${d.getUTCFullYear()}:${d.getUTCMonth() + 1}`;
     txDetails[key] ??= [];
     txDetails[key].push(`${Math.round(tx.amount)} - ${det}`);
   }
@@ -184,8 +184,8 @@ export async function GET(req: NextRequest) {
   // Filter transactions for Ведення sheet
   const txsForVed = filterYear ? allTxs.filter(tx => {
     const d = new Date(tx.date);
-    if (d.getFullYear() !== filterYear) return false;
-    if (filterMonth && d.getMonth() + 1 !== filterMonth) return false;
+    if (d.getUTCFullYear() !== filterYear) return false;
+    if (filterMonth && d.getUTCMonth() + 1 !== filterMonth) return false;
     return true;
   }) : allTxs;
 
