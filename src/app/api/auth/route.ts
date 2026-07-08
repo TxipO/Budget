@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createHash, createHmac, timingSafeEqual } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import { prisma } from '@/lib/prisma';
+import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
 
 const PIN_KEY = 'pinHash';
-// Must match SESSION_MAX_AGE_MS in middleware.ts and the cookie's maxAge below.
-const SESSION_MAX_AGE_S = 60 * 60 * 24 * 30; // 30 днів
 
 function hashPin(pin: string): string {
   return createHash('sha256').update(`budget-pin:${pin}`).digest('hex');
@@ -26,16 +25,6 @@ async function currentPinHash(): Promise<string | null> {
   // Fallback: PIN from .env until it is changed via Settings for the first time
   const envPin = process.env.APP_PIN;
   return envPin ? hashPin(envPin) : null;
-}
-
-// issuedAt is embedded and signed so the server can enforce expiry itself
-// (see middleware.ts's verifySession) instead of relying solely on the
-// browser honoring the cookie's Max-Age — a raw copied cookie value used
-// directly via curl/an API client ignores Max-Age entirely otherwise.
-function sessionCookieValue(secret: string): string {
-  const issuedAt = Date.now();
-  const sig = createHmac('sha256', secret).update(`budget-session:${issuedAt}`).digest('hex');
-  return `${issuedAt}.${sig}`;
 }
 
 // Brute-force guard: a 4-digit PIN is only 10k combinations, so the login

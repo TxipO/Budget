@@ -22,6 +22,18 @@ model User {
   monoWebhookSecret String? @unique
   monoAccountId     String?
   monoCategoryRules MonoCategoryRule[]
+
+  // Telegram Login Widget auth (see lib/telegramAuth.ts). telegramId is
+  // Telegram's own numeric user id, stored as a string (safer than Int for
+  // an externally-issued id we never do arithmetic on). email is collected
+  // at registration but NOT verified in v1 (no email-sending service
+  // provisioned yet) — treat it as a claimed identifier, not a proven one,
+  // until a verification step is added.
+  email             String? @unique
+  telegramId        String? @unique
+  telegramUsername  String?
+  telegramFirstName String?
+  telegramPhotoUrl  String?
 }
 
 // Learned merchant → category mappings, populated ONLY from manual

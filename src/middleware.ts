@@ -21,18 +21,21 @@ const SESSION_MAX_AGE_MS = 60 * 60 * 24 * 30 * 1000; // 30 днів
 // of the verifying one (age computes negative and gets rejected outright).
 const CLOCK_SKEW_TOLERANCE_MS = 5000;
 
-// Session cookie = "<issuedAt>.<HMAC-SHA256(AUTH_SECRET, 'budget-session:'+issuedAt)>".
-// issuedAt is embedded and signed (not just relied on the browser's Max-Age)
-// so a raw copied cookie value can't be replayed forever via a plain HTTP
-// client that ignores Max-Age — the server itself enforces expiry here.
-// The PIN itself lives in the DB (AppSetting) and is checked only at login,
-// so it can be changed from Settings without restarting the server.
-async function sign(secret: string, issuedAt: string): Promise<string> {
+// Session cookie = "<userId>.<issuedAt>.<HMAC-SHA256(AUTH_SECRET, 'budget-session:'+userId+':'+issuedAt)>".
+// userId is "shared" for a PIN login (no specific identity — matches the
+// original behavior, anyone with the PIN acts as the whole household) or a
+// real numeric User.id for a Telegram login. issuedAt is embedded and
+// signed (not just relied on the browser's Max-Age) so a raw copied cookie
+// value can't be replayed forever via a plain HTTP client that ignores
+// Max-Age — the server itself enforces expiry here. The PIN itself lives in
+// the DB (AppSetting) and is checked only at login, so it can be changed
+// from Settings without restarting the server.
+async function sign(secret: string, userId: string, issuedAt: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw', new TextEncoder().encode(secret),
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
   );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`budget-session:${issuedAt}`));
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`budget-session:${userId}:${issuedAt}`));
   return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
@@ -48,16 +51,17 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-async function verifySession(cookieValue: string, secret: string): Promise<boolean> {
-  const dot = cookieValue.indexOf('.');
-  if (dot < 0) return false;
-  const issuedAt = Number(cookieValue.slice(0, dot));
-  const sig = cookieValue.slice(dot + 1);
-  if (!Number.isFinite(issuedAt)) return false;
+async function verifySession(cookieValue: string, secret: string): Promise<string | null> {
+  const parts = cookieValue.split('.');
+  if (parts.length !== 3) return null;
+  const [userId, issuedAtStr, sig] = parts;
+  if (!userId) return null;
+  const issuedAt = Number(issuedAtStr);
+  if (!Number.isFinite(issuedAt)) return null;
   const age = Date.now() - issuedAt;
-  if (age < -CLOCK_SKEW_TOLERANCE_MS || age > SESSION_MAX_AGE_MS) return false; // expired, or issued implausibly far in the future (tampered)
-  const expected = await sign(secret, String(issuedAt));
-  return timingSafeEqual(sig, expected);
+  if (age < -CLOCK_SKEW_TOLERANCE_MS || age > SESSION_MAX_AGE_MS) return null; // expired, or issued implausibly far in the future (tampered)
+  const expected = await sign(secret, userId, String(issuedAt));
+  return timingSafeEqual(sig, expected) ? userId : null;
 }
 
 // CSP must use a per-request NONCE, not a fixed sha256 hash: Next.js App
@@ -122,7 +126,12 @@ export async function middleware(req: NextRequest) {
   }
 
   const cookie = req.cookies.get('budget-auth')?.value;
-  if (cookie && await verifySession(cookie, secret)) {
+  const userId = cookie ? await verifySession(cookie, secret) : null;
+  if (userId) {
+    // "shared" (a PIN login, no specific identity) is intentionally not
+    // forwarded as a real user id — pages check for its absence rather than
+    // treating the literal string "shared" as a User.id to look up.
+    if (userId !== 'shared') requestHeaders.set('x-current-user-id', userId);
     return withCsp(NextResponse.next({ request: { headers: requestHeaders } }), nonce);
   }
 
