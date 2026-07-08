@@ -21,6 +21,12 @@ export async function transcribe(audio: Buffer): Promise<string | null> {
   // Russian interchangeably, and Whisper's auto-detection across these
   // three is reliable enough that forcing one would only hurt the other two.
   form.append('response_format', 'json');
+  // Groq/Whisper's prompt param biases vocabulary and orthography, not
+  // literal continuation — domain examples across all three languages,
+  // in correct spelling, nudge the model away from misclassifying
+  // Ukrainian as Russian (a documented Whisper weakness for close language
+  // pairs) and toward recognizable finance vocabulary.
+  form.append('prompt', 'Особистий бюджет. Потратив 200 гривень на їжу. Отримав зарплату 15000. Купив продукти за 350. I spent 50 on coffee. Потратил 300 на бензин.');
 
   const res = await fetch(GROQ_TRANSCRIPTION_URL, {
     method: 'POST',

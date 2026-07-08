@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { downloadVoice, sendMessage } from '@/lib/telegramBot';
 import { transcribe } from '@/lib/groq';
+import { extractWithLLM } from '@/lib/voiceExtract';
 import { parseVoiceTransaction } from '@/lib/voiceParse';
 import { guessCategoryId } from '@/lib/categoryGuess';
 import { roundMoney } from '@/lib/validate';
@@ -60,15 +61,51 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // FR-004/FR-005 — an unparseable amount or ambiguous direction asks for
-    // clarification instead of guessing; no transaction is created.
-    const parsed = parseVoiceTransaction(transcript);
-    if (!parsed) {
-      await sendMessage(senderId, `Почув: "${transcript}". Не зрозумів суму або чи це витрата/дохід — скажіть, наприклад, "потратив 200 на каву" або "отримав 15000 зарплату".`);
-      return NextResponse.json({ ok: true });
+    // LLM extraction first (handles grammatical cases, language-mixing,
+    // multi-number phrases, and free-form category naming that the
+    // rule-based path kept failing on in live testing — see
+    // lib/voiceExtract.ts). Falls back to the rule-based path
+    // (voiceParse.ts + categoryGuess.ts) on any failure, so a Groq chat
+    // outage degrades the feature instead of breaking it outright.
+    const activeCategories = await prisma.category.findMany({ where: { isActive: true }, select: { name: true, type: true } });
+    const expenseNames = activeCategories.filter(c => c.type === 'expense').map(c => c.name);
+    const incomeNames = activeCategories.filter(c => c.type === 'income').map(c => c.name);
+
+    let direction: 'income' | 'expense';
+    let amount: number;
+    let categoryId: number;
+
+    const llmResult = await extractWithLLM(transcript, expenseNames, incomeNames, user.name).catch(() => null);
+    if (llmResult) {
+      direction = llmResult.direction;
+      amount = llmResult.amount;
+      const cat = activeCategories.find(c => c.name === llmResult.categoryName && c.type === llmResult.direction);
+      // Belt-and-suspenders — extractWithLLM already validates the category
+      // name against the list it was given, but re-resolving the id from
+      // the same in-memory list (rather than trusting an id the model
+      // never actually saw) means a model bug can't point at a category
+      // that doesn't exist or doesn't match the direction.
+      const resolved = cat ? await prisma.category.findFirst({ where: { name: cat.name, type: cat.type, isActive: true }, select: { id: true } }) : null;
+      if (!resolved) {
+        // Extremely unlikely given the validation above, but if it somehow
+        // happens, fall through to the rule-based path rather than crash.
+        categoryId = await guessCategoryId(user.id, direction, transcript, undefined);
+      } else {
+        categoryId = resolved.id;
+      }
+    } else {
+      // FR-004/FR-005 — an unparseable amount or ambiguous direction asks
+      // for clarification instead of guessing; no transaction is created.
+      const parsed = parseVoiceTransaction(transcript);
+      if (!parsed) {
+        await sendMessage(senderId, `Почув: "${transcript}". Не зрозумів суму або чи це витрата/дохід — скажіть, наприклад, "потратив 200 на каву" або "отримав 15000 зарплату".`);
+        return NextResponse.json({ ok: true });
+      }
+      direction = parsed.direction;
+      amount = parsed.amount;
+      categoryId = await guessCategoryId(user.id, direction, transcript, undefined);
     }
 
-    const categoryId = await guessCategoryId(user.id, parsed.direction, transcript, undefined);
     const category = await prisma.category.findUnique({ where: { id: categoryId }, select: { name: true } });
 
     // Clean UTC midnight, not the exact receipt timestamp — matches the
@@ -86,7 +123,7 @@ export async function POST(req: NextRequest) {
         data: {
           date: day,
           categoryId,
-          amount: roundMoney(parsed.amount),
+          amount: roundMoney(amount),
           details: transcript,
           userId: user.id,
           source: 'voice',
