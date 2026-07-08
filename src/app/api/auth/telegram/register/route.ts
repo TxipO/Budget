@@ -41,8 +41,14 @@ export async function POST(req: NextRequest) {
       if (existing.telegramId) return badRequest('До цього акаунту вже прив’язано інший Telegram');
 
       try {
-        user = await prisma.user.update({
-          where: { id: existing.id },
+        // updateMany with telegramId: null in the WHERE, not update() by id
+        // alone — closes a TOCTOU race where two concurrent requests could
+        // both pass the `existing.telegramId` check above for the same
+        // account and then both "succeed", the second silently overwriting
+        // the first's link with no constraint violation (each sets a
+        // different unique telegramId, so nothing at the DB level objects).
+        const result = await prisma.user.updateMany({
+          where: { id: existing.id, telegramId: null },
           data: {
             telegramId: telegramData.id,
             telegramUsername: telegramData.username ?? null,
@@ -51,6 +57,8 @@ export async function POST(req: NextRequest) {
             email: normalizedEmail ?? existing.email, // don't clobber an existing email with "not provided"
           },
         });
+        if (result.count === 0) return badRequest('До цього акаунту вже прив’язано інший Telegram');
+        user = { id: existing.id, name: existing.name };
       } catch (e: any) {
         if (e?.code === 'P2002') return badRequest('Цей Telegram або email вже використовується іншим акаунтом');
         throw e;

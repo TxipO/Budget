@@ -20,10 +20,16 @@ export async function POST(req: NextRequest) {
     if (trimmed.some(n => !n)) return badRequest("Кожен користувач повинен мати ім'я");
     if (new Set(trimmed).size !== trimmed.length) return badRequest('Імена мають бути унікальними');
 
-    const created = [];
-    for (const name of trimmed) {
-      created.push(await prisma.user.create({ data: { name }, select: { id: true, name: true } }));
-    }
+    // A transaction, not a plain loop — if the 2nd create fails partway
+    // (e.g. a rare race with another concurrent setup request hitting the
+    // unique name constraint), a loop would leave exactly one user created
+    // while the request still reports failure. A retry would then find
+    // count() > 0 and get permanently blocked by the guard above, stuck
+    // half-configured with no way to finish or restart. The transaction
+    // makes it all-or-nothing instead.
+    const created = await prisma.$transaction(
+      trimmed.map(name => prisma.user.create({ data: { name }, select: { id: true, name: true } }))
+    );
     return NextResponse.json({ ok: true, users: created });
   } catch (e) {
     console.error('[setup POST]', e);
