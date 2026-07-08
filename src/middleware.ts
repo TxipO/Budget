@@ -11,6 +11,12 @@ const PUBLIC_PREFIXES = [
   // acts on a request whose :secret matches a per-user 192-bit random value
   // stored in the DB, and no-ops (still 200) on anything else.
   '/api/webhooks/monobank/',
+  // Telegram calls this URL directly for voice-message webhook updates — it
+  // can't send our session cookie either. Its own gate is the
+  // X-Telegram-Bot-Api-Secret-Token header check inside the route itself
+  // (Telegram has no per-integration secret-path mechanism the way a
+  // hand-rolled webhook URL can have), not the middleware.
+  '/api/webhooks/telegram',
   // Everything under /api/auth/ is part of logging in — by definition
   // reached before any session exists. /api/auth itself (PIN login) is
   // already in the exact-match list above; this prefix covers the Telegram

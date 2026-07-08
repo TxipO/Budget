@@ -104,6 +104,12 @@ model Transaction {
   // similar); just flags it for a human to glance at in the transactions list.
   possibleDuplicateOf Int?
 
+  // Dedup key for voice-logged transactions — Telegram's voice message
+  // file_unique_id. NULL for every other source, same pattern as
+  // monoStatementId. A DB-level unique constraint, not an in-memory "seen"
+  // set, so it survives across serverless invocations.
+  telegramMessageId String? @unique
+
   @@index([date])
   // Guards against the recurring/apply race: concurrent requests applying the
   // same template for the same month could both pass the "already applied"

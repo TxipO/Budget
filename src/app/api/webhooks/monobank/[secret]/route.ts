@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { roundMoney } from '@/lib/validate';
-import { ISO_4217, guessCategoryByMcc, guessCategoryByKeyword, normalizeMerchantKey, getCachedExchangeRate } from '@/lib/monobank';
+import { ISO_4217, normalizeMerchantKey, getCachedExchangeRate } from '@/lib/monobank';
+import { guessCategoryId as resolveCategoryId } from '@/lib/categoryGuess';
 
 interface StatementItem {
   id: string;
@@ -14,42 +15,6 @@ interface StatementItem {
 }
 
 const CCY_NAMES: Record<number, string> = { 980: 'UAH', 578: 'NOK' };
-
-async function resolveCategoryId(userId: number, txType: 'expense' | 'income', merchantKey: string, mcc: number | undefined): Promise<number> {
-  // 1. Learned rule from a manual correction — highest priority, no guessing.
-  // Kept as its own targeted lookup (keyed by userId+merchantKey, not type)
-  // since it usually short-circuits before any category data is needed.
-  const rule = await prisma.monoCategoryRule.findUnique({
-    where: { userId_merchantKey: { userId, merchantKey } },
-  });
-  if (rule) return rule.categoryId;
-
-  // Tiers 2-5 (MCC guess, keyword guess, safe fallback, last resort) are all
-  // just "find an active category of this type by name" against the same
-  // set — one query instead of up to four separate round-trips.
-  const categories = await prisma.category.findMany({ where: { type: txType, isActive: true }, orderBy: { id: 'asc' } });
-  const idByName = new Map(categories.map(c => [c.name, c.id]));
-
-  // 2. MCC guess — free, no external call (standard ISO 18245 codes).
-  const mccGuess = guessCategoryByMcc(mcc);
-  if (mccGuess && idByName.has(mccGuess)) return idByName.get(mccGuess)!;
-
-  // 3. Keyword guess against the merchant description — also free. Catches
-  // cases MCC alone doesn't (a generic "retail" MCC from a recognizable
-  // grocery chain name, for instance).
-  const keywordGuess = guessCategoryByKeyword(merchantKey);
-  if (keywordGuess && idByName.has(keywordGuess)) return idByName.get(keywordGuess)!;
-
-  // 4. Safe fallback — a bucket that always exists for the type.
-  const fallbackName = txType === 'expense' ? 'Незрозуміло' : 'Додаткове';
-  if (idByName.has(fallbackName)) return idByName.get(fallbackName)!;
-
-  // 5. Absolute last resort — any active category of the right type, so an
-  // import never crashes even if the expected fallback category was renamed
-  // or deleted.
-  if (categories[0]) return categories[0].id;
-  throw new Error(`No active ${txType} category exists to file a Monobank transaction under`);
-}
 
 export async function GET() {
   // Monobank sends a GET to this URL to verify it's alive before accepting a
