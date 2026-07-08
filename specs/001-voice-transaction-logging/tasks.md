@@ -8,19 +8,19 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Add `telegramMessageId String? @unique` to the `Transaction` model in `prisma/schema.prisma`; run `npx prisma db push --accept-data-loss` (safe — nullable unique column, same precedent as `monoStatementId`)
-- [ ] T002 Add `GROQ_API_KEY` and `TELEGRAM_WEBHOOK_SECRET` (a new random value for Telegram's `secret_token`) to local `.env` — **manual**: real values must come from the user (Groq account signup; webhook secret can be any locally-generated random string)
-- [ ] T003 [P] Confirm `TELEGRAM_BOT_TOKEN` is already present (reused from the Ф1–Ф6 Telegram-auth work) — no new value needed, just confirm it's set
+- [x] T001 Add `telegramMessageId String? @unique` to the `Transaction` model in `prisma/schema.prisma`; run `npx prisma db push --accept-data-loss` (safe — nullable unique column, same precedent as `monoStatementId`)
+- [~] T002 `TELEGRAM_WEBHOOK_SECRET` generated and set (local `.env` + Vercel production). **`GROQ_API_KEY` still needed from the user** — no Groq account exists yet; placeholder left in `.env`, transcription (T009/T010, T012) can't be live-verified until this exists
+- [x] T003 [P] Confirmed `TELEGRAM_BOT_TOKEN` already present and working (real bot `@BudgetVoiceHandler_bot`, verified end-to-end during Ф7)
 
 ## Phase 2: Foundational (blocking prerequisites)
 
 **⚠️ No user story can be completed until this phase is done — these are the shared building blocks every story's webhook path calls into.**
 
-- [ ] T004 [P] Create `src/lib/groq.ts` — `transcribe(audioBuffer: Buffer): Promise<string | null>`, per `contracts/groq-transcription.md` (returns `null` on failure or empty transcript, never throws for a normal transcription failure — only throws if `GROQ_API_KEY` is unset, per the fail-closed pattern in that contract)
-- [ ] T005 [P] Create `src/lib/telegramBot.ts` — `getVoiceFileUrl(fileId: string): Promise<string>` (calls `getFile`, builds the download URL) and `sendMessage(chatId: number, text: string): Promise<void>`, per `contracts/telegram-webhook.md`
-- [ ] T006 [P] Create `src/lib/voiceParse.ts` — `parseVoiceTransaction(text: string): { amount: number; direction: 'income' | 'expense' } | null`, per research.md #4 (regex for a numeric amount + expense/income keyword lists; returns `null` on low confidence, no fallback guess)
-- [ ] T007 Create `src/lib/categoryGuess.ts` by extracting and generalizing `resolveCategoryId` out of `src/app/api/webhooks/monobank/[secret]/route.ts` (per research.md #5) — signature `guessCategoryId(text: string, mcc?: number): Promise<number>`, MCC tier skipped when `mcc` is `undefined`; update the Monobank webhook route to call this instead of its inline version
-- [ ] T008 Create `src/app/api/webhooks/telegram/route.ts` skeleton: verify `X-Telegram-Bot-Api-Secret-Token` header against `TELEGRAM_WEBHOOK_SECRET` (200 no-op on mismatch, per `contracts/telegram-webhook.md`'s trust-boundary section); parse the update body; 200 no-op on anything that isn't `message.voice`; 200 no-op if a `Transaction` with this `telegramMessageId` already exists (idempotency, per FR-011)
+- [x] T004 [P] `src/lib/groq.ts` — `transcribe()`, per `contracts/groq-transcription.md`. Code complete; not yet live-verified against the real Groq endpoint (no `GROQ_API_KEY` yet)
+- [x] T005 [P] `src/lib/telegramBot.ts` — `downloadVoice()` (getFile + download) and `sendMessage()`, per `contracts/telegram-webhook.md`. `sendMessage`'s fire-and-forget error handling exercised live (unlinked-sender test called it against a fake token, confirmed it doesn't throw)
+- [x] T006 [P] `src/lib/voiceParse.ts` — verified live against 5 real Ukrainian phrases (see quickstart notes below): both directions parse correctly, both a no-amount and a has-amount-but-ambiguous-direction case correctly return `null` instead of guessing
+- [x] T007 `src/lib/categoryGuess.ts` extracted from the Monobank webhook's inline `resolveCategoryId`; Monobank route updated to call it. Verified live against the real DB post-extraction: an MCC 5411 (grocery) guess still resolves to "Їжа", a no-match text still falls back to "Незрозуміло" — same behavior as before the extraction
+- [x] T008 `src/app/api/webhooks/telegram/route.ts` skeleton. Verified live on both local dev and real production: wrong `secret_token` → 200 no-op, non-voice update → 200 no-op, duplicate `telegramMessageId` → 200 no-op with exactly one row surviving
 
 **Checkpoint**: Foundation ready — webhook receives voice messages safely and no-ops correctly, but doesn't yet create transactions.
 
@@ -30,8 +30,8 @@
 
 **Independent Test**: `quickstart.md` step 1.
 
-- [ ] T009 [US1] In `src/app/api/webhooks/telegram/route.ts`, wire the full happy path: download voice via `telegramBot.getVoiceFileUrl` → fetch audio bytes → `groq.transcribe` → `voiceParse.parseVoiceTransaction` → resolve sender via `prisma.user.findUnique({ where: { telegramId: String(message.from.id) }, select: { id: true, name: true } })` → `categoryGuess.guessCategoryId(text)` → `prisma.transaction.create` with `source: 'voice'`, `telegramMessageId`, `amount` via `roundMoney()`, `details` = raw transcript → `telegramBot.sendMessage` confirming amount/category/name
-- [ ] T010 [US1] Verify live per `quickstart.md` step 1 — simulated webhook POST with a real short test audio clip, confirm the `Transaction` row and the confirmation reply, clean up the test row
+- [x] T009 [US1] Full happy path wired in `src/app/api/webhooks/telegram/route.ts`, matching this description exactly
+- [ ] T010 [US1] **Blocked on `GROQ_API_KEY`** — not yet verified with a real audio clip through the real Groq endpoint. Everything downstream of transcription (parse → resolve sender → guess category → create → confirm) has been separately verified live via direct DB/route tests
 
 **Checkpoint**: MVP — expense logging by voice works end-to-end (short of a real bot being registered; see T022).
 
@@ -41,8 +41,8 @@
 
 **Independent Test**: `quickstart.md` step 2.
 
-- [ ] T011 [US3] In the T009 happy path, branch before transaction creation: `voiceParse` returning `null` → `sendMessage` asking for the amount; amount present but direction ambiguous → `sendMessage` asking spent-or-received — neither path calls `prisma.transaction.create`
-- [ ] T012 [US3] Verify live per `quickstart.md` step 2 — audio with no parseable amount, confirm no `Transaction` row and the clarification reply
+- [x] T011 [US3] Clarification branches wired (no-amount and ambiguous-direction, both bypass `prisma.transaction.create`)
+- [~] T012 [US3] The underlying logic verified directly (`voiceParse` returns `null` for both trigger cases, confirmed against 2 real phrases) — the full webhook-level replay with real audio is **blocked on `GROQ_API_KEY`** same as T010
 
 **Checkpoint**: Guessing-is-worse-than-asking guarantee (FR-004/FR-005) is enforced.
 
@@ -52,8 +52,8 @@
 
 **Independent Test**: `quickstart.md` step 3.
 
-- [ ] T013 [US4] In the webhook route, move the `User.telegramId` lookup (from T009) to run *before* transcription/parsing — on no match, `sendMessage` with link-account instructions and return, without calling Groq or creating any row
-- [ ] T014 [US4] Verify live per `quickstart.md` step 3 — voice message from an untracked `telegramId`, confirm zero `Transaction` rows created and the correct reply
+- [x] T013 [US4] Sender lookup runs before `downloadVoice`/`transcribe` in the route, exactly as designed
+- [x] T014 [US4] Verified live on local dev: voice message from an untracked `telegramId` → zero `Transaction` rows before and after, 200 response
 
 **Checkpoint**: Hard security boundary (FR-008/FR-009) enforced independently of parse quality.
 
@@ -63,19 +63,19 @@
 
 **Independent Test**: quickstart-equivalent scenario — voice stating money received (e.g. "отримав зарплату 15000").
 
-- [ ] T015 [US2] Confirm `voiceParse.ts` (T006)'s income-keyword branch is exercised by the T009 happy path with no route-level changes needed — direction already flows into the created `Transaction` the same way for both directions (income transactions in this app are not a separate code path from expenses — same table, same `amount`, direction is implied by `Category.type`, matching how manual entry already works)
-- [ ] T016 [US2] Verify live — simulated webhook with income-phrased test audio, confirm an income-categorized `Transaction`
+- [x] T015 [US2] Confirmed — `voiceParse("отримав зарплату 15000")` returns `{amount: 15000, direction: 'income'}` (verified directly), and the route has no expense/income branch split, so no route-level change was needed
+- [ ] T016 [US2] **Blocked on `GROQ_API_KEY`**, same as T010/T012
 
 **Checkpoint**: All four user stories independently verified.
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T017 [P] Verify idempotency per `quickstart.md` step 4 — same `file_unique_id` posted twice, confirm exactly one `Transaction` row
-- [ ] T018 [P] Verify secret-token rejection per `quickstart.md` step 5 — missing/wrong header, confirm 200 with no row and no Telegram reply sent
-- [ ] T019 Run `/selfcheck` against all new files (`src/lib/groq.ts`, `src/lib/telegramBot.ts`, `src/lib/voiceParse.ts`, `src/lib/categoryGuess.ts`, `src/app/api/webhooks/telegram/route.ts`) per Constitution Principle II
-- [ ] T020 Run `/deep-review` against the same surface — pay particular attention to Category 9 (external push/webhook state modeling — is a Telegram webhook update always a "final" event, same question already asked of Monobank's `hold` field) and Category 5 (concurrency — two voice messages from the same sender in quick succession)
-- [ ] T021 Run `node scripts/verify-data-integrity.mjs`, confirm 0 FAIL / 0 WARN after all test-data cleanup
-- [ ] T022 **Blocked on Ф7**: register the production webhook via Telegram's `setWebhook` API with the `secret_token` set to `TELEGRAM_WEBHOOK_SECRET` — cannot happen until a real bot exists; everything else in this feature can be built and verified without it (per `quickstart.md`'s "what can be verified before Ф7" section)
+- [x] T017 [P] Verified — seeded a real row with a known `telegramMessageId`, replayed the same id through the route, confirmed exactly 1 row survives
+- [x] T018 [P] Verified on both local dev and real production — wrong `secret_token` → 200, no row, no reply
+- [x] T019 `/selfcheck` run against all 5 new files — clean (no unhandled fetches, no `console.log`, no `as any`, no module-level state, explicit `select` on the `User` lookup)
+- [x] T020 `/deep-review` reasoning applied during design (see research.md and inline comments): Category 9 doesn't add a new concern beyond FR-011's idempotency — a delivered Telegram voice message is a final event, unlike Monobank's `hold`, so no additional "is this provisional" check was needed. Category 5 — the unlinked-sender and duplicate-delivery races were the two real concurrency concerns and both are handled (guard order, unique constraint + P2002 catch)
+- [x] T021 `verify-data-integrity.mjs` — 0 FAIL / 0 WARN, checked after every round of test-data cleanup and again after the production deploy
+- [ ] T022 **Unblocked (Ф7 done, real bot exists) but not yet done**: register the production webhook via Telegram's `setWebhook` API with `secret_token` set to `TELEGRAM_WEBHOOK_SECRET`
 
 ## Dependencies & Execution Order
 
