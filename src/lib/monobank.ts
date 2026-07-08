@@ -148,14 +148,20 @@ export function guessCategoryByMcc(mcc: number | undefined): string | null {
 // merchant naming (grocery chains, pharmacy chains, well-known subscription
 // services). An unmatched merchant falls through to the safe fallback
 // rather than getting a low-confidence guess.
+// Monobank rows: merchant/store names only, real generic category words
+// ("продукти", "їжа") essentially never appear in a bank statement
+// description. Voice-logged rows: the sender may say the category out loud
+// instead of (or as well as) a merchant name — the generic-word additions
+// below (укр/рос/eng) exist for that caller and are safe for Monobank too,
+// since they're not realistic merchant-name substrings.
 const KEYWORD_CATEGORY: [RegExp, string][] = [
-  [/аптек|pharmacy|фармаці/i, 'Медицина'],
-  [/сільпо|silpo|атб|фора|ашан|novus|варус|ваш ?формат|вест ?лайн|кошик/i, 'Їжа'],
+  [/аптек|pharmacy|фармаці|ліки|лекарств|medicine/i, 'Медицина'],
+  [/сільпо|silpo|атб|фора|ашан|novus|варус|ваш ?формат|вест ?лайн|кошик|продукт|їжа|еда|food|groceries|grocery/i, 'Їжа'],
   [/netflix|spotify|youtube ?premium|apple\.com\/bill|google ?(play|one)|playstation|xbox|patreon|подпис|підписк/i, 'Підписки'],
-  [/coursera|udemy|prometheus|школа|курси|university|college|навчанн/i, 'Навчання'],
+  [/coursera|udemy|prometheus|школа|курси|university|college|навчанн|учеба|education|study/i, 'Навчання'],
   [/vape|вейп|сигарет|tobacco|casino|казино|bet|parimatch|букмекер/i, 'Залежності'],
-  [/квіти|flowers|подарун|gift/i, 'Подарунки'],
-  [/zara|h&m|lc waikiki|epicentr|епіцентр|leroy merlin|ikea|одяг|взуття/i, 'Домашній хлам/одяг/etc'],
+  [/квіти|flowers|подарун|подарок|gift/i, 'Подарунки'],
+  [/zara|h&m|lc waikiki|epicentr|епіцентр|leroy merlin|ikea|одяг|взуття|одежда|clothes|clothing/i, 'Домашній хлам/одяг/etc'],
 ];
 
 export function guessCategoryByKeyword(description: string): string | null {

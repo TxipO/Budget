@@ -71,11 +71,20 @@ export async function POST(req: NextRequest) {
     const categoryId = await guessCategoryId(user.id, parsed.direction, transcript, undefined);
     const category = await prisma.category.findUnique({ where: { id: categoryId }, select: { name: true } });
 
+    // Clean UTC midnight, not the exact receipt timestamp — matches the
+    // Monobank webhook's convention (Date.UTC(...FullYear/Month/Date)):
+    // a transaction records which day something happened, not the exact
+    // minute. A raw `new Date()` here previously left messy timestamps that
+    // verify-data-integrity.mjs's timezone-residue check correctly flagged
+    // as the same class of bug already fixed once in this project.
+    const now = new Date();
+    const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
     let created;
     try {
       created = await prisma.transaction.create({
         data: {
-          date: new Date(),
+          date: day,
           categoryId,
           amount: roundMoney(parsed.amount),
           details: transcript,
