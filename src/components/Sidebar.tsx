@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { LayoutDashboard, ArrowLeftRight, CalendarDays, BarChart3, Settings, Sun, Moon, Wallet } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { LayoutDashboard, ArrowLeftRight, CalendarDays, BarChart3, Settings, Sun, Moon, Wallet, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 import { useTheme } from '@/lib/theme';
@@ -15,16 +15,36 @@ const NAV = [
   { href: '/settings',     icon: Settings,         label: 'Налаштування' },
 ];
 
-const USERS = ['Паша', 'Женя'];
-
 export default function Sidebar() {
   const pathname = usePathname();
-  const [user, setUser] = useState('Паша');
+  const router = useRouter();
+  const [user, setUser] = useState('');
+  const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
   const [theme, toggleTheme] = useTheme();
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
+    // No session yet on /login — /api/users and /api/account/me both
+    // require one and would just 401. /setup is exempted from the
+    // redirect-check below, not from the fetch, so it still learns once
+    // setup completes elsewhere.
+    if (pathname === '/login') return;
+
     const saved = localStorage.getItem('currentUser');
     if (saved) setUser(saved);
+
+    fetch('/api/users').then(r => r.ok ? r.json() : []).then((list: { id: number; name: string }[]) => {
+      setUsers(list);
+      // Fresh deployment with no household configured yet — this app
+      // originally hardcoded "Паша"/"Женя" as the only two options, which
+      // doesn't work once someone else runs their own instance.
+      if (list.length === 0) {
+        if (pathname !== '/setup') router.replace('/setup');
+        return;
+      }
+      if (!saved || !list.some(u => u.name === saved)) setUser(list[0].name);
+    }).catch(() => {});
+
     // A Telegram-linked login identifies a specific household member —
     // default the "who's entering" toggle to them instead of whatever was
     // last picked (e.g. on a shared family tablet). Still just a default:
@@ -35,11 +55,22 @@ export default function Sidebar() {
         localStorage.setItem('currentUser', data.user.name);
       }
     }).catch(() => {});
-  }, []);
+  }, [pathname, router]);
 
   function switchUser(u: string) {
     setUser(u);
     localStorage.setItem('currentUser', u);
+  }
+
+  async function logout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await fetch('/api/account/logout', { method: 'POST' });
+      window.location.href = '/login';
+    } catch {
+      setLoggingOut(false);
+    }
   }
 
   return (
@@ -96,38 +127,53 @@ export default function Sidebar() {
       </button>
 
       {/* User switcher */}
-      <div style={{
-        borderTop: '1px solid var(--c-border)',
-        paddingTop: 16,
-        marginTop: 4,
-      }}>
-        <p style={{ fontSize: 11, color: '#475569', marginBottom: 8, paddingLeft: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-          Активний
-        </p>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {USERS.map(u => (
-            <button
-              key={u}
-              onClick={() => switchUser(u)}
-              style={{
-                flex: 1,
-                padding: '7px 4px',
-                borderRadius: 8,
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 13,
-                fontWeight: 600,
-                fontFamily: 'inherit',
-                transition: 'all 0.15s',
-                background: user === u ? 'rgba(249,115,22,0.2)' : 'var(--c-hover)',
-                color: user === u ? '#FB923C' : 'var(--c-text-muted)',
-              }}
-            >
-              {u}
-            </button>
-          ))}
+      {users.length > 0 && (
+        <div style={{
+          borderTop: '1px solid var(--c-border)',
+          paddingTop: 16,
+          marginTop: 4,
+        }}>
+          <p style={{ fontSize: 11, color: '#475569', marginBottom: 8, paddingLeft: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+            Активний
+          </p>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {users.map(u => (
+              <button
+                key={u.id}
+                onClick={() => switchUser(u.name)}
+                style={{
+                  flex: 1,
+                  padding: '7px 4px',
+                  borderRadius: 8,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  fontFamily: 'inherit',
+                  transition: 'all 0.15s',
+                  background: user === u.name ? 'rgba(249,115,22,0.2)' : 'var(--c-hover)',
+                  color: user === u.name ? '#FB923C' : 'var(--c-text-muted)',
+                }}
+              >
+                {u.name}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Logout */}
+      {pathname !== '/login' && (
+        <button
+          onClick={logout}
+          disabled={loggingOut}
+          className="nav-link"
+          style={{ width: '100%', justifyContent: 'flex-start', marginTop: 8, color: 'var(--c-text-muted)' }}
+        >
+          <LogOut size={17} />
+          {loggingOut ? 'Вихід…' : 'Вийти'}
+        </button>
+      )}
     </aside>
   );
 }
