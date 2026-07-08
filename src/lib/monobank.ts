@@ -156,7 +156,12 @@ export function guessCategoryByMcc(mcc: number | undefined): string | null {
 // since they're not realistic merchant-name substrings.
 const KEYWORD_CATEGORY: [RegExp, string][] = [
   [/аптек|pharmacy|фармаці|ліки|лекарств|medicine/i, 'Медицина'],
-  [/сільпо|silpo|атб|фора|ашан|novus|варус|ваш ?формат|вест ?лайн|кошик|продукт|їжа|еда|food|groceries|grocery/i, 'Їжа'],
+  // "їжа"/"еда" are Ukrainian/Russian nouns with grammatical case endings
+  // (їжа/їжу/їжі/їжею, еда/еды/еде/едой) — a bare "їжа" substring match
+  // missed "Потратив 200 крон на їжу" entirely, since "їжу" (accusative)
+  // doesn't contain "їжа" as a substring. Same bug class as the earlier
+  // exact-verb-form fix in voiceParse.ts, just in the category keywords.
+  [/сільпо|silpo|атб|фора|ашан|novus|варус|ваш ?формат|вест ?лайн|кошик|продукт|їж(а|і|у|ею)|ед(а|ы|е|у|ой)|food|groceries|grocery/i, 'Їжа'],
   [/netflix|spotify|youtube ?premium|apple\.com\/bill|google ?(play|one)|playstation|xbox|patreon|подпис|підписк/i, 'Підписки'],
   [/coursera|udemy|prometheus|школа|курси|university|college|навчанн|учеба|education|study/i, 'Навчання'],
   [/vape|вейп|сигарет|tobacco|casino|казино|bet|parimatch|букмекер/i, 'Залежності'],
