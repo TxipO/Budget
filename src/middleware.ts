@@ -3,13 +3,22 @@ import { NextRequest, NextResponse } from 'next/server';
 const PUBLIC_PATHS = ['/login', '/api/auth', '/manifest.json', '/icon-192.png', '/icon-512.png', '/favicon.ico'];
 
 // Prefix matches, kept separate from the exact-match list above so widening
-// one never accidentally widens the other. Monobank calls this URL directly
-// (GET to verify it's alive, POST to push transactions) — it can't send our
-// session cookie, so it must bypass PIN auth entirely. Safe because the
-// route itself is the real gate: it only acts on a request whose :secret
-// matches a per-user 192-bit random value stored in the DB, and no-ops
-// (still 200) on anything else.
-const PUBLIC_PREFIXES = ['/api/webhooks/monobank/'];
+// one never accidentally widens the other.
+const PUBLIC_PREFIXES = [
+  // Monobank calls this URL directly (GET to verify it's alive, POST to push
+  // transactions) — it can't send our session cookie, so it must bypass PIN
+  // auth entirely. Safe because the route itself is the real gate: it only
+  // acts on a request whose :secret matches a per-user 192-bit random value
+  // stored in the DB, and no-ops (still 200) on anything else.
+  '/api/webhooks/monobank/',
+  // Everything under /api/auth/ is part of logging in — by definition
+  // reached before any session exists. /api/auth itself (PIN login) is
+  // already in the exact-match list above; this prefix covers the Telegram
+  // sub-routes without needing a matcher for a path that doesn't exist yet.
+  // Each of those routes is its own gate (HMAC signature verification), not
+  // the middleware.
+  '/api/auth/',
+];
 
 // Must match SESSION_MAX_AGE_MS / the cookie's maxAge in api/auth/route.ts.
 const SESSION_MAX_AGE_MS = 60 * 60 * 24 * 30 * 1000; // 30 днів
