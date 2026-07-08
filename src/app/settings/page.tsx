@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, RefreshCw, Landmark } from 'lucide-react';
+import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, RefreshCw, Landmark, Pencil, UserPlus } from 'lucide-react';
 import { CATEGORY_PALETTE, formatMoney } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { useTheme } from '@/lib/theme';
@@ -36,6 +36,13 @@ export default function SettingsPage() {
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [unlinking, setUnlinking] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  const [newUserName, setNewUserName] = useState('');
+  const [addingUser, setAddingUser] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<number | null>(null);
+  const [editUserName, setEditUserName] = useState('');
+  const [savingUserId, setSavingUserId] = useState<number | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
 
   useEffect(() => {
     fetch('/api/account/me').then(r => r.ok ? r.json() : null).then(setAccount).catch(() => {});
@@ -120,12 +127,80 @@ export default function SettingsPage() {
       .then(setTemplates)
       .catch(() => toast('Помилка завантаження шаблонів', 'error'));
   }
+  function loadUsers() {
+    fetch('/api/users').then(r => r.ok ? r.json() : Promise.reject()).then(setUsers).catch(() => {});
+  }
   useEffect(() => {
     loadCats();
     loadTemplates();
     loadMonoStatus();
-    fetch('/api/users').then(r => r.ok ? r.json() : Promise.reject()).then(setUsers).catch(() => {});
+    loadUsers();
   }, []);
+
+  async function addUser(e: React.FormEvent) {
+    e.preventDefault();
+    const name = newUserName.trim();
+    if (!name || addingUser) return;
+    setAddingUser(true);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { toast(data?.error || 'Помилка додавання', 'error'); return; }
+      setNewUserName('');
+      loadUsers();
+      toast('Користувача додано');
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setAddingUser(false);
+    }
+  }
+
+  function startEditUser(u: { id: number; name: string }) {
+    setEditingUserId(u.id);
+    setEditUserName(u.name);
+  }
+
+  async function saveEditUser(id: number) {
+    const name = editUserName.trim();
+    if (!name || savingUserId) return;
+    setSavingUserId(id);
+    try {
+      const res = await fetch(`/api/users/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { toast(data?.error || 'Помилка перейменування', 'error'); return; }
+      setEditingUserId(null);
+      loadUsers();
+      toast("Ім'я оновлено");
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setSavingUserId(null);
+    }
+  }
+
+  async function deleteUser(u: { id: number; name: string }) {
+    if (deletingUserId) return;
+    if (!confirm(`Видалити ${u.name}? Його транзакції залишаться, але без прив'язки до конкретної людини.`)) return;
+    setDeletingUserId(u.id);
+    try {
+      const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { toast(data?.error || 'Помилка видалення', 'error'); return; }
+      loadUsers();
+      toast('Користувача видалено');
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setDeletingUserId(null);
+    }
+  }
 
   async function addTemplate(e: React.FormEvent) {
     e.preventDefault();
@@ -302,6 +377,60 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      {/* Users section */}
+      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Користувачі</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: users.length > 0 ? 16 : 0 }}>
+          {users.map(u => (
+            <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {editingUserId === u.id ? (
+                <>
+                  <input
+                    className="input-field" value={editUserName}
+                    onChange={e => setEditUserName(e.target.value)}
+                    style={{ flex: 1 }} autoFocus
+                  />
+                  <button onClick={() => saveEditUser(u.id)} disabled={savingUserId === u.id} className="btn-primary" style={{ padding: '9px 14px' }}>
+                    {savingUserId === u.id ? '…' : 'Зберегти'}
+                  </button>
+                  <button onClick={() => setEditingUserId(null)} className="btn-ghost" style={{ padding: '9px 14px' }}>
+                    Скасувати
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span style={{ flex: 1, fontSize: 14, color: 'var(--c-text-sec)' }}>{u.name}</span>
+                  <button onClick={() => startEditUser(u)} className="btn-ghost" style={{ padding: '9px 12px' }} aria-label={`Перейменувати ${u.name}`}>
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    onClick={() => deleteUser(u)} disabled={deletingUserId === u.id}
+                    className="btn-ghost" style={{ padding: '9px 12px', color: '#FCA5A5' }}
+                    aria-label={`Видалити ${u.name}`}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {users.length < 2 && (
+          <form onSubmit={addUser} style={{ display: 'flex', gap: 8 }}>
+            <input
+              className="input-field" value={newUserName}
+              onChange={e => setNewUserName(e.target.value)}
+              placeholder="Ім'я нового користувача" style={{ flex: 1 }}
+            />
+            <button type="submit" disabled={addingUser} className="btn-primary" style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+              <UserPlus size={16} />
+              {addingUser ? 'Додавання…' : 'Додати'}
+            </button>
+          </form>
+        )}
+      </div>
 
       {/* Appearance section */}
       <div className="card" style={{ padding: 24, marginBottom: 24 }}>
