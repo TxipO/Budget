@@ -45,9 +45,13 @@ export interface ParsedVoiceTransaction {
 export function parseVoiceTransaction(text: string): ParsedVoiceTransaction | null {
   const normalized = text.toLowerCase();
 
-  const amountMatch = normalized.match(/\d+([.,]\d+)?/);
-  if (!amountMatch) return null;
-  const amount = parseFloat(amountMatch[0].replace(',', '.'));
+  // Global match, not the first hit only — "заплатив за 2 каву по 100"
+  // used to silently take "2" as the amount. More than one number in the
+  // message is genuinely ambiguous (which one is the amount?), so it's
+  // treated the same as no number found: ask, don't guess.
+  const amountMatches = normalized.match(/\d+([.,]\d+)?/g);
+  if (!amountMatches || amountMatches.length !== 1) return null;
+  const amount = parseFloat(amountMatches[0].replace(',', '.'));
   if (!Number.isFinite(amount) || amount <= 0) return null;
 
   const hasExpenseStem = EXPENSE_STEMS.some(w => normalized.includes(w));

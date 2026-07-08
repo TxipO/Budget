@@ -15,15 +15,15 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     const newCategoryId = parseInt(body.categoryId);
 
-    // Read the pre-update row so we can tell whether this is a Monobank-
-    // imported transaction getting its category corrected — that's the
-    // ONLY signal MonoCategoryRule ever learns from (never Claude's own
-    // guess), so a repeat merchant is never re-guessed after being fixed
-    // once. Fetched before the update, not after, so we compare against
-    // the category that was actually wrong.
+    // Read the pre-update row so we can tell whether this is a Monobank- or
+    // voice-sourced transaction getting its category corrected — that's the
+    // signal MonoCategoryRule learns from (never Claude's own guess), so a
+    // repeat merchant/phrase is never re-guessed after being fixed once.
+    // Fetched before the update, not after, so we compare against the
+    // category that was actually wrong.
     const before = await prisma.transaction.findUnique({
       where: { id },
-      select: { source: true, monoMerchant: true, userId: true, categoryId: true },
+      select: { source: true, monoMerchant: true, details: true, userId: true, categoryId: true },
     });
 
     const tx = await prisma.transaction.update({
@@ -38,8 +38,17 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       include: { category: true, user: { select: { id: true, name: true } } },
     });
 
-    if (before?.source === 'mono' && before.monoMerchant && before.userId && newCategoryId !== before.categoryId) {
-      const merchantKey = normalizeMerchantKey(before.monoMerchant);
+    // Voice transcripts rarely repeat verbatim, so this rarely hits tier 1
+    // of guessCategoryId on a *future* message the way a real merchant name
+    // does — but per spec.md's US1 acceptance criteria, a voice correction
+    // must still reach the same learning mechanism, not be silently
+    // excluded. Previously gated on source === 'mono' only, so a voice
+    // correction here never ran at all.
+    const correctionKey = before?.source === 'mono' ? before.monoMerchant
+      : before?.source === 'voice' ? before.details
+      : null;
+    if (correctionKey && before?.userId && newCategoryId !== before.categoryId) {
+      const merchantKey = normalizeMerchantKey(correctionKey);
       await prisma.monoCategoryRule.upsert({
         where: { userId_merchantKey: { userId: before.userId, merchantKey } },
         update: { categoryId: newCategoryId, hitCount: { increment: 1 } },
