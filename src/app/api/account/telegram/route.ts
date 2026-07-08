@@ -10,9 +10,12 @@ export async function DELETE(req: NextRequest) {
     const userId = req.headers.get('x-current-user-id');
     if (!userId) return NextResponse.json({ error: 'Немає прив’язаного Telegram-акаунту' }, { status: 400 });
 
+    // select — the result isn't returned to the client, but update() fetches
+    // every column by default otherwise (monoTokenEnc included).
     await prisma.user.update({
       where: { id: Number(userId) },
       data: { telegramId: null, telegramUsername: null, telegramFirstName: null, telegramPhotoUrl: null },
+      select: { id: true },
     });
     return NextResponse.json({ ok: true });
   } catch (e) {
