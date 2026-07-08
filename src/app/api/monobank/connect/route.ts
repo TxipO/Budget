@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isPositiveInt } from '@/lib/validate';
 import { encrypt } from '@/lib/crypto';
-import { getClientInfo, setWebhook, MonobankError } from '@/lib/monobank';
+import { getClientInfo, setWebhook, getAppOrigin, MonobankError } from '@/lib/monobank';
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     // fails, nothing gets written to the DB, so a failed connect attempt
     // never leaves a half-connected user behind.
     const webhookSecret = randomBytes(24).toString('hex');
-    const webhookUrl = `${req.nextUrl.origin}/api/webhooks/monobank/${webhookSecret}`;
+    const webhookUrl = `${getAppOrigin()}/api/webhooks/monobank/${webhookSecret}`;
 
     try {
       await setWebhook(trimmedToken, webhookUrl);

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isPositiveInt } from '@/lib/validate';
 import { decrypt } from '@/lib/crypto';
-import { setWebhook } from '@/lib/monobank';
+import { setWebhook, getAppOrigin } from '@/lib/monobank';
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     // push for this account — just with Monobank retrying pointlessly.
     try {
       const token = decrypt(user.monoTokenEnc);
-      await setWebhook(token, `${req.nextUrl.origin}/api/webhooks/monobank/disconnected`);
+      await setWebhook(token, `${getAppOrigin()}/api/webhooks/monobank/disconnected`);
     } catch (e) {
       console.error('[monobank/disconnect] webhook unregister failed, continuing', e);
     }

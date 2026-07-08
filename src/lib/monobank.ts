@@ -2,6 +2,21 @@ import { prisma } from '@/lib/prisma';
 
 const BASE = 'https://api.monobank.ua';
 
+// The webhook URL we hand to Monobank must NOT be built from req.nextUrl.origin
+// (or any Host/X-Forwarded-Host-derived value) — those reflect whatever the
+// caller's HTTP client sent and aren't guaranteed to match the real deployment
+// domain. An authenticated session tricked into calling /api/monobank/connect
+// with a spoofed Host header could register the webhook against an
+// attacker-controlled domain, leaking every future transaction (merchant,
+// amount, category) to it indefinitely. Vercel's own system env vars are
+// injected at the platform level, not derived from any request, so they
+// can't be spoofed the same way.
+export function getAppOrigin(): string {
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return 'http://localhost:3000'; // local dev only — Monobank can't reach this regardless
+}
+
 export class MonobankError extends Error {
   constructor(message: string, public status: number) {
     super(message);

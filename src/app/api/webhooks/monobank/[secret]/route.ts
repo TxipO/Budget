@@ -8,6 +8,7 @@ interface StatementItem {
   time: number; // unix seconds
   description: string;
   mcc?: number;
+  hold?: boolean; // provisional authorization, not yet settled — can still be declined/cancelled
   amount: number; // minor units (kopecks), negative = expense
   currencyCode: number;
 }
@@ -16,38 +17,38 @@ const CCY_NAMES: Record<number, string> = { 980: 'UAH', 578: 'NOK' };
 
 async function resolveCategoryId(userId: number, txType: 'expense' | 'income', merchantKey: string, mcc: number | undefined): Promise<number> {
   // 1. Learned rule from a manual correction — highest priority, no guessing.
+  // Kept as its own targeted lookup (keyed by userId+merchantKey, not type)
+  // since it usually short-circuits before any category data is needed.
   const rule = await prisma.monoCategoryRule.findUnique({
     where: { userId_merchantKey: { userId, merchantKey } },
   });
   if (rule) return rule.categoryId;
 
+  // Tiers 2-5 (MCC guess, keyword guess, safe fallback, last resort) are all
+  // just "find an active category of this type by name" against the same
+  // set — one query instead of up to four separate round-trips.
+  const categories = await prisma.category.findMany({ where: { type: txType, isActive: true }, orderBy: { id: 'asc' } });
+  const idByName = new Map(categories.map(c => [c.name, c.id]));
+
   // 2. MCC guess — free, no external call (standard ISO 18245 codes).
   const mccGuess = guessCategoryByMcc(mcc);
-  if (mccGuess) {
-    const cat = await prisma.category.findFirst({ where: { name: mccGuess, type: txType, isActive: true } });
-    if (cat) return cat.id;
-  }
+  if (mccGuess && idByName.has(mccGuess)) return idByName.get(mccGuess)!;
 
   // 3. Keyword guess against the merchant description — also free. Catches
   // cases MCC alone doesn't (a generic "retail" MCC from a recognizable
   // grocery chain name, for instance).
   const keywordGuess = guessCategoryByKeyword(merchantKey);
-  if (keywordGuess) {
-    const cat = await prisma.category.findFirst({ where: { name: keywordGuess, type: txType, isActive: true } });
-    if (cat) return cat.id;
-  }
+  if (keywordGuess && idByName.has(keywordGuess)) return idByName.get(keywordGuess)!;
 
   // 4. Safe fallback — a bucket that always exists for the type.
   const fallbackName = txType === 'expense' ? 'Незрозуміло' : 'Додаткове';
-  const fallback = await prisma.category.findFirst({ where: { name: fallbackName, type: txType, isActive: true } });
-  if (fallback) return fallback.id;
+  if (idByName.has(fallbackName)) return idByName.get(fallbackName)!;
 
   // 5. Absolute last resort — any active category of the right type, so an
   // import never crashes even if the expected fallback category was renamed
   // or deleted.
-  const any = await prisma.category.findFirst({ where: { type: txType, isActive: true }, orderBy: { id: 'asc' } });
-  if (!any) throw new Error(`No active ${txType} category exists to file a Monobank transaction under`);
-  return any.id;
+  if (categories[0]) return categories[0].id;
+  throw new Error(`No active ${txType} category exists to file a Monobank transaction under`);
 }
 
 export async function GET() {
@@ -68,6 +69,15 @@ export async function POST(req: NextRequest, { params }: { params: { secret: str
     if (body?.type !== 'StatementItem') return NextResponse.json({ ok: true });
     const item: StatementItem = body.data?.statementItem;
     if (!item?.id) return NextResponse.json({ ok: true });
+
+    // A hold is a provisional card authorization, not a finalized payment —
+    // it can still be declined by the merchant or cancelled (a fuel-pump
+    // pre-auth that never completes, an expired reservation) and never
+    // settle at all. Recording it now would risk both a phantom transaction
+    // (if it never settles) and a duplicate (if it settles later under a
+    // different statement id). Monobank sends a separate, later webhook
+    // once the hold actually clears — only that one should be recorded.
+    if (item.hold) return NextResponse.json({ ok: true });
 
     // Idempotent: Monobank redelivering the same event (or its own retry
     // after a slow response) must never create a duplicate transaction.
