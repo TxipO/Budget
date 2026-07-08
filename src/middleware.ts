@@ -86,7 +86,17 @@ async function verifySession(cookieValue: string, secret: string): Promise<strin
 function buildCsp(nonce: string): string {
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    // 'unsafe-eval' is required specifically by telegram-widget.js, which
+    // calls eval() internally during its own init — confirmed live via an
+    // uncaught CSP EvalError, only reproducible with a real registered bot
+    // + a domain passed through /setdomain (a fake test bot's "Bot domain
+    // invalid" response short-circuits before widget.js reaches that code
+    // path, so this was invisible in every earlier test). 'strict-dynamic'
+    // governs script *sources*, not eval — a separate CSP concern entirely.
+    // Accepted tradeoff: this app has no user-generated content that could
+    // feed an attacker-controlled string into an eval() reachable from
+    // already-trusted code, so the realistic XSS-via-eval risk here is low.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval'`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self' data:",
