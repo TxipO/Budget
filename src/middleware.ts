@@ -91,6 +91,11 @@ function buildCsp(nonce: string): string {
     "img-src 'self' data:",
     "font-src 'self' data:",
     "connect-src 'self'",
+    // Telegram Login Widget's own iframe (oauth.telegram.org) — without
+    // this, frame-src falls back to default-src 'self' and silently blocks
+    // the widget in production only (dev mode skips CSP entirely, so this
+    // gap wasn't visible in local testing).
+    "frame-src https://oauth.telegram.org",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
