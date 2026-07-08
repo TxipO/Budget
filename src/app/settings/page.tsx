@@ -32,6 +32,42 @@ export default function SettingsPage() {
   const [monoTokenInput, setMonoTokenInput] = useState<Record<number, string>>({});
   const [monoConnecting, setMonoConnecting] = useState<number | null>(null);
 
+  interface AccountInfo { shared: boolean; user?: { id: number; name: string; telegramUsername: string | null; telegramFirstName: string | null; email: string | null } }
+  const [account, setAccount] = useState<AccountInfo | null>(null);
+  const [unlinking, setUnlinking] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/account/me').then(r => r.ok ? r.json() : null).then(setAccount).catch(() => {});
+  }, []);
+
+  async function disconnectTelegram() {
+    if (unlinking || !confirm('Відключити Telegram? Наступного разу вхід буде за PIN, або треба буде прив’язати Telegram заново.')) return;
+    setUnlinking(true);
+    try {
+      const res = await fetch('/api/account/telegram', { method: 'DELETE' });
+      if (!res.ok) { toast('Помилка відключення', 'error'); return; }
+      toast('Telegram відключено');
+      setAccount(a => a?.user ? { ...a, user: { ...a.user, telegramUsername: null, telegramFirstName: null } } : a);
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setUnlinking(false);
+    }
+  }
+
+  async function logout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await fetch('/api/account/logout', { method: 'POST' });
+      window.location.href = '/login';
+    } catch {
+      toast('Помилка виходу', 'error');
+      setLoggingOut(false);
+    }
+  }
+
   function loadMonoStatus() {
     fetch('/api/monobank/status').then(r => r.ok ? r.json() : Promise.reject()).then(setMonoStatus).catch(() => {});
   }
@@ -239,6 +275,33 @@ export default function SettingsPage() {
         <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Налаштування</h1>
         <p style={{ color: '#475569', fontSize: 14 }}>Категорії та імпорт даних</p>
       </div>
+
+      {/* Account section */}
+      {account && (
+        <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Обліковий запис</h2>
+          {account.shared ? (
+            <p style={{ fontSize: 14, color: 'var(--c-text-sec)', marginBottom: 16 }}>
+              Ви увійшли за спільним PIN (без прив'язки до конкретного користувача)
+            </p>
+          ) : (
+            <p style={{ fontSize: 14, color: 'var(--c-text-sec)', marginBottom: 16 }}>
+              Ви увійшли як <strong>{account.user!.name}</strong>
+              {account.user!.telegramUsername && <> · Telegram @{account.user!.telegramUsername}</>}
+            </p>
+          )}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {!account.shared && account.user!.telegramUsername && (
+              <button onClick={disconnectTelegram} disabled={unlinking} className="btn-ghost" style={{ padding: '10px 16px' }}>
+                {unlinking ? 'Відключення…' : 'Відключити Telegram'}
+              </button>
+            )}
+            <button onClick={logout} disabled={loggingOut} className="btn-ghost" style={{ padding: '10px 16px' }}>
+              {loggingOut ? 'Вихід…' : 'Вийти'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Appearance section */}
       <div className="card" style={{ padding: 24, marginBottom: 24 }}>

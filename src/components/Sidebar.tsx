@@ -25,6 +25,16 @@ export default function Sidebar() {
   useEffect(() => {
     const saved = localStorage.getItem('currentUser');
     if (saved) setUser(saved);
+    // A Telegram-linked login identifies a specific household member —
+    // default the "who's entering" toggle to them instead of whatever was
+    // last picked (e.g. on a shared family tablet). Still just a default:
+    // the buttons below stay switchable, nothing is locked.
+    fetch('/api/account/me').then(r => r.ok ? r.json() : null).then(data => {
+      if (data && !data.shared && data.user?.name) {
+        setUser(data.user.name);
+        localStorage.setItem('currentUser', data.user.name);
+      }
+    }).catch(() => {});
   }, []);
 
   function switchUser(u: string) {
