@@ -92,6 +92,27 @@ grep DATABASE_URL .env
 ```
 Hostname must contain `-pooler` (e.g. `ep-xxx-pooler.c-9.us-east-1.aws.neon.tech`). Serverless functions can spin up many concurrent instances; each one opens its own Postgres connection, and the *direct* (non-pooled) endpoint has a low connection ceiling that concurrent traffic can exhaust. The pooled endpoint (PgBouncer) is free and handles this — there's no reason not to use it. If the hostname is missing `-pooler`, treat it as a Critical: fix both `.env` and the `DATABASE_URL` Vercel env var (`vercel env add DATABASE_URL production`, or via the dashboard), then `vercel deploy --prod`.
 
+### 13. Silent numeric fallback masking a real error
+```
+pattern: \?\? [01]\b
+glob: src/**/*.ts
+```
+For each match, check what happens if the left side is genuinely `null`/`undefined` because of a real failure (network down, cache empty, lookup missed) rather than a legitimate "no value" case. `?? 0` or `?? 1` is fine for a genuine default (e.g. an optional counter). It's a bug when the fallback is a *plausible* value in a money/rate/quantity context — nothing downstream can distinguish "real 1.0" from "we couldn't get the real value so we silently guessed 1.0". Real example already fixed: `fxRate = (await getCachedExchangeRate(...)) ?? 1` in `api/webhooks/monobank/[secret]/route.ts` silently recorded a ~4-5x wrong amount when the exchange rate was unavailable, with no error anywhere — fixed by throwing instead (which routes through the existing retry mechanism) rather than defaulting.
+
+### 14. Client-controllable Host header used to build a URL handed to a third party
+```
+pattern: nextUrl\.origin|headers\.get\(.host.\)|x-forwarded-host
+glob: src/**/*.ts
+```
+-i flag on. Any match building a URL that gets sent to an external service (a webhook registration, an OAuth redirect, an email link) is a bug — `req.nextUrl.origin` reflects the Host/X-Forwarded-Host header the client sent, not necessarily the real deployment domain. An attacker (or a hijacked session) could spoof it to redirect that callback to a domain they control. Real example already fixed: `api/monobank/connect` and `api/monobank/disconnect` used to build the Monobank webhook URL this way — fixed with `getAppOrigin()` in `lib/monobank.ts`, sourced from Vercel's non-spoofable system env vars (`VERCEL_PROJECT_PRODUCTION_URL`/`VERCEL_URL`) instead. Using `req.nextUrl` for routing/redirects *within* the app (not sent to a third party) is fine — only flag matches where the resulting URL leaves the app.
+
+### 15. Prisma query touching User without an explicit select
+```
+pattern: user: true|prisma\.user\.findMany\(\)|prisma\.user\.findMany\(\{ orderBy
+glob: src/**/*.ts
+```
+Any `include: { user: true }` or an unscoped `prisma.user.findMany()` returns every column, including whatever sensitive fields have been added to `User` since this check was last run (currently `monoTokenEnc`, `monoWebhookSecret` — the latter is plaintext, and leaking it lets an attacker post fake transactions straight to that user's webhook receiver). Real example already fixed: 9 call sites across `transactions`, `recurring`, `stats`, `export` routes did exactly this. Fix = `user: { select: { id: true, name: true } }`, or whatever specific fields the caller actually needs — never a bare `true`.
+
 ---
 
 ## Report format
