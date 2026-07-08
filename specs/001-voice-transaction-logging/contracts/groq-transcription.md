@@ -7,8 +7,8 @@
 **Body** (multipart/form-data):
 - `file`: the downloaded OGG/Opus audio bytes (from Telegram's `getFile` — see research.md #1)
 - `model`: `whisper-large-v3`
-- `language`: `uk`
 - `response_format`: `json` (default; explicit for clarity)
+- No `language` field — the household speaks Ukrainian, English, and Russian interchangeably; omitting it lets Whisper auto-detect rather than forcing one language and hurting accuracy on the other two.
 
 **Response** (200):
 ```json

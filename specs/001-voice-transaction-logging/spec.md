@@ -110,6 +110,7 @@ Someone who has not linked their Telegram account to a household member sends a 
 ## Assumptions
 
 - **Currency**: No currency is stated in voice messages; all amounts are assumed to be in the household's home currency (UAH), matching how the rest of the app already treats amounts.
+- **Language**: The household speaks Ukrainian, English, and Russian interchangeably, so transcription and direction-parsing both support all three (Whisper's language auto-detection, plus keyword lists in all three languages) rather than assuming Ukrainian only. Bot replies stay Ukrainian regardless of which language the voice message was in, matching this project's Ukrainian-only UI-text constraint.
 - **One transaction per message**: A voice message describes exactly one transaction. Messages describing multiple amounts/events are treated as ambiguous (see Edge Cases) rather than split automatically — this can be revisited in a later iteration if it turns out to be a common real usage pattern.
 - **Audio retention**: Voice audio is used only to produce a transcription and is not retained afterward — consistent with this project's existing data-minimization posture (e.g. Monobank tokens are encrypted at rest, never logged in plaintext).
 - **Scope of correction**: The bot's confirmation message is the only in-chat feedback loop; correcting a wrong category or amount after the fact happens in the existing web app (which already has edit/delete UI), not via further chat commands. A voice "undo last" command is out of scope for v1.

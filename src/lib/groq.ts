@@ -17,7 +17,9 @@ export async function transcribe(audio: Buffer): Promise<string | null> {
   const form = new FormData();
   form.append('file', new Blob([new Uint8Array(audio)], { type: 'audio/ogg' }), 'voice.ogg');
   form.append('model', 'whisper-large-v3');
-  form.append('language', 'uk');
+  // No `language` hint — the household speaks Ukrainian, English, or
+  // Russian interchangeably, and Whisper's auto-detection across these
+  // three is reliable enough that forcing one would only hurt the other two.
   form.append('response_format', 'json');
 
   const res = await fetch(GROQ_TRANSCRIPTION_URL, {
