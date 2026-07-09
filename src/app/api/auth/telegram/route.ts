@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     const verified = verifyTelegramAuth(body, botToken);
     if (!verified) return NextResponse.json({ error: 'Недійсний підпис Telegram' }, { status: 401 });
 
-    const user = await prisma.user.findUnique({ where: { telegramId: verified.id } });
+    const user = await prisma.user.findUnique({ where: { telegramId: verified.id }, select: { id: true } });
 
     if (!user) {
       // First-time login — don't auto-create a row here. It might be a

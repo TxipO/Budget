@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     if (typeof token !== 'string' || !token.trim()) return badRequest("Токен обов'язковий");
     const trimmedToken = token.trim();
 
-    const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
+    const user = await prisma.user.findUnique({ where: { id: Number(userId) }, select: { id: true } });
     if (!user) return badRequest('Користувача не знайдено');
 
     let clientInfo;

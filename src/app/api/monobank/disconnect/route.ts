@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     const { userId } = body;
     if (!isPositiveInt(Number(userId))) return badRequest('Невалідний користувач');
 
-    const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
+    const user = await prisma.user.findUnique({ where: { id: Number(userId) }, select: { monoTokenEnc: true } });
     if (!user || !user.monoTokenEnc) return badRequest('Не підключено');
 
     // Best-effort: repoint Monobank's webhook at our own receiver with an

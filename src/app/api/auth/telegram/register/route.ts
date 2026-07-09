@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       // the first time) — never create a new row here, or their transaction
       // history would silently split across two User rows.
       if (!isPositiveInt(Number(linkToUserId))) return badRequest("Невалідний користувач для прив'язки");
-      const existing = await prisma.user.findUnique({ where: { id: Number(linkToUserId) } });
+      const existing = await prisma.user.findUnique({ where: { id: Number(linkToUserId) }, select: { id: true, name: true, telegramId: true, email: true } });
       if (!existing) return badRequest('Користувача не знайдено');
       if (existing.telegramId) return badRequest('До цього акаунту вже прив’язано інший Telegram');
 
@@ -77,6 +77,7 @@ export async function POST(req: NextRequest) {
             telegramPhotoUrl: telegramData.photo_url ?? null,
             email: normalizedEmail,
           },
+          select: { id: true, name: true },
         });
       } catch (e: any) {
         if (e?.code === 'P2002') return badRequest("Це ім'я, Telegram або email вже використовується");

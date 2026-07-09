@@ -25,7 +25,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest, { params }: { params: { secret: string } }) {
   try {
-    const user = await prisma.user.findUnique({ where: { monoWebhookSecret: params.secret } });
+    const user = await prisma.user.findUnique({ where: { monoWebhookSecret: params.secret }, select: { id: true } });
     // 200, not 404: an unrecognized secret (stale/disconnected/probing) isn't
     // an error for Monobank to retry, it's just nothing to do.
     if (!user) return NextResponse.json({ ok: true });

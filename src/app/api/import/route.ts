@@ -55,7 +55,20 @@ function cellDate(v: ExcelJS.CellValue): Date | null {
   if (v instanceof Date) return v;
   const s = cellText(v);
   if (!s) return null;
-  const d = new Date(s);
+  // ExcelJS gives a real Date for native Excel date cells (the common
+  // case, caught above) — this string fallback only runs for a cell typed
+  // or pasted as plain text. `new Date(arbitraryString)` is timezone-
+  // dependent for most non-ISO formats (confirmed live: "7/8/2026" parses
+  // as a different UTC calendar day depending on the server's local
+  // timezone, "08.07.2026" gets silently misread as month 8 day 6) — the
+  // exact bug class that already once corrupted stats/route.ts's month
+  // boundaries. Only accept an unambiguous ISO date, explicitly as UTC;
+  // anything else is skipped (the caller treats a null date as "no row
+  // here") rather than risking a silently wrong month.
+  const isoMatch = s.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!isoMatch) return null;
+  const [, y, m, day] = isoMatch;
+  const d = new Date(Date.UTC(Number(y), Number(m) - 1, Number(day)));
   return Number.isFinite(d.getTime()) ? d : null;
 }
 
