@@ -21,7 +21,7 @@ Any match that is NOT preceded by `if (!r.ok)` or `.then(r => { if (!r.ok)` on t
 pattern: fetch\(
 glob: src/**/*.ts src/**/*.tsx
 ```
-For each fetch call, check if the chain in that block ends with `.catch(`. Missing = bug.
+For each fetch call, check if the chain in that block ends with `.catch(`. Missing = bug. Also flag `.catch(() => {})` (present but empty) when the fetch is loading data the page actually needs to function (main stats, form dropdowns) rather than a decorative counter — a silent empty catch there leaves a blank page or an unusable form (e.g. empty category dropdown) with zero indication anything failed. Real example already fixed: 5 sites (dashboard stats, analytics, transaction-form and recurring-modal category/user dropdowns) had this; fix = a `toast(...)` matching the error-message convention already used by sibling pages. A silent catch on a truly decorative element (a pending-count badge) is fine — use judgment, don't toast everything.
 
 ### 3. Unvalidated parseInt / parseFloat
 ```
@@ -108,10 +108,10 @@ glob: src/**/*.ts
 
 ### 15. Prisma query touching User without an explicit select
 ```
-pattern: user: true|prisma\.user\.findMany\(\)|prisma\.user\.findMany\(\{ orderBy
+pattern: user: true|prisma\.user\.findMany\(\)|prisma\.user\.findMany\(\{ orderBy|prisma\.user\.findUnique\(\{ where|prisma\.user\.findFirst\(\{ where
 glob: src/**/*.ts
 ```
-Any `include: { user: true }` or an unscoped `prisma.user.findMany()` returns every column, including whatever sensitive fields have been added to `User` since this check was last run (currently `monoTokenEnc`, `monoWebhookSecret` — the latter is plaintext, and leaking it lets an attacker post fake transactions straight to that user's webhook receiver). Real example already fixed: 9 call sites across `transactions`, `recurring`, `stats`, `export` routes did exactly this. Fix = `user: { select: { id: true, name: true } }`, or whatever specific fields the caller actually needs — never a bare `true`.
+For each match, check whether `select:` appears anywhere in that same call (it can be on a later line, not just the matched line — read a few lines past the match before judging). Any `include: { user: true }`, an unscoped `prisma.user.findMany()`, or a bare `findUnique`/`findFirst` returns every column, including whatever sensitive fields have been added to `User` since this check was last run (currently `monoTokenEnc`, `monoWebhookSecret` — the latter is plaintext, and leaking it lets an attacker post fake transactions straight to that user's webhook receiver). Real examples already fixed: 9 call sites across `transactions`, `recurring`, `stats`, `export` routes with a bare `include`/`findMany`; separately, 5 more `findUnique` calls (webhooks/monobank, monobank/connect, monobank/disconnect, auth/telegram, auth/telegram/register) — the pattern above originally only caught `findMany`, missing `findUnique`/`findFirst` entirely, which is how those 5 slipped through several review passes. None of the 5 actually leaked (each only read one field or reconstructed a minimal object before responding), but the same shape has produced real leaks before, so the rule is unconditional: never a bare `findUnique`/`findFirst`/`findMany` on User. Fix = `select: { id: true, name: true }`, or whatever specific fields the caller actually needs.
 
 ---
 
