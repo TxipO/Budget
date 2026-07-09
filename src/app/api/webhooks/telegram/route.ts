@@ -6,6 +6,7 @@ import { extractWithLLM } from '@/lib/voiceExtract';
 import { parseVoiceTransaction } from '@/lib/voiceParse';
 import { guessCategoryId } from '@/lib/categoryGuess';
 import { roundMoney } from '@/lib/validate';
+import { safeEqual } from '@/lib/telegramAuth';
 
 interface TelegramUpdate {
   update_id: number;
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
     // contracts/telegram-webhook.md.
     const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
     const receivedSecret = req.headers.get('x-telegram-bot-api-secret-token');
-    if (!expectedSecret || receivedSecret !== expectedSecret) {
+    if (!expectedSecret || !receivedSecret || !safeEqual(receivedSecret, expectedSecret)) {
       return NextResponse.json({ ok: true }); // 200, no-op — never reveal *why* via a different status
     }
 

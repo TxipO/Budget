@@ -24,6 +24,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
   const [linkChoice, setLinkChoice] = useState(''); // '' = new account, else an existing User.id as string
   const [newName, setNewName] = useState('');
   const [regEmail, setRegEmail] = useState('');
+  const [linkPin, setLinkPin] = useState('');
   const [regBusy, setRegBusy] = useState(false);
   const widgetContainerRef = useRef<HTMLDivElement>(null);
 
@@ -105,6 +106,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
     e.preventDefault();
     if (!registration || regBusy) return;
     if (!linkChoice && !newName.trim()) { setError("Вкажіть ім'я або оберіть існуючий акаунт"); return; }
+    if (linkChoice && !linkPin.trim()) { setError('Введіть PIN, щоб підтвердити, що це ви'); return; }
     setRegBusy(true);
     setError('');
     try {
@@ -115,6 +117,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
           linkToUserId: linkChoice || undefined,
           name: linkChoice ? undefined : newName.trim(),
           email: regEmail.trim() || undefined,
+          pin: linkChoice ? linkPin.trim() : undefined,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -162,6 +165,19 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
               <input
                 className="input-field" value={newName} onChange={e => setNewName(e.target.value)}
                 placeholder="Як вас звати" required
+              />
+            </div>
+          )}
+
+          {linkChoice && (
+            <div style={{ width: '100%' }}>
+              <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
+                PIN (підтвердіть, що це ви)
+              </label>
+              <input
+                className="input-field" type="password" inputMode="numeric" value={linkPin}
+                onChange={e => setLinkPin(e.target.value)}
+                placeholder="••••••" style={{ textAlign: 'center', letterSpacing: 6 }} required
               />
             </div>
           )}

@@ -158,10 +158,17 @@ export async function middleware(req: NextRequest) {
   const cookie = req.cookies.get('budget-auth')?.value;
   const userId = cookie ? await verifySession(cookie, secret) : null;
   if (userId) {
-    // "shared" (a PIN login, no specific identity) is intentionally not
-    // forwarded as a real user id — pages check for its absence rather than
-    // treating the literal string "shared" as a User.id to look up.
+    // Always decide x-current-user-id here, never leave a client-supplied
+    // value from the incoming request alone — requestHeaders started as a
+    // clone of req.headers, so an attacker-set x-current-user-id would
+    // otherwise survive untouched for any "shared" (PIN) session, letting
+    // them impersonate a specific Telegram-bound user to routes that trust
+    // this header (e.g. account/me, account/telegram's unlink). "shared"
+    // itself is intentionally not forwarded as a real user id — pages check
+    // for its absence rather than treating the literal string "shared" as a
+    // User.id to look up.
     if (userId !== 'shared') requestHeaders.set('x-current-user-id', userId);
+    else requestHeaders.delete('x-current-user-id');
     return withCsp(NextResponse.next({ request: { headers: requestHeaders } }), nonce);
   }
 

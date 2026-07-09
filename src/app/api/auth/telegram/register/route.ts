@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { verifyPendingRegistration } from '@/lib/telegramAuth';
 import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
 import { badRequest, isPositiveInt } from '@/lib/validate';
+import { hashPin, safeEqual, currentPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse } from '@/lib/pin';
 
 // Not verified in v1 (no email-sending service provisioned) — format-only,
 // treats the value as a claimed identifier rather than a proven one.
@@ -16,12 +17,32 @@ export async function POST(req: NextRequest) {
     if (!authSecret) return NextResponse.json({ error: 'Автентифікацію не налаштовано' }, { status: 500 });
 
     const body = await req.json();
-    const { pendingToken, email, linkToUserId, name } = body;
+    const { pendingToken, email, linkToUserId, name, pin } = body;
 
     if (typeof pendingToken !== 'string' || !pendingToken) return badRequest('Невалідний токен реєстрації');
     const telegramData = verifyPendingRegistration(authSecret, pendingToken);
     if (!telegramData) {
       return NextResponse.json({ error: 'Токен реєстрації недійсний або протермінований — спробуйте увійти ще раз' }, { status: 401 });
+    }
+
+    // Claiming an EXISTING account is otherwise a pre-auth account takeover:
+    // /api/auth/telegram/unlinked-users publicly lists every unclaimed
+    // {id, name}, and Telegram's HMAC only proves the caller owns SOME real
+    // Telegram account — nothing about who they claim to be. Without this
+    // check, any stranger on the internet could log in with their own
+    // Telegram, pick "Паша" from the list, and receive a fully valid,
+    // userId-bound session as Паша. Requiring the household PIN here closes
+    // that gap the same way it gates every other entry into the app.
+    if (linkToUserId !== undefined && linkToUserId !== null) {
+      const blocked = await pinLockoutResponse();
+      if (blocked) return blocked;
+      const stored = await currentPinHash();
+      if (!stored) return NextResponse.json({ error: 'PIN не налаштовано' }, { status: 500 });
+      if (typeof pin !== 'string' || !safeEqual(hashPin(pin), stored)) {
+        await registerPinFailure();
+        return NextResponse.json({ error: 'Невірний PIN' }, { status: 401 });
+      }
+      await clearPinFailures();
     }
 
     let normalizedEmail: string | null = null;
