@@ -123,6 +123,21 @@ async function main() {
   if (danglingFlags.length) fail(`${danglingFlags.length} possibleDuplicateOf values point at a non-existent transaction id`);
   else pass(`${flagged.length} transaction(s) flagged as a possible duplicate, all references valid`);
 
+  // ── Step 4d: Monobank connection consistency ────────────────────────────
+  step('4d', 'Monobank connection consistency');
+  // connect/route.ts sets monoTokenEnc + monoWebhookSecret + monoAccountId
+  // together in one update; disconnect/route.ts clears all three together.
+  // No code path touches monoWebhookSecret alone — so a user with a token
+  // but no webhookSecret means Monobank has nowhere valid to push
+  // transactions (their webhook URL embeds the secret), and nothing else in
+  // the app surfaces this silently-broken state. Found live 2026-07-08:
+  // Паша had monoTokenEnc + monoAccountId but monoWebhookSecret was null,
+  // so zero mono transactions had landed despite looking "connected" in
+  // Settings (which only checks monoTokenEnc, not webhookSecret).
+  const halfConnected = users.filter(u => u.monoTokenEnc && !u.monoWebhookSecret);
+  if (halfConnected.length) fail(`${halfConnected.length} user(s) have a Monobank token but no webhookSecret — sync is silently broken: ${halfConnected.map(u => u.name).join(', ')}. Reconnect via Settings.`);
+  else pass('every user with a stored Monobank token also has a webhookSecret');
+
   // ── Step 5: duplicate recurring applications ───────────────────────────
   step(5, 'Duplicate recurring-template applications');
   const byTplMonth = {};
