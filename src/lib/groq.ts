@@ -25,8 +25,13 @@ export async function transcribe(audio: Buffer): Promise<string | null> {
   // literal continuation — domain examples across all three languages,
   // in correct spelling, nudge the model away from misclassifying
   // Ukrainian as Russian (a documented Whisper weakness for close language
-  // pairs) and toward recognizable finance vocabulary.
-  form.append('prompt', 'Особистий бюджет. Потратив 200 гривень на їжу. Отримав зарплату 15000. Купив продукти за 350. I spent 50 on coffee. Потратил 300 на бензин.');
+  // pairs) and toward recognizable finance vocabulary. Uses "крон"/"kr",
+  // not "гривень" — the household's real spoken currency (everything is
+  // tracked in NOK, see lib/monobank.ts's UAH->NOK conversion), confirmed
+  // from an actual live transcript this session ("Потратив 200 крон на
+  // категорію «Продукти»"). Biasing toward a currency word nobody actually
+  // says doesn't help recognition of the one they do.
+  form.append('prompt', 'Особистий бюджет. Потратив 200 крон на їжу. Отримав зарплату 15000. Купив продукти за 350 крон. I spent 50 kroner on coffee. Потратил 300 крон на бензин.');
 
   const res = await fetch(GROQ_TRANSCRIPTION_URL, {
     method: 'POST',
