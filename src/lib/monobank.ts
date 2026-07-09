@@ -166,6 +166,14 @@ export function guessCategoryByMcc(mcc: number | undefined): string | null {
 // below (укр/рос/eng) exist for that caller and are safe for Monobank too,
 // since they're not realistic merchant-name substrings.
 const KEYWORD_CATEGORY: [RegExp, string][] = [
+  // Monobank's own format for an incoming P2P transfer is always "Від: <ім'я
+  // відправника>" — deliberately matched on this prefix, not any particular
+  // sender's name, since the sender varies month to month (different people
+  // sending money, not a recurring counterparty). Filed under Паша because
+  // this is specifically the household's Monobank-connected account; if
+  // Женя's card is ever connected too, this would need to stop being a
+  // blanket rule.
+  [/^від: /i, 'Паша'],
   [/аптек|pharmacy|фармаці|ліки|лекарств|medicine/i, 'Медицина'],
   // "їжа"/"еда" are Ukrainian/Russian nouns with grammatical case endings
   // (їжа/їжу/їжі/їжею, еда/еды/еде/едой) — a bare "їжа" substring match
