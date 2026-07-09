@@ -120,9 +120,13 @@ export async function getCachedExchangeRate(fromCcy: number, toCcy: number): Pro
 // existing category are included — an uncertain guess is worse than none
 // (it falls through to keyword matching, then the safe fallback instead).
 const MCC_CATEGORY: Record<number, string> = {
-  // Їжа
+  // Їжа — grocery/food stores only (buying ingredients to cook at home)
   5411: 'Їжа', 5412: 'Їжа', 5422: 'Їжа', 5441: 'Їжа', 5451: 'Їжа',
-  5462: 'Їжа', 5499: 'Їжа', 5812: 'Їжа', 5813: 'Їжа', 5814: 'Їжа',
+  5462: 'Їжа', 5499: 'Їжа',
+  // Балування — eating out (restaurants, bars, fast food, caterers), not
+  // groceries. Was lumped into Їжа; moved out on request since "went to a
+  // restaurant" and "bought groceries" are different budget categories.
+  5811: 'Балування', 5812: 'Балування', 5813: 'Балування', 5814: 'Балування',
   // Медицина
   5912: 'Медицина', 8011: 'Медицина', 8021: 'Медицина', 8031: 'Медицина',
   8042: 'Медицина', 8049: 'Медицина', 8062: 'Медицина', 8071: 'Медицина', 8099: 'Медицина',
@@ -169,6 +173,8 @@ const KEYWORD_CATEGORY: [RegExp, string][] = [
   // doesn't contain "їжа" as a substring. Same bug class as the earlier
   // exact-verb-form fix in voiceParse.ts, just in the category keywords.
   [/сільпо|silpo|атб|фора|ашан|novus|варус|ваш ?формат|вест ?лайн|кошик|продукт|їж(а|і|у|ею)|ед(а|ы|е|у|ой)|food|groceries|grocery/i, 'Їжа'],
+  // Eating out, not groceries — restaurants/cafes/bars/fast food.
+  [/ресторан|restaurant|кафе|cafe|café|бар\b|bar\b|паб|pub\b|суші|sushi|піцер|pizza|kebab|кебаб|grill|гриль|бургер|burger|кав'?ярн|coffee ?shop|кофейн/i, 'Балування'],
   [/netflix|spotify|youtube ?premium|apple\.com\/bill|google ?(play|one)|playstation|xbox|patreon|подпис|підписк/i, 'Підписки'],
   [/coursera|udemy|prometheus|школа|курси|university|college|навчанн|учеба|education|study/i, 'Навчання'],
   [/vape|вейп|сигарет|tobacco|casino|казино|bet|parimatch|букмекер/i, 'Залежності'],
