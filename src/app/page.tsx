@@ -7,6 +7,7 @@ import TransactionForm from '@/components/TransactionForm';
 import RecurringModal from '@/components/RecurringModal';
 import CategoryIcon from '@/components/CategoryIcon';
 import { useDashboardPrefs } from '@/lib/dashboardPrefs';
+import { toast } from '@/lib/toast';
 
 const ExpenseDonut = dynamic(() => import('@/components/charts/ExpenseDonut'), { ssr: false });
 const BalanceTrend = dynamic(() => import('@/components/charts/BalanceTrend'), { ssr: false });
@@ -88,7 +89,7 @@ export default function Dashboard() {
     fetch(`/api/stats?${params}`)
       .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
       .then(data => { setStats(data); setLoading(false); })
-      .catch(() => { setLoading(false); });
+      .catch(() => { setLoading(false); toast('Помилка завантаження даних', 'error'); });
   }
 
   useEffect(() => { loadStats(); }, [year, month, period]);

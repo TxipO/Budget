@@ -34,8 +34,8 @@ export default function RecurringModal({ year, month, onClose, onApplied }: Prop
 
   useEffect(() => {
     loadTemplates();
-    fetch('/api/categories').then(r => r.ok ? r.json() : Promise.reject()).then(setCats).catch(() => {});
-    fetch('/api/users').then(r => r.ok ? r.json() : Promise.reject()).then(setUsers).catch(() => {});
+    fetch('/api/categories').then(r => r.ok ? r.json() : Promise.reject()).then(setCats).catch(() => toast('Помилка завантаження категорій', 'error'));
+    fetch('/api/users').then(r => r.ok ? r.json() : Promise.reject()).then(setUsers).catch(() => toast('Помилка завантаження користувачів', 'error'));
   }, [year, month]);
 
   function loadTemplates() {

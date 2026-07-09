@@ -35,8 +35,8 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetch('/api/categories').then(r => r.ok ? r.json() : Promise.reject()).then(setCats).catch(() => {});
-    fetch('/api/users').then(r => r.ok ? r.json() : Promise.reject()).then(setUsers).catch(() => {});
+    fetch('/api/categories').then(r => r.ok ? r.json() : Promise.reject()).then(setCats).catch(() => toast('Помилка завантаження категорій', 'error'));
+    fetch('/api/users').then(r => r.ok ? r.json() : Promise.reject()).then(setUsers).catch(() => toast('Помилка завантаження користувачів', 'error'));
   }, []);
 
   useEffect(() => {

@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     if (!isPositiveInt(Number(categoryId)))          return badRequest('Невалідна категорія');
     if (!isNonNegativeNumber(Number(plannedAmount))) return badRequest('Сума не може бути від\'ємною');
 
-    const plan = await (prisma.monthlyPlan as any).upsert({
+    const plan = await prisma.monthlyPlan.upsert({
       where: { year_month_categoryId: { year, month, categoryId } },
       update: { plannedAmount: roundMoney(plannedAmount), notes: notes ?? undefined },
       create: { year, month, categoryId, plannedAmount: roundMoney(plannedAmount), notes: notes ?? '' },

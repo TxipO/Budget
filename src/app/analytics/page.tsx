@@ -2,6 +2,7 @@
 import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 import { formatMoney, MONTH_SHORT } from '@/lib/utils';
+import { toast } from '@/lib/toast';
 
 const MonthlyBarChart = dynamic(() => import('@/components/charts/MonthlyBarChart'), { ssr: false });
 
@@ -33,7 +34,7 @@ export default function AnalyticsPage() {
         if (Array.isArray(res.months)) setData(res.months.map((m, i) => ({ month: MONTH_SHORT[i], ...m })));
         setInsights(Array.isArray(res.insights) ? res.insights : []);
       })
-      .catch(() => {});
+      .catch(() => toast('Помилка завантаження аналітики', 'error'));
   }, [year]);
 
   const totalIncome   = data.reduce((s, d) => s + d.income, 0);
