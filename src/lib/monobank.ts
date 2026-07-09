@@ -68,6 +68,13 @@ export function setWebhook(token: string, webHookUrl: string): Promise<{ status:
   });
 }
 
+// Monobank caps a single statement request to a 31-day span and rate-limits
+// this endpoint to roughly 1 request per 60 seconds per token — fine for a
+// manually-triggered reconciliation, not something to call on a timer.
+export function getStatement(token: string, accountId: string, fromUnixSec: number, toUnixSec: number) {
+  return call(`/personal/statement/${accountId}/${fromUnixSec}/${toUnixSec}`, token);
+}
+
 // Public endpoint, no token needed. Used to convert UAH statement amounts to
 // the app's own currency (kr / NOK) at import time.
 export async function getExchangeRate(fromCcy: number, toCcy: number): Promise<number | null> {

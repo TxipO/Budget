@@ -31,6 +31,7 @@ export default function SettingsPage() {
   const [monoStatus, setMonoStatus] = useState<{ userId: number; name: string; connected: boolean; accountId: string | null }[]>([]);
   const [monoTokenInput, setMonoTokenInput] = useState<Record<number, string>>({});
   const [monoConnecting, setMonoConnecting] = useState<number | null>(null);
+  const [monoSyncing, setMonoSyncing] = useState<number | null>(null);
 
   interface AccountInfo { shared: boolean; user?: { id: number; name: string; telegramUsername: string | null; telegramFirstName: string | null; email: string | null } }
   const [account, setAccount] = useState<AccountInfo | null>(null);
@@ -97,6 +98,24 @@ export default function SettingsPage() {
       toast('Помилка з’єднання', 'error');
     } finally {
       setMonoConnecting(null);
+    }
+  }
+
+  async function syncMono(userId: number) {
+    if (monoSyncing) return;
+    setMonoSyncing(userId);
+    try {
+      const res = await fetch('/api/monobank/sync', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { toast(data?.error || 'Помилка синхронізації', 'error'); return; }
+      toast(data.created > 0 ? `Додано транзакцій: ${data.created}` : 'Нових транзакцій немає');
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setMonoSyncing(null);
     }
   }
 
@@ -542,6 +561,12 @@ export default function SettingsPage() {
                     <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#4ADE80' }}>
                       <CheckCircle size={13} /> Підключено
                     </span>
+                    <button
+                      className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                      disabled={monoSyncing === m.userId} onClick={() => syncMono(m.userId)}
+                    >
+                      {monoSyncing === m.userId ? 'Синхронізація…' : 'Синхронізувати'}
+                    </button>
                     <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => disconnectMono(m.userId, m.name)}>
                       Відключити
                     </button>
