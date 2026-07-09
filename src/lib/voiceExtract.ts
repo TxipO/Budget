@@ -15,7 +15,12 @@
 interface LLMExtraction {
   amount: number;
   direction: 'income' | 'expense';
-  categoryName: string;
+  // null = the model's category guess didn't match one of the provided
+  // names exactly — the caller falls back to guessCategoryId()'s own
+  // rule/MCC/keyword/safe-fallback chain for the category only, keeping
+  // the LLM's amount/direction (see the validation note below for why
+  // amount/direction and category must fail independently).
+  categoryName: string | null;
 }
 
 function buildSystemPrompt(senderName: string): string {
@@ -77,8 +82,21 @@ export async function extractWithLLM(
   if (typeof parsed.amount !== 'number' || !Number.isFinite(parsed.amount) || parsed.amount <= 0) return null;
   if (parsed.direction !== 'income' && parsed.direction !== 'expense') return null;
 
+  // Category mismatch must NOT invalidate amount/direction. Found live: the
+  // system prompt says "confident" governs amount/direction only and a
+  // category is always guessable, but the code here previously nulled out
+  // the WHOLE result — including a correctly, confidently extracted
+  // amount/direction — the moment the model's category string didn't match
+  // the provided list character-for-character. temperature:0 + explicit
+  // "exact copy" instructions make an exact match likely, not guaranteed
+  // (trailing punctuation, a grammatically-inflected variant, a
+  // near-miss on a long Cyrillic list are all real LLM failure modes).
+  // Losing amount/direction over that sends a case the LLM actually solved
+  // (the grammatical-case/language-mixing problem this whole redesign
+  // exists for) back through the weaker rule-based parser instead — of all
+  // outcomes, that's the one this feature was rebuilt to avoid.
   const validCategories = parsed.direction === 'income' ? incomeCategories : expenseCategories;
-  if (typeof parsed.category !== 'string' || !validCategories.includes(parsed.category)) return null;
+  const categoryName = typeof parsed.category === 'string' && validCategories.includes(parsed.category) ? parsed.category : null;
 
-  return { amount: parsed.amount, direction: parsed.direction, categoryName: parsed.category };
+  return { amount: parsed.amount, direction: parsed.direction, categoryName };
 }
