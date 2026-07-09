@@ -79,23 +79,40 @@ export async function ingestStatementItem(userId: number, item: MonoStatementIte
     },
   });
 
-  await prisma.transaction.create({
-    data: {
-      date,
-      categoryId,
-      amount,
-      details: item.description || '',
-      userId,
-      source: 'mono',
-      possibleDuplicateOf: possibleDup?.id ?? null,
-      monoStatementId: item.id,
-      monoMerchant: item.description || null,
-      monoMcc: item.mcc ?? null,
-      monoAmountOriginal: amountOriginal,
-      monoCurrency: MONO_CCY_NAMES[item.currencyCode] ?? String(item.currencyCode),
-      fxRate,
-    },
-  });
+  try {
+    await prisma.transaction.create({
+      data: {
+        date,
+        categoryId,
+        amount,
+        details: item.description || '',
+        userId,
+        source: 'mono',
+        possibleDuplicateOf: possibleDup?.id ?? null,
+        monoStatementId: item.id,
+        monoMerchant: item.description || null,
+        monoMcc: item.mcc ?? null,
+        monoAmountOriginal: amountOriginal,
+        monoCurrency: MONO_CCY_NAMES[item.currencyCode] ?? String(item.currencyCode),
+        fxRate,
+      },
+    });
+  } catch (e: any) {
+    // The webhook and a manual /monobank/sync (or two overlapping syncs) can
+    // both reach this function for the same never-before-seen item — the
+    // findUnique check above has a race window, so both can pass it before
+    // either commits. Whoever loses the race hits this unique-constraint
+    // violation on monoStatementId; that's not a real error, it's the same
+    // outcome as the findUnique check finding it (someone else already
+    // recorded this exact event). Confirmed live: two concurrent calls with
+    // the same statement id — one 'created', the other threw P2002 — before
+    // this fix, an uncaught throw here aborted sync/route.ts's whole batch
+    // loop (every item after the racing one silently never got processed
+    // that run, and the response became a generic 500 instead of the
+    // accurate partial-success counts).
+    if (e?.code === 'P2002') return 'skipped_duplicate';
+    throw e;
+  }
 
   return 'created';
 }
