@@ -151,7 +151,13 @@ export default function RecurringModal({ year, month, onClose, onApplied }: Prop
       <div style={{
         background: 'var(--c-sidebar)', border: '1px solid var(--c-border)',
         borderRadius: 16, width: '100%', maxWidth: 500,
-        maxHeight: '85vh', display: 'flex', flexDirection: 'column',
+        // % of the position:fixed;inset:0 overlay above, not vh — vh is
+        // computed against the layout viewport, which on real mobile Chrome
+        // (confirmed live: Android Chrome, address bar expanded) is TALLER
+        // than what's actually visible on screen once the address bar and
+        // gesture nav are accounted for. A fixed-position ancestor's
+        // percentage height tracks the real visible viewport correctly.
+        maxHeight: '85%', display: 'flex', flexDirection: 'column',
       }} onClick={e => e.stopPropagation()}>
 
         {/* Header */}

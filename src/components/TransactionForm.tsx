@@ -123,7 +123,16 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
     <div className="modal-overlay" onClick={onClose}>
       <div
         className="card-elevated"
-        style={{ width: '100%', maxWidth: 460, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
+        // % of .modal-overlay (position:fixed;inset:0), not vh — vh is
+        // computed against the layout viewport, which on real mobile
+        // Chrome (confirmed live: Android, address bar expanded) is
+        // taller than what's actually visible once the address bar and
+        // gesture nav are accounted for. That gap was exactly enough to
+        // push the Save button off-screen with no way to scroll to it.
+        // A fixed-position ancestor's percentage height tracks the real
+        // visible viewport correctly, no dvh/svh browser-support gamble
+        // needed.
+        style={{ width: '100%', maxWidth: 460, maxHeight: '90%', display: 'flex', flexDirection: 'column' }}
         onClick={e => e.stopPropagation()}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '28px 28px 20px', flexShrink: 0 }}>

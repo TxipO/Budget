@@ -44,8 +44,8 @@ export default function ExpenseDonut({ data, total }: Props) {
               data={chartData}
               cx="50%"
               cy="50%"
-              innerRadius={52}
-              outerRadius={82}
+              innerRadius="58%"
+              outerRadius="90%"
               paddingAngle={2}
               dataKey="value"
             >
