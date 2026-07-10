@@ -148,11 +148,15 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Recent (last 8)
+  // Recent (last 8) — date alone ties for every transaction on the same
+  // calendar day (it's truncated to UTC midnight/noon, see monoIngest.ts),
+  // so without a tiebreaker Postgres returns same-date rows in whatever
+  // order it happens to find them, not the order they were actually added.
+  // createdAt breaks the tie with the real insertion order.
   const recent = await prisma.transaction.findMany({
     where: { date: { gte: rangeStart, lt: rangeEnd } },
     include: { category: true, user: { select: { id: true, name: true } } },
-    orderBy: { date: 'desc' },
+    orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     take: 8,
   });
 

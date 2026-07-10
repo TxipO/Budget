@@ -36,7 +36,10 @@ export async function GET(req: NextRequest) {
     const txs = await prisma.transaction.findMany({
       where,
       include: { category: true, user: { select: { id: true, name: true } } },
-      orderBy: { date: 'desc' },
+      // date alone ties for every transaction on the same calendar day (it's
+      // truncated to UTC midnight/noon), so createdAt breaks the tie with
+      // the order transactions were actually entered.
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       ...(take !== undefined ? { take } : {}),
     });
     return NextResponse.json(txs);
