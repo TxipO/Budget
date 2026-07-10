@@ -74,6 +74,23 @@ export default function Dashboard() {
   const [pendingRecurring, setPendingRecurring] = useState(0);
   const [userSectionOpen, setUserSectionOpen] = useState(true);
   const [sections] = useDashboardPrefs();
+  const [pending, setPending] = useState<{ id: string; description: string; amount: number; currency: string }[]>([]);
+
+  // Pending Monobank holds — never recorded as a Transaction (see
+  // monoIngest.ts, they can still be declined/cancelled), but a purchase
+  // that's genuinely just waiting to settle looking identical to "the sync
+  // is broken" is exactly what kept generating repeat "не підтягнуло"
+  // reports. Shown separately, greyed out, never counted in any total.
+  useEffect(() => {
+    fetch('/api/monobank/status')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then((rows: { userId: number; connected: boolean }[]) => {
+        const connected = rows.filter(r => r.connected);
+        return Promise.all(connected.map(r => fetch(`/api/monobank/pending?userId=${r.userId}`).then(res => res.ok ? res.json() : [])));
+      })
+      .then(lists => setPending(lists.flat()))
+      .catch(() => {}); // decorative — dashboard works fine without this list
+  }, []);
 
   useEffect(() => {
     if (period !== 'month') { setPendingRecurring(0); return; }
@@ -425,6 +442,30 @@ export default function Dashboard() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Pending Monobank holds — not counted anywhere, purely informational */}
+      {pending.length > 0 && (
+        <div className="card" style={{ padding: 24, marginBottom: 24, opacity: 0.75 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4 }}>
+            Очікують підтвердження
+          </h3>
+          <p style={{ fontSize: 12, color: '#64748B', marginBottom: 16 }}>
+            Банк ще не підтвердив ці покупки — не входять у підсумки, з'являться автоматично після підтвердження.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {pending.map(p => (
+              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13 }}>
+                <span style={{ color: 'var(--c-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {p.description || 'Без опису'}
+                </span>
+                <span style={{ color: 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                  {formatMoney(p.amount)}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
