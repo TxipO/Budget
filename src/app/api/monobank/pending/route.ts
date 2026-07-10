@@ -2,15 +2,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { decrypt } from '@/lib/crypto';
 import { getStatement, MonobankError } from '@/lib/monobank';
-import { MONO_CCY_NAMES } from '@/lib/monoIngest';
+import { MONO_CCY_NAMES, ingestStatementItem } from '@/lib/monoIngest';
 
-// Read-only, never writes a Transaction — holds are provisional (see
-// monoIngest.ts) and deliberately never recorded until settled. This exists
-// purely so the dashboard can show "Balestrand Ho — 508 kr (очікує)" instead
-// of a purchase silently vanishing from the user's view for a day, which is
-// exactly the confusion that kept generating "Monobank isn't syncing" reports
-// when the real answer was "it's still an unsettled hold, working as
-// designed" — see project_monobank_integration memory.
+// Reports holds for the dashboard's "Очікують підтвердження" block — holds
+// themselves are provisional (see monoIngest.ts) and deliberately never
+// recorded until settled. This exists purely so the dashboard can show
+// "Balestrand Ho — 508 kr (очікує)" instead of a purchase silently vanishing
+// from the user's view for a day, which is exactly the confusion that kept
+// generating "Monobank isn't syncing" reports when the real answer was "it's
+// still an unsettled hold, working as designed" — see
+// project_monobank_integration memory.
+//
+// Also opportunistically ingests anything that just settled. Found live: a
+// hold that flips to hold:false between page loads correctly disappears from
+// this endpoint's hold list, but the webhook that's supposed to record the
+// now-final transaction doesn't reliably arrive (same unreliable-delivery
+// issue /monobank/sync exists for) — the purchase vanished from "Очікують"
+// and never showed up in the transaction list either, with no path back
+// except a manual "Синхронізувати" click. Since this route already pulls the
+// full statement to compute the hold list, feeding the non-hold items
+// through the same ingestStatementItem() the webhook/sync use closes that
+// gap on the very next dashboard load a few minutes later, for free.
 const CACHE_TTL_MS = 5 * 60 * 1000; // holds don't need to be fresher than this, and Monobank's statement endpoint is rate-limited to ~1 req/60s per token
 const LOOKBACK_DAYS = 3; // holds settle within a few days in practice; no need to scan further back
 
@@ -55,15 +67,23 @@ export async function GET(req: NextRequest) {
       throw e;
     }
 
-    const holds: PendingItem[] = statement
-      .filter(i => i.hold)
-      .map(i => ({
-        id: i.id,
-        description: i.description || '',
-        amount: Math.abs(i.amount) / 100,
-        currency: MONO_CCY_NAMES[i.currencyCode] ?? String(i.currencyCode),
-        time: i.time,
-      }));
+    const holds: PendingItem[] = [];
+    for (const i of statement) {
+      if (i.hold) {
+        holds.push({
+          id: i.id,
+          description: i.description || '',
+          amount: Math.abs(i.amount) / 100,
+          currency: MONO_CCY_NAMES[i.currencyCode] ?? String(i.currencyCode),
+          time: i.time,
+        });
+      } else {
+        // No-op for anything already recorded (idempotent via monoStatementId);
+        // a failure here must never break the pending list this route exists
+        // to serve.
+        try { await ingestStatementItem(userId, i); } catch (e) { console.error('[monobank/pending] opportunistic ingest failed', e); }
+      }
+    }
 
     await prisma.appSetting.upsert({
       where: { key: cacheKey },
