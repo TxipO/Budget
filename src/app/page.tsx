@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw } from 'lucide-react';
-import { formatMoney, MONTH_NAMES, TYPE_COLORS, type Period, PERIOD_LABELS } from '@/lib/utils';
+import { formatMoney, formatMoneySign, MONTH_NAMES, TYPE_COLORS, type Period, PERIOD_LABELS } from '@/lib/utils';
 import TransactionForm from '@/components/TransactionForm';
 import RecurringModal from '@/components/RecurringModal';
 import CategoryIcon from '@/components/CategoryIcon';
@@ -270,7 +270,11 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div style={{ fontSize: 22, fontWeight: 800, color: cardColor, fontVariantNumeric: 'tabular-nums', marginBottom: 8 }}>
-                    {formatMoney(val)}
+                    {/* "Вільний залишок" (balance) is the only one of these
+                        4 cards that can genuinely go negative — color alone
+                        wasn't enough to tell, since red/green/orange are
+                        used for other reasons across this dashboard too. */}
+                    {c.key === 'balance' ? formatMoneySign(val) : formatMoney(val)}
                   </div>
                   {stats!.prev && (
                     <DeltaBadge current={val} prev={stats!.prev![c.key]} invertGood={c.invertGood} />
@@ -292,7 +296,7 @@ export default function Dashboard() {
             <span style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>Накопичений залишок (з початку)</span>
             <span style={{ fontSize: 20, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
               color: stats.cumBalance >= 0 ? '#FB923C' : '#EF4444' }}>
-              {formatMoney(stats.cumBalance)}
+              {formatMoneySign(stats.cumBalance)}
             </span>
           </div>
 
@@ -308,7 +312,7 @@ export default function Dashboard() {
               </div>
               <span style={{ fontSize: 20, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
                 color: stats.forecast >= 0 ? '#4ADE80' : '#FCA5A5' }}>
-                {formatMoney(stats.forecast)}
+                {formatMoneySign(stats.forecast)}
               </span>
             </div>
           )}
@@ -418,7 +422,7 @@ export default function Dashboard() {
                       <span style={{
                         marginLeft: 'auto', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
                         color: u.net >= 0 ? '#4ADE80' : '#FCA5A5',
-                      }}>{u.net >= 0 ? '+' : ''}{formatMoney(u.net)}</span>
+                      }}>{formatMoneySign(u.net)}</span>
                     </div>
                     <div style={{ display: 'flex', height: 6, borderRadius: 4, overflow: 'hidden', marginBottom: 12, background: 'var(--c-border-mid)' }}>
                       <div style={{ width: `${incPct}%`, background: '#22C55E' }} />
