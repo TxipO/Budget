@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest } from '@/lib/validate';
+import { requireHouseholdId } from '@/lib/household';
 
 // Household is capped at 2 — matches the /setup wizard's "1 or 2 people"
 // model and the sidebar's quick-switch button layout, which isn't designed
 // for an arbitrary-length list.
 const MAX_USERS = 2;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     // Explicit select — User now also carries monoTokenEnc/monoWebhookSecret
     // (Monobank integration). Never let those reach the client via a blanket
-    // findMany(), even encrypted; this route is fetched from nearly every page.
+    // findMany(), even encrypted; this route is fetched from nearly every
+    // page. householdId filter is the multi-tenant isolation boundary — a
+    // bare findMany() here would show every OTHER household's member names
+    // in this one's user picker.
     const users = await prisma.user.findMany({
+      where: { householdId },
       select: { id: true, name: true },
       orderBy: { id: 'asc' },
     });
@@ -27,14 +34,16 @@ export async function GET() {
 // after Паша already ran setup with just herself/himself picked.
 export async function POST(req: NextRequest) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
     if (!name) return badRequest("Вкажіть ім'я");
 
-    const count = await prisma.user.count();
+    const count = await prisma.user.count({ where: { householdId } });
     if (count >= MAX_USERS) return badRequest(`Можна додати не більше ${MAX_USERS} користувачів`);
 
-    const user = await prisma.user.create({ data: { name }, select: { id: true, name: true } });
+    const user = await prisma.user.create({ data: { name, householdId }, select: { id: true, name: true } });
     return NextResponse.json(user);
   } catch (e: any) {
     if (e?.code === 'P2002') return badRequest("Це ім'я вже використовується");

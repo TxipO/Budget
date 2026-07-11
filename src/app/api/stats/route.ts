@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireHouseholdId } from '@/lib/household';
 
 const MONTHS_SHORT = ['Січ','Лют','Бер','Кві','Тра','Чер','Лип','Сер','Вер','Жов','Лис','Гру'];
 
-async function sumByType(start: Date, end: Date) {
+async function sumByType(householdId: number, start: Date, end: Date) {
   const txs = await prisma.transaction.findMany({
-    where: { date: { gte: start, lt: end } },
+    where: { householdId, date: { gte: start, lt: end } },
     include: { category: true, user: { select: { id: true, name: true } } },
   });
   const income   = txs.filter(t => t.category.type === 'income')  .reduce((s, t) => s + t.amount, 0);
@@ -16,6 +17,8 @@ async function sumByType(start: Date, end: Date) {
 
 export async function GET(req: NextRequest) {
   try {
+  const householdId = requireHouseholdId(req);
+  if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { searchParams } = req.nextUrl;
   const now    = new Date();
   const period = searchParams.get('period') || 'month';
@@ -59,7 +62,7 @@ export async function GET(req: NextRequest) {
     prevEnd    = new Date(Date.UTC(year, 0, 1));
     trendMonths = 12;
   } else { // all
-    const first = await prisma.transaction.findFirst({ orderBy: { date: 'asc' } });
+    const first = await prisma.transaction.findFirst({ where: { householdId }, orderBy: { date: 'asc' } });
     rangeStart  = first ? new Date(Date.UTC(first.date.getUTCFullYear(), first.date.getUTCMonth(), 1)) : new Date(Date.UTC(year, 0, 1));
     rangeEnd    = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
     prevStart   = rangeStart;
@@ -70,14 +73,14 @@ export async function GET(req: NextRequest) {
   }
 
   // Current & previous period
-  const current = await sumByType(rangeStart, rangeEnd);
-  const prev    = period !== 'all' ? await sumByType(prevStart, prevEnd) : null;
+  const current = await sumByType(householdId, rangeStart, rangeEnd);
+  const prev    = period !== 'all' ? await sumByType(householdId, prevStart, prevEnd) : null;
 
   const { income, expenses, savings, balance, txs } = current;
 
   // Cumulative balance
   const allTxs = await prisma.transaction.findMany({
-    where: { date: { lt: rangeEnd } },
+    where: { householdId, date: { lt: rangeEnd } },
     include: { category: true },
   });
   const cumBalance = allTxs.reduce((s, t) => {
@@ -114,7 +117,7 @@ export async function GET(req: NextRequest) {
   // Attach monthly plans for the period
   if (period === 'month') {
     const plans = await prisma.monthlyPlan.findMany({
-      where: { year, month, categoryId: { in: Object.keys(expenseByCategory).map(Number) } },
+      where: { year, month, householdId, categoryId: { in: Object.keys(expenseByCategory).map(Number) } },
     });
     for (const p of plans) {
       if (expenseByCategory[p.categoryId]) {
@@ -128,7 +131,7 @@ export async function GET(req: NextRequest) {
   // Trend — single query, then bucket by month in memory
   const trendStart = new Date(Date.UTC(rangeEnd.getUTCFullYear(), rangeEnd.getUTCMonth() - trendMonths, 1));
   const trendTxs = await prisma.transaction.findMany({
-    where: { date: { gte: trendStart, lt: rangeEnd } },
+    where: { householdId, date: { gte: trendStart, lt: rangeEnd } },
     include: { category: true },
   });
   const trend = [];
@@ -154,7 +157,7 @@ export async function GET(req: NextRequest) {
   // order it happens to find them, not the order they were actually added.
   // createdAt breaks the tie with the real insertion order.
   const recent = await prisma.transaction.findMany({
-    where: { date: { gte: rangeStart, lt: rangeEnd } },
+    where: { householdId, date: { gte: rangeStart, lt: rangeEnd } },
     include: { category: true, user: { select: { id: true, name: true } } },
     orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     take: 8,

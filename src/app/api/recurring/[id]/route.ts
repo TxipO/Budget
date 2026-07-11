@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isPositiveInt, isPositiveNumber, roundMoney } from '@/lib/validate';
+import { requireHouseholdId } from '@/lib/household';
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const id = parseInt(params.id);
     if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
 
@@ -19,8 +22,19 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     if (userId !== undefined && !isPositiveInt(Number(userId)))
       return badRequest('Невалідний користувач');
 
-    const template = await prisma.recurringTemplate.update({
-      where: { id },
+    if (categoryId !== undefined) {
+      const cat = await prisma.category.findFirst({ where: { id: Number(categoryId), householdId }, select: { id: true } });
+      if (!cat) return badRequest('Невалідна категорія');
+    }
+    if (userId !== undefined) {
+      const u = await prisma.user.findFirst({ where: { id: Number(userId), householdId }, select: { id: true } });
+      if (!u) return badRequest('Невалідний користувач');
+    }
+
+    // updateMany scoped by householdId — a bare update({where:{id}}) would
+    // let one household edit another's template by guessing its id.
+    const result = await prisma.recurringTemplate.updateMany({
+      where: { id, householdId },
       data: {
         ...(name       !== undefined && { name: name.trim() }),
         ...(amount     !== undefined && { amount: roundMoney(Number(amount)) }),
@@ -29,27 +43,32 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         ...(details    !== undefined && { details }),
         ...(isActive   !== undefined && { isActive: Boolean(isActive) }),
       },
+    });
+    if (result.count === 0) return NextResponse.json({ error: 'Шаблон не знайдено' }, { status: 404 });
+    const template = await prisma.recurringTemplate.findUnique({
+      where: { id },
       include: { category: true, user: { select: { id: true, name: true } } },
     });
     return NextResponse.json(template);
   } catch (e: any) {
-    if (e?.code === 'P2025') return NextResponse.json({ error: 'Шаблон не знайдено' }, { status: 404 });
     console.error('[recurring/[id] PUT]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const id = parseInt(params.id);
     if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
-    await prisma.recurringTemplate.update({
-      where: { id },
+    const result = await prisma.recurringTemplate.updateMany({
+      where: { id, householdId },
       data: { isActive: false },
     });
+    if (result.count === 0) return NextResponse.json({ error: 'Шаблон не знайдено' }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    if (e?.code === 'P2025') return NextResponse.json({ error: 'Шаблон не знайдено' }, { status: 404 });
     console.error('[recurring/[id] DELETE]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

@@ -4,6 +4,7 @@ import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 import path from 'path';
 import { readFile } from 'fs/promises';
+import { requireHouseholdId } from '@/lib/household';
 
 const TYPE_UA: Record<string, string> = {
   income:  'Дохід',
@@ -33,6 +34,8 @@ const SECTIONS = [
 
 export async function GET(req: NextRequest) {
   try {
+  const householdId = requireHouseholdId(req);
+  if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { searchParams } = req.nextUrl;
   const yearRaw  = searchParams.get('year')  ? parseInt(searchParams.get('year')!)  : null;
   const monthRaw = searchParams.get('month') ? parseInt(searchParams.get('month')!) : null;
@@ -41,12 +44,13 @@ export async function GET(req: NextRequest) {
 
   // ── Fetch all data ──────────────────────────────────────────────────────
   const [categories, allTxs, allPlans] = await Promise.all([
-    prisma.category.findMany({ where: { isActive: true }, orderBy: { id: 'asc' } }),
+    prisma.category.findMany({ where: { isActive: true, householdId }, orderBy: { id: 'asc' } }),
     prisma.transaction.findMany({
+      where: { householdId },
       include: { category: true, user: { select: { id: true, name: true } } },
       orderBy: { date: 'asc' },
     }),
-    prisma.monthlyPlan.findMany({ where: { notes: { not: '' } } }),
+    prisma.monthlyPlan.findMany({ where: { notes: { not: '' }, householdId } }),
   ]);
 
   // The Планування sheet has a fixed number of category rows per section

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireHouseholdId } from '@/lib/household';
 
 const MONTHS_UA = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
 const MONTHS_UA_LOC = ['січні','лютому','березні','квітні','травні','червні','липні','серпні','вересні','жовтні','листопаді','грудні'];
@@ -9,11 +10,14 @@ interface Insight { text: string; tone: 'good' | 'warn' | 'info' }
 
 export async function GET(req: NextRequest) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const yearParam = parseInt(req.nextUrl.searchParams.get('year') || String(new Date().getFullYear()));
     const year = Number.isFinite(yearParam) ? yearParam : new Date().getFullYear();
 
     const txs = await prisma.transaction.findMany({
       where: {
+        householdId,
         date: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) },
       },
       select: { date: true, amount: true, details: true, category: { select: { name: true, type: true } } },

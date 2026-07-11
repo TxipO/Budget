@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isValidYear, isValidMonth, isPositiveInt, isNonNegativeNumber, roundMoney } from '@/lib/validate';
+import { requireHouseholdId } from '@/lib/household';
 
 export async function GET(req: NextRequest) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { searchParams } = req.nextUrl;
     const year  = parseInt(searchParams.get('year')  || '2026');
     const month = searchParams.get('month');
     if (!Number.isFinite(year)) return badRequest('Невалідний рік');
 
-    const where: Record<string, unknown> = { year };
+    const where: Record<string, unknown> = { year, householdId };
     if (month) {
       const m = parseInt(month);
       if (!Number.isFinite(m) || m < 1 || m > 12) return badRequest('Невалідний місяць');
@@ -29,6 +32,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const { year, month, categoryId, plannedAmount, notes } = body;
 
@@ -37,10 +42,18 @@ export async function POST(req: NextRequest) {
     if (!isPositiveInt(Number(categoryId)))          return badRequest('Невалідна категорія');
     if (!isNonNegativeNumber(Number(plannedAmount))) return badRequest('Сума не може бути від\'ємною');
 
+    // categoryId already implicitly scopes year_month_categoryId to one
+    // household (a category belongs to exactly one), but only once we
+    // confirm it belongs to THIS caller's household — otherwise this upsert
+    // could silently overwrite another household's plan for their own
+    // category id.
+    const cat = await prisma.category.findFirst({ where: { id: Number(categoryId), householdId }, select: { id: true } });
+    if (!cat) return badRequest('Невалідна категорія');
+
     const plan = await prisma.monthlyPlan.upsert({
       where: { year_month_categoryId: { year, month, categoryId } },
       update: { plannedAmount: roundMoney(plannedAmount), notes: notes ?? undefined },
-      create: { year, month, categoryId, plannedAmount: roundMoney(plannedAmount), notes: notes ?? '' },
+      create: { year, month, categoryId, plannedAmount: roundMoney(plannedAmount), notes: notes ?? '', householdId },
       include: { category: true },
     });
     return NextResponse.json(plan);
