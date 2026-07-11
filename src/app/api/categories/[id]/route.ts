@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isValidType } from '@/lib/validate';
+import { requireHouseholdId } from '@/lib/household';
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const id = parseInt(params.id);
     if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
     const body = await req.json();
@@ -23,37 +26,42 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       // category's type changed, the transaction itself untouched. Not
       // reachable via the current UI (which only ever PUTs color/icon), but
       // the route itself must not allow it regardless of caller.
-      const txCount = await prisma.transaction.count({ where: { categoryId: id } });
+      const txCount = await prisma.transaction.count({ where: { categoryId: id, householdId } });
       if (txCount > 0) return badRequest('Не можна змінити тип категорії, якщо в ній вже є транзакції — створіть нову категорію замість цього');
       data.type = body.type;
     }
     if (typeof body.color === 'string') data.color = body.color;
     if (typeof body.icon  === 'string') data.icon  = body.icon;
 
-    const cat = await prisma.category.update({
-      where: { id },
-      data,
-    });
+    // updateMany scoped by householdId, not a bare update({ where: { id } }),
+    // so a household can never modify another household's category just by
+    // guessing/knowing its id — the multi-tenant isolation boundary, same
+    // shape as the TOCTOU-safe updateMany pattern already used for claiming
+    // a Telegram account (see auth/telegram/register/route.ts).
+    const result = await prisma.category.updateMany({ where: { id, householdId }, data });
+    if (result.count === 0) return NextResponse.json({ error: 'Категорію не знайдено' }, { status: 404 });
+    const cat = await prisma.category.findUnique({ where: { id } });
     return NextResponse.json(cat);
   } catch (e: any) {
     if (e?.code === 'P2002') return badRequest('Така категорія вже існує');
-    if (e?.code === 'P2025') return NextResponse.json({ error: 'Категорію не знайдено' }, { status: 404 });
     console.error('[categories/[id] PUT]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const id = parseInt(params.id);
     if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
-    await prisma.category.update({
-      where: { id },
+    const result = await prisma.category.updateMany({
+      where: { id, householdId },
       data: { isActive: false },
     });
+    if (result.count === 0) return NextResponse.json({ error: 'Категорію не знайдено' }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    if (e?.code === 'P2025') return NextResponse.json({ error: 'Категорію не знайдено' }, { status: 404 });
     console.error('[categories/[id] DELETE]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

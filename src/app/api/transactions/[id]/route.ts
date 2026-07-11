@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isValidDate, isPositiveInt, isPositiveNumber, roundMoney } from '@/lib/validate';
 import { normalizeMerchantKey } from '@/lib/monobank';
+import { requireHouseholdId } from '@/lib/household';
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const id = parseInt(params.id);
     if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
     const body = await req.json();
@@ -20,11 +23,22 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     // signal MonoCategoryRule learns from (never Claude's own guess), so a
     // repeat merchant/phrase is never re-guessed after being fixed once.
     // Fetched before the update, not after, so we compare against the
-    // category that was actually wrong.
+    // category that was actually wrong. Also doubles as the household
+    // ownership check — a bare update({ where: { id } }) would let one
+    // household edit another's transaction just by guessing its id.
     const before = await prisma.transaction.findUnique({
       where: { id },
-      select: { source: true, monoMerchant: true, details: true, userId: true, categoryId: true },
+      select: { source: true, monoMerchant: true, details: true, userId: true, categoryId: true, householdId: true },
     });
+    if (!before || before.householdId !== householdId) {
+      return NextResponse.json({ error: 'Транзакцію не знайдено' }, { status: 404 });
+    }
+    const newCat = await prisma.category.findFirst({ where: { id: newCategoryId, householdId }, select: { id: true } });
+    if (!newCat) return badRequest('Невалідна категорія');
+    if (body.userId) {
+      const u = await prisma.user.findFirst({ where: { id: parseInt(body.userId), householdId }, select: { id: true } });
+      if (!u) return badRequest('Невалідний користувач');
+    }
 
     const tx = await prisma.transaction.update({
       where: { id },
@@ -64,10 +78,16 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const id = parseInt(params.id);
     if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
+    const owned = await prisma.transaction.findUnique({ where: { id }, select: { householdId: true } });
+    if (!owned || owned.householdId !== householdId) {
+      return NextResponse.json({ error: 'Транзакцію не знайдено' }, { status: 404 });
+    }
     // possibleDuplicateOf is a plain Int, not a real FK relation (deliberately —
     // see Ф5), so Postgres won't clean up references to this row on its own.
     // Clear them first so deleting the "original" of a flagged pair never

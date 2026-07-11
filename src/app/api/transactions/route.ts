@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isValidDate, isPositiveInt, isPositiveNumber, roundMoney } from '@/lib/validate';
+import { requireHouseholdId } from '@/lib/household';
 
 export async function GET(req: NextRequest) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { searchParams } = req.nextUrl;
     const year  = searchParams.get('year');
     const month = searchParams.get('month');
     const type  = searchParams.get('type');
     const limitParam = searchParams.get('limit');
 
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { householdId };
     let take: number | undefined;
 
     if (year && month) {
@@ -51,12 +54,27 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const { date, categoryId, amount, details, userId } = body;
 
     if (!isValidDate(date))                  return badRequest('Невалідна дата');
     if (!isPositiveInt(Number(categoryId)))  return badRequest('Невалідна категорія');
     if (!isPositiveNumber(Number(amount)))   return badRequest('Сума має бути більше 0');
+
+    // Without this, a request could reference another household's category
+    // (or user) by id — the created row itself would still only be visible
+    // within this household's own queries (household is set below,
+    // independent of what the client sent), but it would silently link to
+    // and expose a foreign category's name/type via this transaction's own
+    // `include: category`.
+    const cat = await prisma.category.findFirst({ where: { id: parseInt(categoryId), householdId }, select: { id: true } });
+    if (!cat) return badRequest('Невалідна категорія');
+    if (userId) {
+      const u = await prisma.user.findFirst({ where: { id: parseInt(userId), householdId }, select: { id: true } });
+      if (!u) return badRequest('Невалідний користувач');
+    }
 
     const tx = await prisma.transaction.create({
       data: {
@@ -65,6 +83,7 @@ export async function POST(req: NextRequest) {
         amount:     roundMoney(parseFloat(amount)),
         details:    details || '',
         userId:     userId ? parseInt(userId) : null,
+        householdId,
       },
       include: { category: true, user: { select: { id: true, name: true } } },
     });

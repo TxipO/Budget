@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isValidType } from '@/lib/validate';
+import { requireHouseholdId } from '@/lib/household';
 
 export async function GET(req: NextRequest) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const type = req.nextUrl.searchParams.get('type');
     const cats = await prisma.category.findMany({
-      where: { isActive: true, ...(type ? { type } : {}) },
+      where: { householdId, isActive: true, ...(type ? { type } : {}) },
       orderBy: { id: 'asc' },
     });
     return NextResponse.json(cats);
@@ -18,6 +21,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (!name)                    return badRequest('Назва категорії обов\'язкова');
@@ -27,6 +32,7 @@ export async function POST(req: NextRequest) {
       data: {
         name,
         type: body.type,
+        householdId,
         ...(typeof body.color === 'string' ? { color: body.color } : {}),
         ...(typeof body.icon  === 'string' ? { icon: body.icon }   : {}),
       },

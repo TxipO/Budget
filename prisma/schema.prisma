@@ -101,7 +101,14 @@ model Category {
   recurringTemplates RecurringTemplate[]
   monoCategoryRules  MonoCategoryRule[]
 
-  @@unique([name, type])
+  // Phase C of the multi-tenant migration: uniqueness scoped per household,
+  // not global — a global @@unique([name, type]) meant two different
+  // households could never both have a category named "Їжа", which defeats
+  // the entire point of tenant isolation. householdId is still nullable
+  // (phase A note) but Postgres treats NULL as distinct from any other value
+  // in a unique index, so this doesn't regress anything for not-yet-migrated
+  // rows — there are none, everything was backfilled in phase A.
+  @@unique([householdId, name, type])
 }
 
 model Transaction {

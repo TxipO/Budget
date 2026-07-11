@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import ExcelJS from 'exceljs';
+import { requireHouseholdId } from '@/lib/household';
 
 const INCOME_COLORS: Record<string, string> = {
   'Женя': '#22C55E', 'Паша': '#16A34A', 'Додаткове': '#4ADE80',
@@ -74,6 +75,8 @@ function cellDate(v: ExcelJS.CellValue): Date | null {
 
 export async function POST(req: NextRequest) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const formData = await req.formData();
     const file = formData.get('file') as File;
     if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 });
@@ -83,9 +86,14 @@ export async function POST(req: NextRequest) {
     await wb.xlsx.load(buffer);
 
     // --- Ensure users exist ---
+    // User.name is still globally unique (not household-scoped — out of
+    // scope for this pass), so this stays exactly as safe as it always was
+    // for household #1's own re-imports; a name collision with a genuinely
+    // different household would fail loudly (P2002) rather than silently
+    // attach to the wrong tenant.
     for (const name of ['Паша', 'Женя']) {
       await prisma.user.upsert({
-        where: { name }, update: {}, create: { name },
+        where: { name }, update: {}, create: { name, householdId },
       });
     }
 
@@ -122,11 +130,11 @@ export async function POST(req: NextRequest) {
       const name = cleanName(cell);
       if (!name) continue;
 
-      // Upsert category (name+type is unique at the DB level)
+      // Upsert category (householdId+name+type is unique at the DB level)
       const cat = await prisma.category.upsert({
-        where: { name_type: { name, type: currentSection } },
+        where: { householdId_name_type: { householdId, name, type: currentSection } },
         update: {},
-        create: { name, type: currentSection, color: getColor(name, currentSection) },
+        create: { name, type: currentSection, color: getColor(name, currentSection), householdId },
       });
       importedCats.set(name, cat.id);
 
@@ -145,21 +153,24 @@ export async function POST(req: NextRequest) {
         await prisma.transaction.deleteMany({
           where: {
             categoryId: cat.id,
+            householdId,
             date: { gte: new Date(Date.UTC(baseYear, m, 1)), lt: new Date(Date.UTC(baseYear, m + 1, 1)) },
             details: '[імпорт]',
           },
         });
         await prisma.transaction.create({
           data: {
-            date, categoryId: cat.id, amount, details: '[імпорт]',
+            date, categoryId: cat.id, amount, details: '[імпорт]', householdId,
           },
         });
 
-        // Create monthly plan
+        // Create monthly plan — year+month+categoryId is already implicitly
+        // household-scoped (a category belongs to exactly one household),
+        // no compound-key change needed the way Category's was.
         await prisma.monthlyPlan.upsert({
           where: { year_month_categoryId: { year: baseYear, month: m + 1, categoryId: cat.id } },
           update: { plannedAmount: amount },
-          create: { year: baseYear, month: m + 1, categoryId: cat.id, plannedAmount: amount },
+          create: { year: baseYear, month: m + 1, categoryId: cat.id, plannedAmount: amount, householdId },
         });
       }
     }
@@ -187,18 +198,18 @@ export async function POST(req: NextRequest) {
 
         const catNameStr = catName.trim();
         const cat = await prisma.category.upsert({
-          where: { name_type: { name: catNameStr, type: typeLower } },
+          where: { householdId_name_type: { householdId, name: catNameStr, type: typeLower } },
           update: {},
-          create: { name: catNameStr, type: typeLower, color: getColor(catNameStr, typeLower) },
+          create: { name: catNameStr, type: typeLower, color: getColor(catNameStr, typeLower), householdId },
         });
 
         const detailsStr = details ?? '';
         const exists = await prisma.transaction.findFirst({
-          where: { date, categoryId: cat.id, amount, details: detailsStr },
+          where: { date, categoryId: cat.id, amount, details: detailsStr, householdId },
         });
         if (!exists) {
           await prisma.transaction.create({
-            data: { date, categoryId: cat.id, amount, details: detailsStr },
+            data: { date, categoryId: cat.id, amount, details: detailsStr, householdId },
           });
         }
       }
