@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, Landmark } from 'lucide-react';
 import { formatMoney, formatMoneySign, MONTH_NAMES, TYPE_COLORS, type Period, PERIOD_LABELS } from '@/lib/utils';
 import TransactionForm from '@/components/TransactionForm';
 import RecurringModal from '@/components/RecurringModal';
@@ -19,7 +19,7 @@ interface Stats {
   byUser: { name: string; income: number; expenses: number; savings: number; net: number }[];
   trend: { month: string; income: number; expenses: number; savings: number; balance: number }[];
   recent: {
-    id: number; date: string; amount: number; details: string;
+    id: number; date: string; amount: number; details: string; source: string;
     category: { id: number; name: string; type: string; color: string; icon: string };
     user: { id: number; name: string } | null;
   }[];
@@ -503,7 +503,10 @@ export default function Dashboard() {
             <CategoryIcon name={tx.category.icon} color={tx.category.color} size={16} tile />
 
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)' }}>{tx.category.name}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                {tx.category.name}
+                {tx.source === 'mono' && <span title="Автоматично підтягнуто з Monobank" style={{ display: 'flex' }}><Landmark size={11} color="#38BDF8" /></span>}
+              </div>
               <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
                 {new Date(tx.date).toLocaleDateString('uk-UA')}
                 {tx.details && tx.details !== '[імпорт]' && ` · ${tx.details}`}
