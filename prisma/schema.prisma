@@ -18,6 +18,11 @@ model Household {
   pinHash   String?
   authMode  String   @default("email") // "pin" | "email" | "telegram" — informational only today (nothing branches on it yet), records how the household first signed up
   createdAt DateTime @default(now())
+  // null = onboarding wizard not completed yet (empty categories, no PIN
+  // decision made). Set once by POST /api/onboarding/complete. Household #1
+  // and any household that predates the onboarding flow is backfilled to
+  // now() so it's never sent through the wizard retroactively.
+  onboardedAt DateTime?
 
   users              User[]
   categories         Category[]

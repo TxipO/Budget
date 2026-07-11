@@ -29,7 +29,11 @@ export async function POST(req: NextRequest) {
       select: { id: true, householdId: true },
     });
     if (existing && existing.householdId) {
-      const res = NextResponse.json({ ok: true, user: { id: existing.id, name: trimmedName } });
+      // Existing household might itself still be mid-onboarding (e.g. they
+      // closed the tab partway through) — check rather than assume "existing
+      // account" always means "already onboarded".
+      const household = await prisma.household.findUnique({ where: { id: existing.householdId }, select: { onboardedAt: true } });
+      const res = NextResponse.json({ ok: true, onboarded: !!household?.onboardedAt, user: { id: existing.id, name: trimmedName } });
       res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(existing.householdId), String(existing.id)), {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
@@ -64,7 +68,9 @@ export async function POST(req: NextRequest) {
       throw e;
     }
 
-    const res = NextResponse.json({ ok: true, user: { id: user.id, name: user.name } });
+    // Brand-new household — onboardedAt is null by construction (no default,
+    // never set at create time), so this is always false here.
+    const res = NextResponse.json({ ok: true, onboarded: false, user: { id: user.id, name: user.name } });
     res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.householdId), String(user.id)), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

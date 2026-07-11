@@ -31,7 +31,10 @@ export async function POST(req: NextRequest) {
     const verified = verifyTelegramAuth(telegramData, botToken);
     if (!verified) return NextResponse.json({ error: 'Недійсний підпис Telegram' }, { status: 401 });
 
-    const user = await prisma.user.findUnique({ where: { telegramId: verified.id }, select: { id: true, householdId: true } });
+    const user = await prisma.user.findUnique({
+      where: { telegramId: verified.id },
+      select: { id: true, householdId: true, household: { select: { onboardedAt: true } } },
+    });
     if (!user || !user.householdId) {
       return NextResponse.json({ error: 'Немає акаунту з цим Telegram — спершу увійдіть або зареєструйтесь через Telegram' }, { status: 400 });
     }
@@ -47,7 +50,7 @@ export async function POST(req: NextRequest) {
       throw e;
     }
 
-    const res = NextResponse.json({ ok: true });
+    const res = NextResponse.json({ ok: true, onboarded: !!user.household?.onboardedAt });
     res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.householdId), String(user.id)), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

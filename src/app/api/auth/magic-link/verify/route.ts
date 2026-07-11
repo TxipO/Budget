@@ -22,11 +22,12 @@ export async function GET(req: NextRequest) {
     // inbox) never grants login rights just because it matches.
     const verifiedUser = await prisma.user.findFirst({
       where: { email, emailVerifiedAt: { not: null } },
-      select: { id: true, householdId: true },
+      select: { id: true, householdId: true, household: { select: { onboardedAt: true } } },
     });
 
     if (verifiedUser && verifiedUser.householdId) {
-      const res = NextResponse.redirect(`${origin}/`);
+      const dest = verifiedUser.household?.onboardedAt ? '/' : '/onboarding';
+      const res = NextResponse.redirect(`${origin}${dest}`);
       res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(verifiedUser.householdId), String(verifiedUser.id)), {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',

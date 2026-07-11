@@ -52,6 +52,10 @@ export async function POST(req: NextRequest) {
     }
 
     let user;
+    // linkToUserId is always household #1 (enforced below) which has been
+    // onboarded since the phase-A backfill; the new-account branch always
+    // seeds a fresh, not-yet-onboarded household. No extra query needed.
+    const onboarded = linkToUserId !== undefined && linkToUserId !== null;
     if (linkToUserId !== undefined && linkToUserId !== null) {
       // Claiming an EXISTING account (Паша/Женя logging in via Telegram for
       // the first time) — never create a new row here, or their transaction
@@ -142,7 +146,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
-    const res = NextResponse.json({ ok: true, user: { id: user.id, name: user.name } });
+    const res = NextResponse.json({ ok: true, onboarded, user: { id: user.id, name: user.name } });
     res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.householdId), String(user.id)), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

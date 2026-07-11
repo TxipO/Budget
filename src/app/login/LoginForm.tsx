@@ -107,7 +107,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) { setEmailError(data?.error || 'Помилка реєстрації'); return; }
-      window.location.href = '/';
+      window.location.href = data.onboarded ? '/' : '/onboarding';
     } catch {
       setEmailError('Помилка з’єднання');
     } finally {
@@ -154,7 +154,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
           setRegistration({ pendingToken: data.pendingToken, firstName: data.telegramFirstName, username: data.telegramUsername });
           fetch('/api/auth/telegram/unlinked-users').then(r => r.ok ? r.json() : []).then(setUnlinkedUsers).catch(() => {});
         } else {
-          window.location.href = '/';
+          window.location.href = data.onboarded ? '/' : '/onboarding';
         }
       } catch {
         setError('Помилка з’єднання');
@@ -196,7 +196,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
         });
         const data = await res.json().catch(() => null);
         if (!res.ok) { setEmailError(data?.error || 'Помилка прив’язки'); return; }
-        window.location.href = '/';
+        window.location.href = data.onboarded ? '/' : '/onboarding';
       } catch {
         setEmailError('Помилка з’єднання');
       } finally {
@@ -250,7 +250,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) { setError(data?.error || 'Помилка реєстрації'); return; }
-      window.location.href = '/';
+      window.location.href = data.onboarded ? '/' : '/onboarding';
     } catch {
       setError('Помилка з’єднання');
     } finally {

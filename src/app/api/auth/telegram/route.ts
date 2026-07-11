@@ -15,7 +15,10 @@ export async function POST(req: NextRequest) {
     const verified = verifyTelegramAuth(body, botToken);
     if (!verified) return NextResponse.json({ error: 'Недійсний підпис Telegram' }, { status: 401 });
 
-    const user = await prisma.user.findUnique({ where: { telegramId: verified.id }, select: { id: true, householdId: true } });
+    const user = await prisma.user.findUnique({
+      where: { telegramId: verified.id },
+      select: { id: true, householdId: true, household: { select: { onboardedAt: true } } },
+    });
 
     if (!user) {
       // First-time login — don't auto-create a row here. It might be a
@@ -42,7 +45,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
-    const res = NextResponse.json({ ok: true, needsRegistration: false });
+    // Covers the edge case of someone who registered via Telegram, closed
+    // the tab mid-onboarding, and comes back later — telegramId is already
+    // set from registration, so this route (not .../register) is what they
+    // hit on their next login.
+    const res = NextResponse.json({ ok: true, needsRegistration: false, onboarded: !!user.household?.onboardedAt });
     res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.householdId), String(user.id)), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
