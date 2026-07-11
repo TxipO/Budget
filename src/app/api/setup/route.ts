@@ -1,38 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { badRequest } from '@/lib/validate';
+import { NextResponse } from 'next/server';
 
-// One-time household setup for a fresh deployment — lets whoever runs this
-// instance name their own household members instead of being stuck with
-// this app's original hardcoded "Паша"/"Женя". Guarded by the User table
-// being empty so it can't be replayed later to spam-create accounts once
-// real data (and real transactions tied to real users) exists.
-export async function POST(req: NextRequest) {
-  try {
-    const existing = await prisma.user.count();
-    if (existing > 0) return NextResponse.json({ error: 'Налаштування вже виконано' }, { status: 409 });
-
-    const body = await req.json();
-    const names: unknown = body?.names;
-    if (!Array.isArray(names) || names.length < 1 || names.length > 2) return badRequest('Потрібно 1 або 2 імені');
-
-    const trimmed = names.map(n => typeof n === 'string' ? n.trim() : '');
-    if (trimmed.some(n => !n)) return badRequest("Кожен користувач повинен мати ім'я");
-    if (new Set(trimmed).size !== trimmed.length) return badRequest('Імена мають бути унікальними');
-
-    // A transaction, not a plain loop — if the 2nd create fails partway
-    // (e.g. a rare race with another concurrent setup request hitting the
-    // unique name constraint), a loop would leave exactly one user created
-    // while the request still reports failure. A retry would then find
-    // count() > 0 and get permanently blocked by the guard above, stuck
-    // half-configured with no way to finish or restart. The transaction
-    // makes it all-or-nothing instead.
-    const created = await prisma.$transaction(
-      trimmed.map(name => prisma.user.create({ data: { name }, select: { id: true, name: true } }))
-    );
-    return NextResponse.json({ ok: true, users: created });
-  } catch (e) {
-    console.error('[setup POST]', e);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
+// Retired as part of the multi-tenant migration (MT Ф3) — this used to be a
+// one-time "name your household members" step for a fresh deployment,
+// guarded by a global User.count()===0 check. That check conflated "no
+// users yet" with "no households yet": it was already permanently blocked
+// in practice (household #1 has had 2 users since the phase-A backfill,
+// and users/[id]/route.ts refuses to delete the last user of a household),
+// and it created users with no householdId, which is unsafe now that every
+// query is household-scoped. New households are created directly by the
+// email/magic-link signup flow (MT Ф4), not through this route.
+export async function POST() {
+  return NextResponse.json({ error: 'Налаштування вже виконано' }, { status: 410 });
 }

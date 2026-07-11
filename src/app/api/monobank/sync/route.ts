@@ -4,6 +4,7 @@ import { badRequest, isPositiveInt } from '@/lib/validate';
 import { decrypt } from '@/lib/crypto';
 import { getStatement, MonobankError } from '@/lib/monobank';
 import { ingestStatementItem, MonoStatementItem } from '@/lib/monoIngest';
+import { requireHouseholdId } from '@/lib/household';
 
 // Push delivery has no guarantee of arriving — Monobank's webhook is
 // best-effort, and there is no dashboard or API to inspect missed/failed
@@ -19,15 +20,18 @@ const LOOKBACK_DAYS = 7;
 
 export async function POST(req: NextRequest) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const { userId } = body;
     if (!isPositiveInt(Number(userId))) return badRequest('Невалідний користувач');
 
     const user = await prisma.user.findUnique({
       where: { id: Number(userId) },
-      select: { id: true, monoTokenEnc: true, monoAccountId: true },
+      select: { id: true, householdId: true, monoTokenEnc: true, monoAccountId: true },
     });
-    if (!user || !user.monoTokenEnc || !user.monoAccountId) return badRequest('Не підключено');
+    if (!user || user.householdId !== householdId) return badRequest('Користувача не знайдено');
+    if (!user.monoTokenEnc || !user.monoAccountId) return badRequest('Не підключено');
 
     const token = decrypt(user.monoTokenEnc);
     const to = Math.floor(Date.now() / 1000);
@@ -45,7 +49,7 @@ export async function POST(req: NextRequest) {
     let skippedHold = 0;
     let skippedExisting = 0;
     for (const item of items) {
-      const result = await ingestStatementItem(user.id, item);
+      const result = await ingestStatementItem(user.id, householdId, item);
       if (result === 'created') created++;
       else if (result === 'skipped_hold') skippedHold++;
       else if (result === 'skipped_duplicate') skippedExisting++;

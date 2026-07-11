@@ -4,17 +4,22 @@ import { prisma } from '@/lib/prisma';
 import { badRequest, isPositiveInt } from '@/lib/validate';
 import { encrypt } from '@/lib/crypto';
 import { getClientInfo, setWebhook, getAppOrigin, MonobankError } from '@/lib/monobank';
+import { requireHouseholdId } from '@/lib/household';
 
 export async function POST(req: NextRequest) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const { userId, token } = body;
     if (!isPositiveInt(Number(userId))) return badRequest('Невалідний користувач');
     if (typeof token !== 'string' || !token.trim()) return badRequest("Токен обов'язковий");
     const trimmedToken = token.trim();
 
-    const user = await prisma.user.findUnique({ where: { id: Number(userId) }, select: { id: true } });
-    if (!user) return badRequest('Користувача не знайдено');
+    // Ownership check — without it, any authenticated household could connect
+    // a Monobank token to another household's user by guessing their id.
+    const user = await prisma.user.findUnique({ where: { id: Number(userId) }, select: { id: true, householdId: true } });
+    if (!user || user.householdId !== householdId) return badRequest('Користувача не знайдено');
 
     let clientInfo;
     try {

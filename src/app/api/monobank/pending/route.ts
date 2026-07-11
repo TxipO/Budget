@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { decrypt } from '@/lib/crypto';
 import { getStatement, MonobankError } from '@/lib/monobank';
 import { MONO_CCY_NAMES, ingestStatementItem } from '@/lib/monoIngest';
+import { requireHouseholdId } from '@/lib/household';
 
 // Reports holds for the dashboard's "Очікують підтвердження" block — holds
 // themselves are provisional (see monoIngest.ts) and deliberately never
@@ -36,8 +37,19 @@ interface PendingItem {
 
 export async function GET(req: NextRequest) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json([], { status: 401 });
     const userId = Number(req.nextUrl.searchParams.get('userId'));
     if (!Number.isFinite(userId) || userId <= 0) return NextResponse.json([]);
+
+    // Ownership check before touching the cache — otherwise any household
+    // could read another household's cached pending-holds list by passing
+    // its userId in the query string.
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { householdId: true, monoTokenEnc: true, monoAccountId: true },
+    });
+    if (!user || user.householdId !== householdId) return NextResponse.json([]);
 
     const cacheKey = `monoPending:${userId}`;
     const cached = await prisma.appSetting.findUnique({ where: { key: cacheKey } });
@@ -46,11 +58,7 @@ export async function GET(req: NextRequest) {
       if (Date.now() - parsed.fetchedAt < CACHE_TTL_MS) return NextResponse.json(parsed.items);
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { monoTokenEnc: true, monoAccountId: true },
-    });
-    if (!user || !user.monoTokenEnc || !user.monoAccountId) return NextResponse.json([]);
+    if (!user.monoTokenEnc || !user.monoAccountId) return NextResponse.json([]);
 
     let statement: any[];
     try {
@@ -81,7 +89,7 @@ export async function GET(req: NextRequest) {
         // No-op for anything already recorded (idempotent via monoStatementId);
         // a failure here must never break the pending list this route exists
         // to serve.
-        try { await ingestStatementItem(userId, i); } catch (e) { console.error('[monobank/pending] opportunistic ingest failed', e); }
+        try { await ingestStatementItem(userId, householdId, i); } catch (e) { console.error('[monobank/pending] opportunistic ingest failed', e); }
       }
     }
 

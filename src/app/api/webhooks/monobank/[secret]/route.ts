@@ -11,17 +11,19 @@ export async function GET() {
 
 export async function POST(req: NextRequest, { params }: { params: { secret: string } }) {
   try {
-    const user = await prisma.user.findUnique({ where: { monoWebhookSecret: params.secret }, select: { id: true } });
+    const user = await prisma.user.findUnique({ where: { monoWebhookSecret: params.secret }, select: { id: true, householdId: true } });
     // 200, not 404: an unrecognized secret (stale/disconnected/probing) isn't
-    // an error for Monobank to retry, it's just nothing to do.
-    if (!user) return NextResponse.json({ ok: true });
+    // an error for Monobank to retry, it's just nothing to do. A user with no
+    // household (shouldn't happen post-backfill) is treated the same way —
+    // nothing safe to file the transaction under.
+    if (!user || !user.householdId) return NextResponse.json({ ok: true });
 
     const body = await req.json();
     if (body?.type !== 'StatementItem') return NextResponse.json({ ok: true });
     const item: MonoStatementItem = body.data?.statementItem;
     if (!item?.id) return NextResponse.json({ ok: true });
 
-    await ingestStatementItem(user.id, item);
+    await ingestStatementItem(user.id, user.householdId, item);
 
     return NextResponse.json({ ok: true });
   } catch (e) {

@@ -43,12 +43,13 @@ export async function POST(req: NextRequest) {
     // name, and there's no reason to spend a Groq call finding that out.
     const user = await prisma.user.findUnique({
       where: { telegramId: String(senderId) },
-      select: { id: true, name: true },
+      select: { id: true, name: true, householdId: true },
     });
-    if (!user) {
+    if (!user || !user.householdId) {
       await sendMessage(senderId, 'Цей Telegram не прив’язаний до жодного акаунту. Прив’яжіть його через застосунок (Налаштування → Обліковий запис), тоді голосові повідомлення почнуть логувати транзакції.');
       return NextResponse.json({ ok: true });
     }
+    const householdId = user.householdId;
 
     const audio = await downloadVoice(voice.file_id);
     if (!audio) {
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
     // lib/voiceExtract.ts). Falls back to the rule-based path
     // (voiceParse.ts + categoryGuess.ts) on any failure, so a Groq chat
     // outage degrades the feature instead of breaking it outright.
-    const activeCategories = await prisma.category.findMany({ where: { isActive: true }, select: { name: true, type: true } });
+    const activeCategories = await prisma.category.findMany({ where: { householdId, isActive: true }, select: { name: true, type: true } });
     const expenseNames = activeCategories.filter(c => c.type === 'expense').map(c => c.name);
     const incomeNames = activeCategories.filter(c => c.type === 'income').map(c => c.name);
 
@@ -86,11 +87,11 @@ export async function POST(req: NextRequest) {
       // the same in-memory list (rather than trusting an id the model
       // never actually saw) means a model bug can't point at a category
       // that doesn't exist or doesn't match the direction.
-      const resolved = cat ? await prisma.category.findFirst({ where: { name: cat.name, type: cat.type, isActive: true }, select: { id: true } }) : null;
+      const resolved = cat ? await prisma.category.findFirst({ where: { householdId, name: cat.name, type: cat.type, isActive: true }, select: { id: true } }) : null;
       if (!resolved) {
         // Extremely unlikely given the validation above, but if it somehow
         // happens, fall through to the rule-based path rather than crash.
-        categoryId = await guessCategoryId(user.id, direction, transcript, undefined);
+        categoryId = await guessCategoryId(householdId, user.id, direction, transcript, undefined);
       } else {
         categoryId = resolved.id;
       }
@@ -104,7 +105,7 @@ export async function POST(req: NextRequest) {
       }
       direction = parsed.direction;
       amount = parsed.amount;
-      categoryId = await guessCategoryId(user.id, direction, transcript, undefined);
+      categoryId = await guessCategoryId(householdId, user.id, direction, transcript, undefined);
     }
 
     const category = await prisma.category.findUnique({ where: { id: categoryId }, select: { name: true } });
@@ -122,6 +123,7 @@ export async function POST(req: NextRequest) {
     try {
       created = await prisma.transaction.create({
         data: {
+          householdId,
           date: day,
           categoryId,
           amount: roundMoney(amount),

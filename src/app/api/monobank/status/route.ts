@@ -1,12 +1,19 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireHouseholdId } from '@/lib/household';
 
 // Never touches Monobank's own API (no rate-limit cost) — just reports what's
 // stored locally. monoTokenEnc itself never leaves this route; only whether
 // it's set.
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const householdId = requireHouseholdId(req);
+    if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // householdId filter — without it this leaked every household's member
+    // names and Monobank connection status into every other household's
+    // Settings page.
     const users = await prisma.user.findMany({
+      where: { householdId },
       select: { id: true, name: true, monoAccountId: true, monoTokenEnc: true, monoWebhookSecret: true },
       orderBy: { id: 'asc' },
     });

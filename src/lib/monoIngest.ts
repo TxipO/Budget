@@ -22,7 +22,7 @@ export type IngestResult = 'created' | 'skipped_hold' | 'skipped_duplicate' | 's
 // sync route, so the two paths can never drift into different behavior for
 // the same event (they already did once: the manual path was about to
 // duplicate this logic before being extracted here).
-export async function ingestStatementItem(userId: number, item: MonoStatementItem): Promise<IngestResult> {
+export async function ingestStatementItem(userId: number, householdId: number, item: MonoStatementItem): Promise<IngestResult> {
   if (!item?.id) return 'skipped_malformed';
 
   // A hold is a provisional card authorization, not a finalized payment —
@@ -55,7 +55,7 @@ export async function ingestStatementItem(userId: number, item: MonoStatementIte
   const amount = roundMoney(amountOriginal * fxRate);
 
   const merchantKey = normalizeMerchantKey(item.description || '');
-  const categoryId = await resolveCategoryId(userId, txType, merchantKey, item.mcc);
+  const categoryId = await resolveCategoryId(householdId, userId, txType, merchantKey, item.mcc);
 
   // Truncate to UTC midnight of the calendar day — matches this app's
   // existing convention (manual/import rows land on UTC midnight,
@@ -73,6 +73,7 @@ export async function ingestStatementItem(userId: number, item: MonoStatementIte
   const monthEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
   const possibleDup = await prisma.transaction.findFirst({
     where: {
+      householdId,
       categoryId,
       date: { gte: monthStart, lt: monthEnd },
       OR: [{ recurringTemplateId: { not: null } }, { details: '[імпорт]' }],
@@ -82,6 +83,7 @@ export async function ingestStatementItem(userId: number, item: MonoStatementIte
   try {
     await prisma.transaction.create({
       data: {
+        householdId,
         date,
         categoryId,
         amount,
