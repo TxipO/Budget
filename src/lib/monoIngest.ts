@@ -9,7 +9,19 @@ export interface MonoStatementItem {
   description: string;
   mcc?: number;
   hold?: boolean; // provisional authorization, not yet settled — can still be declined/cancelled
-  amount: number; // minor units (kopecks), negative = expense
+  // `amount` is ALWAYS in the connected account's own currency (here: UAH —
+  // see lib/monobank.ts's getClientInfo), regardless of what currencyCode
+  // says. For a purchase made abroad, `operationAmount` is the actual amount
+  // charged at the point of sale, denominated in `currencyCode`. Confirmed
+  // live 2026-07-11 against Monobank's raw API response: a NOK purchase
+  // showed amount=-105560 (1055.60, the UAH-account-debited figure) and
+  // operationAmount=-22900 (229.00, the real NOK charge) with currencyCode
+  // 578 (NOK) on both fields — using `amount` as if it were already in
+  // `currencyCode`'s currency recorded every NOK purchase ~4.6x too large.
+  // For a domestic (UAH) transaction the two fields are equal, so preferring
+  // operationAmount when present is always correct, never just "close".
+  amount: number; // minor units (kopecks), negative = expense — account currency
+  operationAmount?: number; // minor units, in currencyCode's currency
   currencyCode: number;
 }
 
@@ -41,7 +53,10 @@ export async function ingestStatementItem(userId: number, householdId: number, i
   if (existing) return 'skipped_duplicate';
 
   const txType: 'expense' | 'income' = item.amount < 0 ? 'expense' : 'income';
-  const amountOriginal = roundMoney(Math.abs(item.amount) / 100);
+  // operationAmount (in currencyCode's currency), not amount (always the
+  // account's own currency) — see the MonoStatementItem comment above.
+  const rawAmount = item.operationAmount ?? item.amount;
+  const amountOriginal = roundMoney(Math.abs(rawAmount) / 100);
 
   let fxRate = 1;
   if (item.currencyCode !== ISO_4217.NOK) {

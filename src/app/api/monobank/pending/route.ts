@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { decrypt } from '@/lib/crypto';
-import { getStatement, MonobankError } from '@/lib/monobank';
+import { getStatement, MonobankError, ISO_4217, getCachedExchangeRate } from '@/lib/monobank';
 import { MONO_CCY_NAMES, ingestStatementItem } from '@/lib/monoIngest';
 import { requireHouseholdId } from '@/lib/household';
+import { roundMoney } from '@/lib/validate';
 
 // Reports holds for the dashboard's "Очікують підтвердження" block — holds
 // themselves are provisional (see monoIngest.ts) and deliberately never
@@ -78,10 +79,30 @@ export async function GET(req: NextRequest) {
     const holds: PendingItem[] = [];
     for (const i of statement) {
       if (i.hold) {
+        // i.amount is ALWAYS in the connected account's own currency (UAH
+        // here), not i.currencyCode's — i.operationAmount is the real amount
+        // in i.currencyCode. Confirmed live 2026-07-11 against Monobank's raw
+        // API: a NOK purchase reported amount=-105560 (the UAH-account-debited
+        // figure, 1055.60) and operationAmount=-22900 (the real NOK charge,
+        // 229.00) with currencyCode 578 (NOK) on both. Using i.amount here
+        // showed pending holds ~4.6x too large, still labeled "kr" by the
+        // dashboard's formatMoney(). See lib/monoIngest.ts's matching fix for
+        // confirmed transactions (same underlying bug).
+        const rawAmount = i.operationAmount ?? i.amount;
+        let amountNok = Math.abs(rawAmount) / 100;
+        if (i.currencyCode !== ISO_4217.NOK) {
+          const rate = await getCachedExchangeRate(i.currencyCode, ISO_4217.NOK);
+          // No cached/live rate available (rare — this same lookup already
+          // runs on every ingest) — skip this hold rather than show a
+          // plausible-looking but wrong number; it reappears next refresh
+          // once a rate is available, or once it settles for real.
+          if (rate === null) continue;
+          amountNok = roundMoney(amountNok * rate);
+        }
         holds.push({
           id: i.id,
           description: i.description || '',
-          amount: Math.abs(i.amount) / 100,
+          amount: amountNok,
           currency: MONO_CCY_NAMES[i.currencyCode] ?? String(i.currencyCode),
           time: i.time,
         });
