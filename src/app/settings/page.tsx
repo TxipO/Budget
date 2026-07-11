@@ -564,7 +564,10 @@ export default function SettingsPage() {
           <button type="submit" disabled={pinSaving} className="btn-primary" style={{ padding: '10px 18px' }}>
             {pinSaving ? 'Збереження…' : account.hasPin ? 'Змінити PIN' : 'Увімкнути PIN'}
           </button>
-          {account.hasPin && (
+          {/* Household #1 can't actually remove its PIN — it's the account's
+              sole login method, not just an optional lock (see
+              api/account/pin's matching server-side guard). */}
+          {account.hasPin && !account.isPinHousehold && (
             <button type="button" disabled={pinSaving} onClick={removePin} className="btn-ghost" style={{ padding: '10px 14px', color: '#EF4444' }}>
               Прибрати
             </button>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireHouseholdId } from '@/lib/household';
 import { sessionCookieValue, unlockCookieValue, SESSION_MAX_AGE_S, UNLOCK_MAX_AGE_S } from '@/lib/session';
-import { hashPin, safeEqual, currentPinHash, setPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse } from '@/lib/pin';
+import { hashPin, safeEqual, currentPinHash, setPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse, PIN_HOUSEHOLD_ID } from '@/lib/pin';
 import { badRequest } from '@/lib/validate';
 
 const PIN_FORMAT = /^\d{4,8}$/;
@@ -22,6 +22,17 @@ export async function PUT(req: NextRequest) {
     const body = await req.json();
     const next = typeof body?.next === 'string' ? body.next : '';
     if (next && !PIN_FORMAT.test(next)) return badRequest('PIN — від 4 до 8 цифр');
+    // Household #1 can't actually remove its PIN — currentPinHash() always
+    // falls back to the APP_PIN env var for this household specifically, so
+    // a bare setPinHash(null) would silently keep the lock functionally
+    // active (hasPinConfigured() stays true, re-locking on the very next
+    // login) while telling the user it was removed. PIN login is #1's sole
+    // identity mechanism, not just an optional lock — changing is fine,
+    // fully disabling isn't a real state this household can be in. Found
+    // during deep-review 2026-07-11.
+    if (!next && householdId === PIN_HOUSEHOLD_ID) {
+      return badRequest('Для цього акаунту PIN не можна прибрати — це основний спосіб входу. Можна лише змінити його.');
+    }
 
     const stored = await currentPinHash(householdId);
     if (stored) {
