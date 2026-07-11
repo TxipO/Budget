@@ -1,0 +1,72 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { verifyPendingEmailRegistration } from '@/lib/magicLink';
+import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
+import { badRequest } from '@/lib/validate';
+
+export async function POST(req: NextRequest) {
+  try {
+    const authSecret = process.env.AUTH_SECRET;
+    if (!authSecret) return NextResponse.json({ error: 'Автентифікацію не налаштовано' }, { status: 500 });
+
+    const body = await req.json();
+    const { pendingToken, name } = body;
+    if (typeof pendingToken !== 'string' || !pendingToken) return badRequest('Невалідний токен реєстрації');
+    const email = verifyPendingEmailRegistration(authSecret, pendingToken);
+    if (!email) {
+      return NextResponse.json({ error: 'Токен реєстрації недійсний або протермінований — спробуйте увійти ще раз' }, { status: 401 });
+    }
+
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if (!trimmedName) return badRequest("Вкажіть ім'я");
+
+    // Re-check at write time, not just trust the redirect that got us here —
+    // a second tab, a slow double-submit, or simply re-visiting an old
+    // magic-link click could otherwise race two households into existing
+    // for the same now-verified email.
+    const existing = await prisma.user.findFirst({
+      where: { email, emailVerifiedAt: { not: null } },
+      select: { id: true, householdId: true },
+    });
+    if (existing && existing.householdId) {
+      const res = NextResponse.json({ ok: true, user: { id: existing.id, name: trimmedName } });
+      res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(existing.householdId), String(existing.id)), {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: SESSION_MAX_AGE_S,
+      });
+      return res;
+    }
+
+    let user;
+    try {
+      // A brand-new household, per project_product_direction — email signup
+      // is the entry point for people who are NOT existing members of
+      // household #1, never a 3rd/4th person added to it. Category list
+      // starts empty; the user builds their own from Settings.
+      const household = await prisma.household.create({ data: { name: trimmedName, authMode: 'email' }, select: { id: true } });
+      user = await prisma.user.create({
+        data: { name: trimmedName, email, emailVerifiedAt: new Date(), householdId: household.id },
+        select: { id: true, name: true, householdId: true },
+      });
+    } catch (e: any) {
+      if (e?.code === 'P2002') return badRequest("Це ім'я або email вже використовується");
+      throw e;
+    }
+
+    const res = NextResponse.json({ ok: true, user: { id: user.id, name: user.name } });
+    res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.householdId), String(user.id)), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: SESSION_MAX_AGE_S,
+    });
+    return res;
+  } catch (e) {
+    console.error('[auth/email/register POST]', e);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

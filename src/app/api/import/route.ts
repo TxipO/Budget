@@ -86,14 +86,12 @@ export async function POST(req: NextRequest) {
     await wb.xlsx.load(buffer);
 
     // --- Ensure users exist ---
-    // User.name is still globally unique (not household-scoped — out of
-    // scope for this pass), so this stays exactly as safe as it always was
-    // for household #1's own re-imports; a name collision with a genuinely
-    // different household would fail loudly (P2002) rather than silently
-    // attach to the wrong tenant.
+    // householdId_name — the compound unique (MT Ф4), not a bare name lookup
+    // — so this only ever matches/creates within the importing household,
+    // never collides with another household's "Паша"/"Женя".
     for (const name of ['Паша', 'Женя']) {
       await prisma.user.upsert({
-        where: { name }, update: {}, create: { name, householdId },
+        where: { householdId_name: { householdId, name } }, update: {}, create: { name, householdId },
       });
     }
 

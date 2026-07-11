@@ -40,7 +40,7 @@ model HouseholdLockout {
 
 model User {
   id                 Int                  @id @default(autoincrement())
-  name               String               @unique
+  name               String
   householdId        Int?
   household          Household?           @relation(fields: [householdId], references: [id])
   transactions       Transaction[]
@@ -58,15 +58,43 @@ model User {
 
   // Telegram Login Widget auth (see lib/telegramAuth.ts). telegramId is
   // Telegram's own numeric user id, stored as a string (safer than Int for
-  // an externally-issued id we never do arithmetic on). email is collected
-  // at registration but NOT verified in v1 (no email-sending service
-  // provisioned yet) — treat it as a claimed identifier, not a proven one,
-  // until a verification step is added.
-  email             String? @unique
-  telegramId        String? @unique
+  // an externally-issued id we never do arithmetic on). email can still be
+  // set unverified via Telegram registration (a claimed identifier, not a
+  // proven one) — emailVerifiedAt is null in that case. MT Ф4's magic-link
+  // flow is the only thing that ever sets emailVerifiedAt, and only login
+  // logic that requires proof (not just presence) of email ownership may
+  // treat a row as "this email really belongs here" — see
+  // api/auth/magic-link/verify/route.ts, which clears a stale unverified
+  // claim on any OTHER row before minting a new-registration token, so a
+  // false claim typed into the Telegram form can never intercept someone
+  // else's real magic-link login.
+  email             String?   @unique
+  emailVerifiedAt   DateTime?
+  telegramId        String?   @unique
   telegramUsername  String?
   telegramFirstName String?
   telegramPhotoUrl  String?
+
+  // MT Ф4: was a global @@unique on name alone — blocked two different
+  // households from ever both having a member with the same first name.
+  // householdId is still nullable (phase A note above), but every real row
+  // already has one since the phase-A backfill, so this doesn't loosen
+  // anything for existing data.
+  @@unique([householdId, name])
+}
+
+// MT Ф4: rate-limits magic-link email requests before any household/user
+// exists to hang a lockout row off of (HouseholdLockout needs a household).
+// Rows are cheap and never need cleanup beyond what the rate-limit window
+// itself makes irrelevant (old rows just age out of the lookback query).
+model MagicLinkRequest {
+  id        Int      @id @default(autoincrement())
+  email     String
+  ip        String
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ip, createdAt])
 }
 
 // Learned merchant → category mappings, populated ONLY from manual

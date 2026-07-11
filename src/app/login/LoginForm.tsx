@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Lock, Send } from 'lucide-react';
+import { Lock, Send, Mail } from 'lucide-react';
 
 interface TelegramUser {
   id: number; first_name: string; last_name?: string; username?: string; photo_url?: string; auth_date: number; hash: string;
@@ -27,6 +27,84 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
   const [linkPin, setLinkPin] = useState('');
   const [regBusy, setRegBusy] = useState(false);
   const widgetContainerRef = useRef<HTMLDivElement>(null);
+
+  // Email magic-link flow — a separate state machine from the Telegram one
+  // above (they can't collide: a Telegram login resolves synchronously in
+  // this tab, an email one round-trips through the user's inbox and comes
+  // back as a fresh page load with query params set by /api/auth/magic-link/verify).
+  const [emailStep, setEmailStep] = useState<'idle' | 'sent' | 'register'>('idle');
+  const [emailInput, setEmailInput] = useState('');
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [pendingEmailToken, setPendingEmailToken] = useState('');
+  const [pendingEmailAddress, setPendingEmailAddress] = useState('');
+  const [newHouseholdName, setNewHouseholdName] = useState('');
+
+  // Reads the redirect from /api/auth/magic-link/verify (?mode=register-email
+  // or ?error=...) once on mount, then strips the query string so a page
+  // refresh doesn't replay a one-time token or a stale error.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode');
+    const err = params.get('error');
+    if (mode === 'register-email') {
+      const token = params.get('pendingToken') || '';
+      const email = params.get('email') || '';
+      if (token && email) {
+        setPendingEmailToken(token);
+        setPendingEmailAddress(email);
+        setEmailStep('register');
+      }
+    } else if (err) {
+      setEmailError(
+        err === 'invalid_link' ? 'Посилання недійсне або протерміноване — спробуйте ще раз'
+        : 'Сталася помилка — спробуйте ще раз'
+      );
+    }
+    if (mode || err) window.history.replaceState({}, '', '/login');
+  }, []);
+
+  async function submitEmailRequest() {
+    if (!emailInput.trim() || emailBusy) return;
+    setEmailBusy(true);
+    setEmailError('');
+    try {
+      const res = await fetch('/api/auth/magic-link/request', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailInput.trim() }),
+      });
+      if (res.ok) {
+        setEmailStep('sent');
+      } else {
+        const data = await res.json().catch(() => null);
+        setEmailError(data?.error || 'Не вдалося надіслати листа');
+      }
+    } catch {
+      setEmailError('Помилка з’єднання');
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
+  async function submitEmailRegister(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newHouseholdName.trim() || emailBusy) return;
+    setEmailBusy(true);
+    setEmailError('');
+    try {
+      const res = await fetch('/api/auth/email/register', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pendingToken: pendingEmailToken, name: newHouseholdName.trim() }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { setEmailError(data?.error || 'Помилка реєстрації'); return; }
+      window.location.href = '/';
+    } catch {
+      setEmailError('Помилка з’єднання');
+    } finally {
+      setEmailBusy(false);
+    }
+  }
 
   // React 18 hoists a JSX <script src> tag to <head> as a deduplicated
   // "resource", ignoring its position in the tree. Telegram's widget relies
@@ -201,6 +279,29 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
     );
   }
 
+  if (emailStep === 'register') {
+    return (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg, #0A0A0F)' }}>
+        <form onSubmit={submitEmailRegister} style={cardStyle}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--c-text)' }}>Email підтверджено!</div>
+            <div style={{ fontSize: 13, color: 'var(--c-text-muted)', marginTop: 4 }}>{pendingEmailAddress} — це новий акаунт. Як вас звати?</div>
+          </div>
+          <div style={{ width: '100%' }}>
+            <input
+              className="input-field" value={newHouseholdName} onChange={e => setNewHouseholdName(e.target.value)}
+              placeholder="Ваше ім'я" autoFocus required
+            />
+          </div>
+          {emailError && <div style={{ fontSize: 13, color: '#FCA5A5' }}>{emailError}</div>}
+          <button type="submit" className="btn-primary" disabled={emailBusy} style={{ width: '100%', justifyContent: 'center' }}>
+            {emailBusy ? 'Створення…' : 'Створити акаунт'}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 50,
@@ -248,6 +349,30 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
               </div>
             )}
           </>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', color: 'var(--c-text-muted)', fontSize: 12 }}>
+          <div style={{ flex: 1, height: 1, background: 'var(--c-border)' }} />
+          або
+          <div style={{ flex: 1, height: 1, background: 'var(--c-border)' }} />
+        </div>
+
+        {emailStep === 'sent' ? (
+          <div style={{ fontSize: 13, color: 'var(--c-text-muted)', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+            <Mail size={20} />
+            Перевірте пошту — надіслали посилання для входу
+          </div>
+        ) : (
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <input
+              className="input-field" type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)}
+              placeholder="you@example.com"
+            />
+            {emailError && <div style={{ fontSize: 13, color: '#FCA5A5' }}>{emailError}</div>}
+            <button type="button" onClick={submitEmailRequest} disabled={emailBusy || !emailInput.trim()} className="btn-primary" style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Mail size={14} /> {emailBusy ? 'Надсилання…' : 'Увійти через email'}
+            </button>
+          </div>
         )}
       </form>
     </div>
