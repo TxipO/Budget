@@ -33,7 +33,7 @@ export default function SettingsPage() {
   const [monoConnecting, setMonoConnecting] = useState<number | null>(null);
   const [monoSyncing, setMonoSyncing] = useState<number | null>(null);
 
-  interface AccountInfo { shared: boolean; isPinHousehold: boolean; user?: { id: number; name: string; telegramUsername: string | null; telegramFirstName: string | null; email: string | null } }
+  interface AccountInfo { shared: boolean; isPinHousehold: boolean; hasPin: boolean; user?: { id: number; name: string; telegramUsername: string | null; telegramFirstName: string | null; email: string | null } }
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [unlinking, setUnlinking] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -333,23 +333,43 @@ export default function SettingsPage() {
   const [pinForm, setPinForm] = useState({ current: '', next: '' });
   const [pinSaving, setPinSaving] = useState(false);
 
-  async function changePin(e: React.FormEvent) {
+  async function savePin(e: React.FormEvent) {
     e.preventDefault();
-    if (!pinForm.current || !pinForm.next || pinSaving) return;
-    if (!/^\d{4,8}$/.test(pinForm.next)) { toast('Новий PIN — від 4 до 8 цифр', 'error'); return; }
+    if (!pinForm.next || pinSaving) return;
+    if (account?.hasPin && !pinForm.current) { toast('Введіть поточний PIN', 'error'); return; }
+    if (!/^\d{4,8}$/.test(pinForm.next)) { toast('PIN — від 4 до 8 цифр', 'error'); return; }
     setPinSaving(true);
     try {
-      const res = await fetch('/api/auth', {
+      const res = await fetch('/api/account/pin', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ current: pinForm.current, next: pinForm.next }),
+        body: JSON.stringify({ current: pinForm.current || undefined, next: pinForm.next }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        toast(data?.error || 'Помилка зміни PIN', 'error');
-        return;
-      }
-      toast('PIN змінено');
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { toast(data?.error || 'Помилка збереження PIN', 'error'); return; }
+      toast(account?.hasPin ? 'PIN змінено' : 'PIN увімкнено');
       setPinForm({ current: '', next: '' });
+      setAccount(a => a ? { ...a, hasPin: true } : a);
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setPinSaving(false);
+    }
+  }
+
+  async function removePin() {
+    if (pinSaving || !confirm('Прибрати PIN-замок? Застосунок більше не проситиме PIN при вході.')) return;
+    if (!pinForm.current) { toast('Введіть поточний PIN, щоб прибрати його', 'error'); return; }
+    setPinSaving(true);
+    try {
+      const res = await fetch('/api/account/pin', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current: pinForm.current, next: '' }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { toast(data?.error || 'Помилка видалення PIN', 'error'); return; }
+      toast('PIN прибрано', 'info');
+      setPinForm({ current: '', next: '' });
+      setAccount(a => a ? { ...a, hasPin: false } : a);
     } catch {
       toast('Помилка з’єднання', 'error');
     } finally {
@@ -508,24 +528,32 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Security section — PIN auth only ever exists for household #1
-          (PUT /api/auth always targets that household regardless of caller),
-          so this form is a confusing dead end for any other household. */}
-      {account?.isPinHousehold && (
+      {/* Security section — PIN LOGIN (typing a PIN to establish identity)
+          is still exclusive to household #1, but the PIN LOCK (an extra
+          unlock step on top of an already-authenticated session, P4) is
+          available to every household, so this shows for everyone. */}
+      {account && (
       <div className="card" style={{ padding: 24, marginBottom: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Безпека</h2>
-        <form onSubmit={changePin} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4 }}>Безпека</h2>
+        <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginTop: 0, marginBottom: 14 }}>
+          {account.hasPin
+            ? 'PIN-замок увімкнено — застосунок проситиме PIN навіть у межах активної сесії.'
+            : 'PIN-замок вимкнено. Додатковий захист поверх входу — рекомендовано.'}
+        </p>
+        <form onSubmit={savePin} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          {account.hasPin && (
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Поточний PIN</label>
+              <input
+                className="input-field" type="password" inputMode="numeric" required
+                value={pinForm.current}
+                onChange={e => setPinForm(f => ({ ...f, current: e.target.value }))}
+                placeholder="••••••"
+              />
+            </div>
+          )}
           <div style={{ flex: 1, minWidth: 140 }}>
-            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Поточний PIN</label>
-            <input
-              className="input-field" type="password" inputMode="numeric" required
-              value={pinForm.current}
-              onChange={e => setPinForm(f => ({ ...f, current: e.target.value }))}
-              placeholder="••••••"
-            />
-          </div>
-          <div style={{ flex: 1, minWidth: 140 }}>
-            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Новий PIN</label>
+            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>{account.hasPin ? 'Новий PIN' : 'PIN'}</label>
             <input
               className="input-field" type="password" inputMode="numeric" required
               value={pinForm.next}
@@ -534,11 +562,16 @@ export default function SettingsPage() {
             />
           </div>
           <button type="submit" disabled={pinSaving} className="btn-primary" style={{ padding: '10px 18px' }}>
-            {pinSaving ? 'Збереження…' : 'Змінити PIN'}
+            {pinSaving ? 'Збереження…' : account.hasPin ? 'Змінити PIN' : 'Увімкнути PIN'}
           </button>
+          {account.hasPin && (
+            <button type="button" disabled={pinSaving} onClick={removePin} className="btn-ghost" style={{ padding: '10px 14px', color: '#EF4444' }}>
+              Прибрати
+            </button>
+          )}
         </form>
         <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginTop: 10 }}>
-          Новий PIN діє одразу для наступних входів. Уже виконані входи лишаються активними до 30 днів.
+          Діє одразу для наступних входів. Уже виконані входи лишаються активними до 30 днів.
         </p>
       </div>
       )}

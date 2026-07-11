@@ -4,6 +4,7 @@ import { verifyPendingEmailRegistration } from '@/lib/magicLink';
 import { verifyTelegramAuth } from '@/lib/telegramAuth';
 import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
 import { badRequest } from '@/lib/validate';
+import { hasPinConfigured } from '@/lib/pin';
 
 // Counterpart to email/register — for someone who already has an account
 // (any household, linked via Telegram) and wants to ALSO be able to log in
@@ -50,8 +51,9 @@ export async function POST(req: NextRequest) {
       throw e;
     }
 
+    const hasPin = await hasPinConfigured(user.householdId);
     const res = NextResponse.json({ ok: true, onboarded: !!user.household?.onboardedAt });
-    res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.householdId), String(user.id)), {
+    res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.householdId), String(user.id), hasPin), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',

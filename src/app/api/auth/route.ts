@@ -1,63 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
-import { hashPin, safeEqual, currentPinHash, setPinHash, PIN_HOUSEHOLD_ID, registerPinFailure as registerFailure, clearPinFailures as clearFailures, pinLockoutResponse as tooManyAttempts } from '@/lib/pin';
+import { sessionCookieValue, unlockCookieValue, SESSION_MAX_AGE_S, UNLOCK_MAX_AGE_S } from '@/lib/session';
+import { hashPin, safeEqual, currentPinHash, PIN_HOUSEHOLD_ID, registerPinFailure as registerFailure, clearPinFailures as clearFailures, pinLockoutResponse as tooManyAttempts } from '@/lib/pin';
 
+// PIN LOGIN — establishes identity for household #1 (see lib/pin.ts's
+// PIN_HOUSEHOLD_ID). Changing/removing a PIN, for household #1 or any other
+// household, is api/account/pin's job (P4's universal PIN lock) — this
+// route only ever authenticates.
 export async function POST(req: NextRequest) {
   try {
     const secret = process.env.AUTH_SECRET;
     if (!secret) return NextResponse.json({ error: 'Автентифікацію не налаштовано' }, { status: 500 });
 
-    const blocked = await tooManyAttempts();
+    const blocked = await tooManyAttempts(PIN_HOUSEHOLD_ID);
     if (blocked) return blocked;
 
-    const stored = await currentPinHash();
+    const stored = await currentPinHash(PIN_HOUSEHOLD_ID);
     if (!stored) return NextResponse.json({ error: 'PIN не налаштовано' }, { status: 500 });
 
     const body = await req.json();
     if (typeof body.pin !== 'string' || !safeEqual(hashPin(body.pin), stored)) {
-      await registerFailure();
+      await registerFailure(PIN_HOUSEHOLD_ID);
       return NextResponse.json({ error: 'Невірний PIN' }, { status: 401 });
     }
-    await clearFailures();
+    await clearFailures(PIN_HOUSEHOLD_ID);
 
     const res = NextResponse.json({ ok: true });
-    res.cookies.set('budget-auth', sessionCookieValue(secret, String(PIN_HOUSEHOLD_ID)), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: SESSION_MAX_AGE_S,
-    });
+    const cookieOpts = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/' };
+    // Typing the PIN correctly here proves both identity AND the P4 lock in
+    // one step — household #1's whole login IS a PIN, so there's no
+    // separate /lock screen to also pass right after this succeeds.
+    res.cookies.set('budget-auth', sessionCookieValue(secret, String(PIN_HOUSEHOLD_ID), 'shared', true), { ...cookieOpts, maxAge: SESSION_MAX_AGE_S });
+    res.cookies.set('budget-unlocked', unlockCookieValue(secret, String(PIN_HOUSEHOLD_ID)), { ...cookieOpts, maxAge: UNLOCK_MAX_AGE_S });
     return res;
   } catch (e) {
     console.error('[auth POST]', e);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
-
-// Change PIN: requires the current PIN, applies immediately (no restart)
-export async function PUT(req: NextRequest) {
-  try {
-    const blocked = await tooManyAttempts();
-    if (blocked) return blocked;
-
-    const stored = await currentPinHash();
-    if (!stored) return NextResponse.json({ error: 'PIN не налаштовано' }, { status: 500 });
-
-    const body = await req.json();
-    if (typeof body.current !== 'string' || !safeEqual(hashPin(body.current), stored)) {
-      await registerFailure();
-      return NextResponse.json({ error: 'Невірний поточний PIN' }, { status: 401 });
-    }
-    await clearFailures();
-    if (typeof body.next !== 'string' || !/^\d{4,8}$/.test(body.next)) {
-      return NextResponse.json({ error: 'Новий PIN — від 4 до 8 цифр' }, { status: 400 });
-    }
-
-    await setPinHash(hashPin(body.next));
-    return NextResponse.json({ ok: true });
-  } catch (e) {
-    console.error('[auth PUT]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

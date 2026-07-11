@@ -36,25 +36,37 @@ const SESSION_MAX_AGE_MS = 60 * 60 * 24 * 30 * 1000; // 30 днів
 // of the verifying one (age computes negative and gets rejected outright).
 const CLOCK_SKEW_TOLERANCE_MS = 5000;
 
-// Session cookie = "<userId>.<householdId>.<issuedAt>.<HMAC-SHA256(...)>" —
-// see lib/session.ts's sessionCookieValue for the full format note. userId
-// is "shared" for a PIN login (no specific identity — matches the original
-// behavior, anyone with the PIN acts as the whole household) or a real
-// numeric User.id for a Telegram login; householdId is always a real
-// Household.id. issuedAt is embedded and signed (not just relied on the
-// browser's Max-Age) so a raw copied cookie value can't be replayed forever
-// via a plain HTTP client that ignores Max-Age — the server itself enforces
-// expiry here. householdId is carried IN the signed cookie, not looked up
-// per-request from the DB, because this file runs on Vercel's Edge runtime,
-// which this project deliberately keeps Prisma-free (Prisma's Node-API
-// query engine isn't available there without a separate driver adapter this
-// project hasn't taken on).
-async function sign(secret: string, userId: string, householdId: string, issuedAt: string): Promise<string> {
+// Session cookie = "<userId>.<householdId>.<hasPin>.<issuedAt>.<HMAC-SHA256(
+// ...)>" — see lib/session.ts's sessionCookieValue for the full format note.
+// userId is "shared" for a PIN login (no specific identity — matches the
+// original behavior, anyone with the PIN acts as the whole household) or a
+// real numeric User.id for a Telegram/email login; householdId is always a
+// real Household.id; hasPin (P4) says whether this household currently has
+// a PIN lock configured, decided at issuance time. issuedAt is embedded and
+// signed (not just relied on the browser's Max-Age) so a raw copied cookie
+// value can't be replayed forever via a plain HTTP client that ignores
+// Max-Age — the server itself enforces expiry here. All of this is carried
+// IN the signed cookie, not looked up per-request from the DB, because this
+// file runs on Vercel's Edge runtime, which this project deliberately keeps
+// Prisma-free (Prisma's Node-API query engine isn't available there without
+// a separate driver adapter this project hasn't taken on).
+async function sign(secret: string, userId: string, householdId: string, hasPinFlag: string, issuedAt: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw', new TextEncoder().encode(secret),
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
   );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`budget-session:${userId}:${householdId}:${issuedAt}`));
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`budget-session:${userId}:${householdId}:${hasPinFlag}:${issuedAt}`));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Same HMAC scheme, different namespace — the short-lived "PIN was entered
+// correctly for this household" proof (lib/session.ts's unlockCookieValue).
+async function signUnlock(secret: string, householdId: string, issuedAt: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`budget-unlock:${householdId}:${issuedAt}`));
   return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
@@ -73,20 +85,47 @@ function timingSafeEqual(a: string, b: string): boolean {
 interface VerifiedSession {
   userId: string;
   householdId: string;
+  hasPin: boolean;
 }
 
 async function verifySession(cookieValue: string, secret: string): Promise<VerifiedSession | null> {
   const parts = cookieValue.split('.');
-  if (parts.length !== 4) return null;
-  const [userId, householdId, issuedAtStr, sig] = parts;
-  if (!userId || !householdId) return null;
+  if (parts.length !== 5) return null;
+  const [userId, householdId, hasPinFlag, issuedAtStr, sig] = parts;
+  if (!userId || !householdId || (hasPinFlag !== '0' && hasPinFlag !== '1')) return null;
   const issuedAt = Number(issuedAtStr);
   if (!Number.isFinite(issuedAt)) return null;
   const age = Date.now() - issuedAt;
   if (age < -CLOCK_SKEW_TOLERANCE_MS || age > SESSION_MAX_AGE_MS) return null; // expired, or issued implausibly far in the future (tampered)
-  const expected = await sign(secret, userId, householdId, String(issuedAt));
-  return timingSafeEqual(sig, expected) ? { userId, householdId } : null;
+  const expected = await sign(secret, userId, householdId, hasPinFlag, String(issuedAt));
+  return timingSafeEqual(sig, expected) ? { userId, householdId, hasPin: hasPinFlag === '1' } : null;
 }
+
+// UNLOCK_MAX_AGE_S in lib/session.ts, mirrored here for the same Node/Edge
+// split reason as SESSION_MAX_AGE_MS above.
+const UNLOCK_MAX_AGE_MS = 60 * 60 * 24 * 1000; // 24 години
+
+async function verifyUnlock(cookieValue: string, secret: string, expectedHouseholdId: string): Promise<boolean> {
+  const parts = cookieValue.split('.');
+  if (parts.length !== 3) return false;
+  const [householdId, issuedAtStr, sig] = parts;
+  // Bound to the specific household from the session, not just "any valid
+  // unlock cookie" — otherwise an unlock minted for household A on a shared
+  // browser profile could unlock household B's locked session too.
+  if (householdId !== expectedHouseholdId) return false;
+  const issuedAt = Number(issuedAtStr);
+  if (!Number.isFinite(issuedAt)) return false;
+  const age = Date.now() - issuedAt;
+  if (age < -CLOCK_SKEW_TOLERANCE_MS || age > UNLOCK_MAX_AGE_MS) return false;
+  const expected = await signUnlock(secret, householdId, String(issuedAt));
+  return timingSafeEqual(sig, expected);
+}
+
+// Reachable even while a session is locked (hasPin && no valid unlock
+// cookie) — otherwise there'd be no way to ever unlock (can't POST the
+// unlock endpoint) or leave (can't log out) without waiting for the whole
+// 30-day session to expire.
+const LOCKED_ALLOWLIST = ['/lock', '/api/account/pin-unlock', '/api/account/logout'];
 
 // CSP must use a per-request NONCE, not a fixed sha256 hash: Next.js App
 // Router injects its own inline scripts for RSC-streaming hydration
@@ -180,8 +219,29 @@ export async function middleware(req: NextRequest) {
     // Every route that reads/writes tenant-owned data needs this — it's the
     // multi-tenant isolation boundary. Always set, for both PIN and Telegram
     // sessions, since a "shared" PIN session still belongs to exactly one
-    // household (currently only household #1 ever gets PIN auth).
+    // household.
     requestHeaders.set('x-household-id', session.householdId);
+
+    // P4 — universal PIN lock. A session that says hasPin must ALSO present
+    // a still-valid unlock cookie for this exact household, or every page/
+    // API route (except the small allowlist needed to unlock or log out at
+    // all) is gated — this is what makes the lock a real security boundary
+    // on the data itself, not just a UI overlay a client could skip past by
+    // calling the API directly.
+    if (session.hasPin && !LOCKED_ALLOWLIST.includes(pathname)) {
+      const unlockCookie = req.cookies.get('budget-unlocked')?.value;
+      const unlocked = unlockCookie ? await verifyUnlock(unlockCookie, secret, session.householdId) : false;
+      if (!unlocked) {
+        if (pathname.startsWith('/api/')) {
+          return withCsp(NextResponse.json({ error: 'Locked' }, { status: 401 }), nonce);
+        }
+        const url = req.nextUrl.clone();
+        url.pathname = '/lock';
+        url.search = '';
+        return withCsp(NextResponse.redirect(url), nonce);
+      }
+    }
+
     return withCsp(NextResponse.next({ request: { headers: requestHeaders } }), nonce);
   }
 

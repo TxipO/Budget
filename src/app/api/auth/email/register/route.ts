@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { verifyPendingEmailRegistration } from '@/lib/magicLink';
 import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
 import { badRequest } from '@/lib/validate';
+import { hasPinConfigured } from '@/lib/pin';
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,8 +34,9 @@ export async function POST(req: NextRequest) {
       // closed the tab partway through) — check rather than assume "existing
       // account" always means "already onboarded".
       const household = await prisma.household.findUnique({ where: { id: existing.householdId }, select: { onboardedAt: true } });
+      const hasPin = await hasPinConfigured(existing.householdId);
       const res = NextResponse.json({ ok: true, onboarded: !!household?.onboardedAt, user: { id: existing.id, name: trimmedName } });
-      res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(existing.householdId), String(existing.id)), {
+      res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(existing.householdId), String(existing.id), hasPin), {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',

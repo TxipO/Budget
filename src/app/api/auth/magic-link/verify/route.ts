@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { verifyMagicLinkToken, signPendingEmailRegistration } from '@/lib/magicLink';
 import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
 import { getAppOrigin } from '@/lib/monobank';
+import { hasPinConfigured } from '@/lib/pin';
 
 // Clicked directly from the user's email client — a GET that redirects,
 // never JSON, since there's no client-side JS driving this request.
@@ -27,8 +28,9 @@ export async function GET(req: NextRequest) {
 
     if (verifiedUser && verifiedUser.householdId) {
       const dest = verifiedUser.household?.onboardedAt ? '/' : '/onboarding';
+      const hasPin = await hasPinConfigured(verifiedUser.householdId);
       const res = NextResponse.redirect(`${origin}${dest}`);
-      res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(verifiedUser.householdId), String(verifiedUser.id)), {
+      res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(verifiedUser.householdId), String(verifiedUser.id), hasPin), {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',

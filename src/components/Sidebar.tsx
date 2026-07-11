@@ -24,11 +24,14 @@ export default function Sidebar() {
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
-    // No session yet on /login. /onboarding is exempted from the
-    // redirect-check below (not from the fetches — it still needs
-    // /api/account/me itself for its own prefill), or a not-yet-onboarded
-    // household would bounce back into a redirect loop against itself.
-    if (pathname === '/login') return;
+    // No session yet on /login. /lock is skipped too — every /api/* route
+    // except the small unlock/logout allowlist 401s while locked (P4), so
+    // these fetches would just fail there; nothing to gate or prefill on
+    // that page anyway. /onboarding is exempted from the redirect-check
+    // below only (not from the fetches — it still needs /api/account/me
+    // itself for its own prefill), or a not-yet-onboarded household would
+    // bounce back into a redirect loop against itself.
+    if (pathname === '/login' || pathname === '/lock') return;
 
     const saved = localStorage.getItem('currentUser');
     if (saved) setUser(saved);

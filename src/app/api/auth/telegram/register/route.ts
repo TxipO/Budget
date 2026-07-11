@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { verifyPendingRegistration } from '@/lib/telegramAuth';
 import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
 import { badRequest, isPositiveInt } from '@/lib/validate';
-import { hashPin, safeEqual, currentPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse, PIN_HOUSEHOLD_ID } from '@/lib/pin';
+import { hashPin, safeEqual, currentPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse, hasPinConfigured, PIN_HOUSEHOLD_ID } from '@/lib/pin';
 
 // Not verified in v1 (no email-sending service provisioned) — format-only,
 // treats the value as a claimed identifier rather than a proven one.
@@ -34,15 +34,15 @@ export async function POST(req: NextRequest) {
     // userId-bound session as Паша. Requiring the household PIN here closes
     // that gap the same way it gates every other entry into the app.
     if (linkToUserId !== undefined && linkToUserId !== null) {
-      const blocked = await pinLockoutResponse();
+      const blocked = await pinLockoutResponse(PIN_HOUSEHOLD_ID);
       if (blocked) return blocked;
-      const stored = await currentPinHash();
+      const stored = await currentPinHash(PIN_HOUSEHOLD_ID);
       if (!stored) return NextResponse.json({ error: 'PIN не налаштовано' }, { status: 500 });
       if (typeof pin !== 'string' || !safeEqual(hashPin(pin), stored)) {
-        await registerPinFailure();
+        await registerPinFailure(PIN_HOUSEHOLD_ID);
         return NextResponse.json({ error: 'Невірний PIN' }, { status: 401 });
       }
-      await clearPinFailures();
+      await clearPinFailures(PIN_HOUSEHOLD_ID);
     }
 
     let normalizedEmail: string | null = null;
@@ -146,8 +146,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
+    const hasPin = await hasPinConfigured(user.householdId);
     const res = NextResponse.json({ ok: true, onboarded, user: { id: user.id, name: user.name } });
-    res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.householdId), String(user.id)), {
+    res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.householdId), String(user.id), hasPin), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
