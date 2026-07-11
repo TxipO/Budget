@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       // the first time) — never create a new row here, or their transaction
       // history would silently split across two User rows.
       if (!isPositiveInt(Number(linkToUserId))) return badRequest("Невалідний користувач для прив'язки");
-      const existing = await prisma.user.findUnique({ where: { id: Number(linkToUserId) }, select: { id: true, name: true, telegramId: true, email: true } });
+      const existing = await prisma.user.findUnique({ where: { id: Number(linkToUserId) }, select: { id: true, name: true, telegramId: true, email: true, householdId: true } });
       if (!existing) return badRequest('Користувача не знайдено');
       if (existing.telegramId) return badRequest('До цього акаунту вже прив’язано інший Telegram');
 
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
           },
         });
         if (result.count === 0) return badRequest('До цього акаунту вже прив’язано інший Telegram');
-        user = { id: existing.id, name: existing.name };
+        user = { id: existing.id, name: existing.name, householdId: existing.householdId };
       } catch (e: any) {
         if (e?.code === 'P2002') return badRequest('Цей Telegram або email вже використовується іншим акаунтом');
         throw e;
@@ -89,6 +89,17 @@ export async function POST(req: NextRequest) {
       if (!trimmedName) return badRequest("Вкажіть ім'я");
 
       try {
+        // A brand-new Telegram signup with no linkToUserId is, by
+        // definition, someone who isn't an existing member of household #1
+        // — the multi-tenant migration's whole point is that this is a new
+        // tenant, not the household's 3rd/4th person. Gets its own Household
+        // (email/Telegram auth only, per project_product_direction — PIN
+        // stays exclusive to household #1) seeded before the User row so the
+        // user is never created without a tenant to belong to.
+        const household = await prisma.household.create({
+          data: { name: trimmedName, authMode: 'telegram' },
+          select: { id: true },
+        });
         user = await prisma.user.create({
           data: {
             name: trimmedName,
@@ -97,8 +108,9 @@ export async function POST(req: NextRequest) {
             telegramFirstName: telegramData.first_name,
             telegramPhotoUrl: telegramData.photo_url ?? null,
             email: normalizedEmail,
+            householdId: household.id,
           },
-          select: { id: true, name: true },
+          select: { id: true, name: true, householdId: true },
         });
       } catch (e: any) {
         if (e?.code === 'P2002') return badRequest("Це ім'я, Telegram або email вже використовується");
@@ -106,8 +118,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Every path above must have set this — link inherits the existing
+    // user's household, create just seeded a fresh one — but assert rather
+    // than silently issue a session with no tenant scope if that ever stops
+    // being true.
+    if (!user.householdId) {
+      console.error('[auth/telegram/register POST] user has no householdId', user.id);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+
     const res = NextResponse.json({ ok: true, user: { id: user.id, name: user.name } });
-    res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.id)), {
+    res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.householdId), String(user.id)), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',

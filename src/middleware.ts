@@ -36,21 +36,25 @@ const SESSION_MAX_AGE_MS = 60 * 60 * 24 * 30 * 1000; // 30 днів
 // of the verifying one (age computes negative and gets rejected outright).
 const CLOCK_SKEW_TOLERANCE_MS = 5000;
 
-// Session cookie = "<userId>.<issuedAt>.<HMAC-SHA256(AUTH_SECRET, 'budget-session:'+userId+':'+issuedAt)>".
-// userId is "shared" for a PIN login (no specific identity — matches the
-// original behavior, anyone with the PIN acts as the whole household) or a
-// real numeric User.id for a Telegram login. issuedAt is embedded and
-// signed (not just relied on the browser's Max-Age) so a raw copied cookie
-// value can't be replayed forever via a plain HTTP client that ignores
-// Max-Age — the server itself enforces expiry here. The PIN itself lives in
-// the DB (AppSetting) and is checked only at login, so it can be changed
-// from Settings without restarting the server.
-async function sign(secret: string, userId: string, issuedAt: string): Promise<string> {
+// Session cookie = "<userId>.<householdId>.<issuedAt>.<HMAC-SHA256(...)>" —
+// see lib/session.ts's sessionCookieValue for the full format note. userId
+// is "shared" for a PIN login (no specific identity — matches the original
+// behavior, anyone with the PIN acts as the whole household) or a real
+// numeric User.id for a Telegram login; householdId is always a real
+// Household.id. issuedAt is embedded and signed (not just relied on the
+// browser's Max-Age) so a raw copied cookie value can't be replayed forever
+// via a plain HTTP client that ignores Max-Age — the server itself enforces
+// expiry here. householdId is carried IN the signed cookie, not looked up
+// per-request from the DB, because this file runs on Vercel's Edge runtime,
+// which this project deliberately keeps Prisma-free (Prisma's Node-API
+// query engine isn't available there without a separate driver adapter this
+// project hasn't taken on).
+async function sign(secret: string, userId: string, householdId: string, issuedAt: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw', new TextEncoder().encode(secret),
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
   );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`budget-session:${userId}:${issuedAt}`));
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`budget-session:${userId}:${householdId}:${issuedAt}`));
   return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
@@ -66,17 +70,22 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-async function verifySession(cookieValue: string, secret: string): Promise<string | null> {
+interface VerifiedSession {
+  userId: string;
+  householdId: string;
+}
+
+async function verifySession(cookieValue: string, secret: string): Promise<VerifiedSession | null> {
   const parts = cookieValue.split('.');
-  if (parts.length !== 3) return null;
-  const [userId, issuedAtStr, sig] = parts;
-  if (!userId) return null;
+  if (parts.length !== 4) return null;
+  const [userId, householdId, issuedAtStr, sig] = parts;
+  if (!userId || !householdId) return null;
   const issuedAt = Number(issuedAtStr);
   if (!Number.isFinite(issuedAt)) return null;
   const age = Date.now() - issuedAt;
   if (age < -CLOCK_SKEW_TOLERANCE_MS || age > SESSION_MAX_AGE_MS) return null; // expired, or issued implausibly far in the future (tampered)
-  const expected = await sign(secret, userId, String(issuedAt));
-  return timingSafeEqual(sig, expected) ? userId : null;
+  const expected = await sign(secret, userId, householdId, String(issuedAt));
+  return timingSafeEqual(sig, expected) ? { userId, householdId } : null;
 }
 
 // CSP must use a per-request NONCE, not a fixed sha256 hash: Next.js App
@@ -156,19 +165,23 @@ export async function middleware(req: NextRequest) {
   }
 
   const cookie = req.cookies.get('budget-auth')?.value;
-  const userId = cookie ? await verifySession(cookie, secret) : null;
-  if (userId) {
-    // Always decide x-current-user-id here, never leave a client-supplied
-    // value from the incoming request alone — requestHeaders started as a
-    // clone of req.headers, so an attacker-set x-current-user-id would
-    // otherwise survive untouched for any "shared" (PIN) session, letting
-    // them impersonate a specific Telegram-bound user to routes that trust
-    // this header (e.g. account/me, account/telegram's unlink). "shared"
-    // itself is intentionally not forwarded as a real user id — pages check
-    // for its absence rather than treating the literal string "shared" as a
-    // User.id to look up.
-    if (userId !== 'shared') requestHeaders.set('x-current-user-id', userId);
+  const session = cookie ? await verifySession(cookie, secret) : null;
+  if (session) {
+    // Always decide these here, never leave a client-supplied value from the
+    // incoming request alone — requestHeaders started as a clone of
+    // req.headers, so an attacker-set x-current-user-id/x-household-id would
+    // otherwise survive untouched, letting them impersonate a specific
+    // Telegram-bound user or claim a different household's data to routes
+    // that trust these headers. "shared" itself is intentionally not
+    // forwarded as a real user id — pages check for its absence rather than
+    // treating the literal string "shared" as a User.id to look up.
+    if (session.userId !== 'shared') requestHeaders.set('x-current-user-id', session.userId);
     else requestHeaders.delete('x-current-user-id');
+    // Every route that reads/writes tenant-owned data needs this — it's the
+    // multi-tenant isolation boundary. Always set, for both PIN and Telegram
+    // sessions, since a "shared" PIN session still belongs to exactly one
+    // household (currently only household #1 ever gets PIN auth).
+    requestHeaders.set('x-household-id', session.householdId);
     return withCsp(NextResponse.next({ request: { headers: requestHeaders } }), nonce);
   }
 

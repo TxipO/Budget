@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     const verified = verifyTelegramAuth(body, botToken);
     if (!verified) return NextResponse.json({ error: 'Недійсний підпис Telegram' }, { status: 401 });
 
-    const user = await prisma.user.findUnique({ where: { telegramId: verified.id }, select: { id: true } });
+    const user = await prisma.user.findUnique({ where: { telegramId: verified.id }, select: { id: true, householdId: true } });
 
     if (!user) {
       // First-time login — don't auto-create a row here. It might be a
@@ -33,8 +33,17 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Every User row gets a householdId at creation from this point forward
+    // (backfilled for everything that predates it) — null here means a data
+    // inconsistency, not a normal case, so fail loudly rather than issue a
+    // session with no tenant scope.
+    if (!user.householdId) {
+      console.error('[auth/telegram POST] user has no householdId', user.id);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+
     const res = NextResponse.json({ ok: true, needsRegistration: false });
-    res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.id)), {
+    res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.householdId), String(user.id)), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',

@@ -16,7 +16,7 @@ model Household {
   // null for email/Telegram-only households — only the original household
   // (backfilled as id 1) keeps PIN login going forward.
   pinHash   String?
-  authMode  String   @default("email") // "pin" | "email"
+  authMode  String   @default("email") // "pin" | "email" | "telegram" — informational only today (nothing branches on it yet), records how the household first signed up
   createdAt DateTime @default(now())
 
   users              User[]

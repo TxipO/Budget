@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
-import { hashPin, safeEqual, currentPinHash, registerPinFailure as registerFailure, clearPinFailures as clearFailures, pinLockoutResponse as tooManyAttempts } from '@/lib/pin';
+import { hashPin, safeEqual, currentPinHash, setPinHash, PIN_HOUSEHOLD_ID, registerPinFailure as registerFailure, clearPinFailures as clearFailures, pinLockoutResponse as tooManyAttempts } from '@/lib/pin';
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,7 +21,7 @@ export async function POST(req: NextRequest) {
     await clearFailures();
 
     const res = NextResponse.json({ ok: true });
-    res.cookies.set('budget-auth', sessionCookieValue(secret), {
+    res.cookies.set('budget-auth', sessionCookieValue(secret, String(PIN_HOUSEHOLD_ID)), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -55,11 +54,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Новий PIN — від 4 до 8 цифр' }, { status: 400 });
     }
 
-    await prisma.appSetting.upsert({
-      where: { key: 'pinHash' },
-      update: { value: hashPin(body.next) },
-      create: { key: 'pinHash', value: hashPin(body.next) },
-    });
+    await setPinHash(hashPin(body.next));
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('[auth PUT]', e);
