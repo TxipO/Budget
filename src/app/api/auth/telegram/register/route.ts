@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { verifyPendingRegistration } from '@/lib/telegramAuth';
 import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
 import { badRequest, isPositiveInt } from '@/lib/validate';
-import { hashPin, safeEqual, currentPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse } from '@/lib/pin';
+import { hashPin, safeEqual, currentPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse, PIN_HOUSEHOLD_ID } from '@/lib/pin';
 
 // Not verified in v1 (no email-sending service provisioned) — format-only,
 // treats the value as a claimed identifier rather than a proven one.
@@ -59,6 +59,13 @@ export async function POST(req: NextRequest) {
       if (!isPositiveInt(Number(linkToUserId))) return badRequest("Невалідний користувач для прив'язки");
       const existing = await prisma.user.findUnique({ where: { id: Number(linkToUserId) }, select: { id: true, name: true, telegramId: true, email: true, householdId: true } });
       if (!existing) return badRequest('Користувача не знайдено');
+      // The PIN just verified above only ever proves household #1's PIN —
+      // linking must be restricted to household #1's own members, or knowing
+      // that PIN would be enough to "link" a Telegram account onto ANY other
+      // household's unlinked user and receive a session scoped to it. Found
+      // live during deep-review 2026-07-11 (unlinked-users GET had the same
+      // unscoped gap, fixed alongside this).
+      if (existing.householdId !== PIN_HOUSEHOLD_ID) return badRequest('Користувача не знайдено');
       if (existing.telegramId) return badRequest('До цього акаунту вже прив’язано інший Telegram');
 
       try {
@@ -96,21 +103,29 @@ export async function POST(req: NextRequest) {
         // (email/Telegram auth only, per project_product_direction — PIN
         // stays exclusive to household #1) seeded before the User row so the
         // user is never created without a tenant to belong to.
-        const household = await prisma.household.create({
-          data: { name: trimmedName, authMode: 'telegram' },
-          select: { id: true },
-        });
-        user = await prisma.user.create({
-          data: {
-            name: trimmedName,
-            telegramId: telegramData.id,
-            telegramUsername: telegramData.username ?? null,
-            telegramFirstName: telegramData.first_name,
-            telegramPhotoUrl: telegramData.photo_url ?? null,
-            email: normalizedEmail,
-            householdId: household.id,
-          },
-          select: { id: true, name: true, householdId: true },
+        //
+        // Interactive transaction, not two separate creates — a P2002 on the
+        // user create (concurrent double-submit racing the same telegramId)
+        // used to leave an already-committed, permanently empty Household
+        // row behind since nothing ever rolled it back. Found during
+        // deep-review 2026-07-11.
+        user = await prisma.$transaction(async (tx) => {
+          const household = await tx.household.create({
+            data: { name: trimmedName, authMode: 'telegram' },
+            select: { id: true },
+          });
+          return tx.user.create({
+            data: {
+              name: trimmedName,
+              telegramId: telegramData.id,
+              telegramUsername: telegramData.username ?? null,
+              telegramFirstName: telegramData.first_name,
+              telegramPhotoUrl: telegramData.photo_url ?? null,
+              email: normalizedEmail,
+              householdId: household.id,
+            },
+            select: { id: true, name: true, householdId: true },
+          });
         });
       } catch (e: any) {
         if (e?.code === 'P2002') return badRequest("Це ім'я, Telegram або email вже використовується");

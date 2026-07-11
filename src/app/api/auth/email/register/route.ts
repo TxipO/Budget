@@ -46,10 +46,18 @@ export async function POST(req: NextRequest) {
       // is the entry point for people who are NOT existing members of
       // household #1, never a 3rd/4th person added to it. Category list
       // starts empty; the user builds their own from Settings.
-      const household = await prisma.household.create({ data: { name: trimmedName, authMode: 'email' }, select: { id: true } });
-      user = await prisma.user.create({
-        data: { name: trimmedName, email, emailVerifiedAt: new Date(), householdId: household.id },
-        select: { id: true, name: true, householdId: true },
+      //
+      // Interactive transaction, not two separate creates — a P2002 on the
+      // user create (concurrent double-submit racing the same email) used to
+      // leave an already-committed, permanently empty Household row behind
+      // since nothing ever rolled it back. Found during deep-review
+      // 2026-07-11.
+      user = await prisma.$transaction(async (tx) => {
+        const household = await tx.household.create({ data: { name: trimmedName, authMode: 'email' }, select: { id: true } });
+        return tx.user.create({
+          data: { name: trimmedName, email, emailVerifiedAt: new Date(), householdId: household.id },
+          select: { id: true, name: true, householdId: true },
+        });
       });
     } catch (e: any) {
       if (e?.code === 'P2002') return badRequest("Це ім'я або email вже використовується");
