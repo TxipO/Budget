@@ -76,9 +76,20 @@ export async function POST(req: NextRequest) {
       if (!u) return badRequest('Невалідний користувач');
     }
 
+    // Truncate to a clean UTC calendar-day boundary, matching every other
+    // writer (monoIngest.ts, the voice webhook, import, recurring/apply) —
+    // the UI's <input type="date"> always sends a bare YYYY-MM-DD (read as
+    // UTC midnight already), but this route is also a plain JSON API; a
+    // caller sending a full ISO timestamp with a time/offset would otherwise
+    // store a non-midnight date, breaking the timezone-residue invariant
+    // verify-data-integrity.mjs checks and potentially landing the
+    // transaction in the wrong month. Found during deep-review 2026-07-11.
+    const parsedDate = new Date(date);
+    const truncatedDate = new Date(Date.UTC(parsedDate.getUTCFullYear(), parsedDate.getUTCMonth(), parsedDate.getUTCDate()));
+
     const tx = await prisma.transaction.create({
       data: {
-        date:       new Date(date),
+        date:       truncatedDate,
         categoryId: parseInt(categoryId),
         amount:     roundMoney(parseFloat(amount)),
         details:    details || '',

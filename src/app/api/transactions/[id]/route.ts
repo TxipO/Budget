@@ -40,10 +40,16 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       if (!u) return badRequest('Невалідний користувач');
     }
 
+    // Truncate to a clean UTC calendar-day boundary — see the matching
+    // comment in transactions/route.ts POST. Found during deep-review
+    // 2026-07-11.
+    const parsedDate = new Date(body.date);
+    const truncatedDate = new Date(Date.UTC(parsedDate.getUTCFullYear(), parsedDate.getUTCMonth(), parsedDate.getUTCDate()));
+
     const tx = await prisma.transaction.update({
       where: { id },
       data: {
-        date:       new Date(body.date),
+        date:       truncatedDate,
         categoryId: newCategoryId,
         amount:     roundMoney(parseFloat(body.amount)),
         details:    body.details || '',

@@ -9,10 +9,18 @@ import { guessCategoryByMcc, guessCategoryByKeyword } from '@/lib/monobank';
 // class this project's /deep-review already watches for.
 export async function guessCategoryId(householdId: number, userId: number, txType: 'expense' | 'income', merchantKey: string, mcc: number | undefined): Promise<number> {
   // 1. Learned rule from a manual correction — highest priority, no guessing.
+  // Checked against the category's current isActive, not just that the rule
+  // exists — a category can be soft-deleted after a rule was learned against
+  // it (e.g. household cleanup in Settings), and filing new transactions
+  // under an inactive category makes them invisible to category-filtered
+  // pickers even though they still count in stats. Falls through to the
+  // normal guess tiers (which already filter isActive) instead. Found
+  // during deep-review 2026-07-11.
   const rule = await prisma.monoCategoryRule.findUnique({
     where: { userId_merchantKey: { userId, merchantKey } },
+    select: { categoryId: true, category: { select: { isActive: true } } },
   });
-  if (rule) return rule.categoryId;
+  if (rule?.category.isActive) return rule.categoryId;
 
   // Tiers 2-5 (MCC guess, keyword guess, safe fallback, last resort) are all
   // just "find an active category of this type by name" against the same
