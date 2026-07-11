@@ -40,6 +40,15 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
   const [pendingEmailAddress, setPendingEmailAddress] = useState('');
   const [newHouseholdName, setNewHouseholdName] = useState('');
 
+  // "У мене вже є акаунт" sub-flow on the register-email screen — links the
+  // just-verified email onto an EXISTING account instead of creating a new
+  // household, proven via a second Telegram widget (separate DOM container +
+  // global callback from the main login one below, since both can be
+  // mounted/relevant at different times and shouldn't share state).
+  const [showEmailLink, setShowEmailLink] = useState(false);
+  const [emailLinkBusy, setEmailLinkBusy] = useState(false);
+  const linkWidgetContainerRef = useRef<HTMLDivElement>(null);
+
   // Reads the redirect from /api/auth/magic-link/verify (?mode=register-email
   // or ?error=...) once on mount, then strips the query string so a page
   // refresh doesn't replay a one-time token or a stale error.
@@ -155,6 +164,47 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
     };
     return () => { delete (window as unknown as { onTelegramAuth?: unknown }).onTelegramAuth; };
   }, [hasTelegram]);
+
+  // Second widget instance, mounted only while the "У мене вже є акаунт"
+  // toggle is open on the register-email screen — same DOM-insertion
+  // constraint as the main widget above (document.currentScript.parentNode).
+  useEffect(() => {
+    if (!hasTelegram || !botUsername || !showEmailLink || !linkWidgetContainerRef.current) return;
+    const container = linkWidgetContainerRef.current;
+    const script = document.createElement('script');
+    script.src = 'https://telegram.org/js/telegram-widget.js?22';
+    script.async = true;
+    script.nonce = nonce ?? '';
+    script.setAttribute('data-telegram-login', botUsername);
+    script.setAttribute('data-size', 'large');
+    script.setAttribute('data-radius', '10');
+    script.setAttribute('data-onauth', 'onEmailLinkTelegramAuth(user)');
+    script.setAttribute('data-request-access', 'write');
+    container.appendChild(script);
+    return () => { container.innerHTML = ''; };
+  }, [hasTelegram, botUsername, showEmailLink, nonce]);
+
+  useEffect(() => {
+    if (!hasTelegram) return;
+    (window as unknown as { onEmailLinkTelegramAuth: (u: TelegramUser) => void }).onEmailLinkTelegramAuth = async (user: TelegramUser) => {
+      setEmailError('');
+      setEmailLinkBusy(true);
+      try {
+        const res = await fetch('/api/auth/email/link', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pendingToken: pendingEmailToken, ...user }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) { setEmailError(data?.error || 'Помилка прив’язки'); return; }
+        window.location.href = '/';
+      } catch {
+        setEmailError('Помилка з’єднання');
+      } finally {
+        setEmailLinkBusy(false);
+      }
+    };
+    return () => { delete (window as unknown as { onEmailLinkTelegramAuth?: unknown }).onEmailLinkTelegramAuth; };
+  }, [hasTelegram, pendingEmailToken]);
 
   async function submitPin(e: React.FormEvent) {
     e.preventDefault();
@@ -282,22 +332,51 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
   if (emailStep === 'register') {
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg, #0A0A0F)' }}>
-        <form onSubmit={submitEmailRegister} style={cardStyle}>
+        <div style={cardStyle}>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--c-text)' }}>Email підтверджено!</div>
-            <div style={{ fontSize: 13, color: 'var(--c-text-muted)', marginTop: 4 }}>{pendingEmailAddress} — це новий акаунт. Як вас звати?</div>
+            <div style={{ fontSize: 13, color: 'var(--c-text-muted)', marginTop: 4 }}>
+              {pendingEmailAddress} — {showEmailLink ? 'підтвердіть через Telegram, що це ваш існуючий акаунт' : 'це новий акаунт. Як вас звати?'}
+            </div>
           </div>
-          <div style={{ width: '100%' }}>
-            <input
-              className="input-field" value={newHouseholdName} onChange={e => setNewHouseholdName(e.target.value)}
-              placeholder="Ваше ім'я" autoFocus required
-            />
-          </div>
+
+          {showEmailLink ? (
+            hasTelegram ? (
+              <>
+                <div ref={linkWidgetContainerRef} style={{ minHeight: 40, display: 'flex', justifyContent: 'center' }} />
+                {emailLinkBusy && (
+                  <div style={{ fontSize: 12, color: 'var(--c-text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Send size={12} /> Перевірка Telegram…
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ fontSize: 13, color: 'var(--c-text-muted)', textAlign: 'center' }}>Telegram-вхід не налаштовано</div>
+            )
+          ) : (
+            <form onSubmit={submitEmailRegister} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div style={{ width: '100%' }}>
+                <input
+                  className="input-field" value={newHouseholdName} onChange={e => setNewHouseholdName(e.target.value)}
+                  placeholder="Ваше ім'я" autoFocus required
+                />
+              </div>
+              <button type="submit" className="btn-primary" disabled={emailBusy} style={{ width: '100%', justifyContent: 'center' }}>
+                {emailBusy ? 'Створення…' : 'Створити акаунт'}
+              </button>
+            </form>
+          )}
+
           {emailError && <div style={{ fontSize: 13, color: '#FCA5A5' }}>{emailError}</div>}
-          <button type="submit" className="btn-primary" disabled={emailBusy} style={{ width: '100%', justifyContent: 'center' }}>
-            {emailBusy ? 'Створення…' : 'Створити акаунт'}
+
+          <button
+            type="button"
+            onClick={() => { setShowEmailLink(v => !v); setEmailError(''); }}
+            style={{ background: 'none', border: 'none', color: 'var(--c-text-muted)', fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            {showEmailLink ? '← Створити новий акаунт замість цього' : 'У мене вже є акаунт — прив’язати цей email до нього'}
           </button>
-        </form>
+        </div>
       </div>
     );
   }

@@ -33,7 +33,7 @@ export default function SettingsPage() {
   const [monoConnecting, setMonoConnecting] = useState<number | null>(null);
   const [monoSyncing, setMonoSyncing] = useState<number | null>(null);
 
-  interface AccountInfo { shared: boolean; user?: { id: number; name: string; telegramUsername: string | null; telegramFirstName: string | null; email: string | null } }
+  interface AccountInfo { shared: boolean; isPinHousehold: boolean; user?: { id: number; name: string; telegramUsername: string | null; telegramFirstName: string | null; email: string | null } }
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [unlinking, setUnlinking] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -508,7 +508,10 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Security section */}
+      {/* Security section — PIN auth only ever exists for household #1
+          (PUT /api/auth always targets that household regardless of caller),
+          so this form is a confusing dead end for any other household. */}
+      {account?.isPinHousehold && (
       <div className="card" style={{ padding: 24, marginBottom: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Безпека</h2>
         <form onSubmit={changePin} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -538,6 +541,7 @@ export default function SettingsPage() {
           Новий PIN діє одразу для наступних входів. Уже виконані входи лишаються активними до 30 днів.
         </p>
       </div>
+      )}
 
       {/* Monobank */}
       <div className="card" style={{ padding: 24, marginBottom: 24 }}>
