@@ -24,10 +24,10 @@ export default function Sidebar() {
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
-    // No session yet on /login — /api/users and /api/account/me both
-    // require one and would just 401. /setup is exempted from the
-    // redirect-check below, not from the fetch, so it still learns once
-    // setup completes elsewhere.
+    // No session yet on /login. /onboarding is exempted from the
+    // redirect-check below (not from the fetches — it still needs
+    // /api/account/me itself for its own prefill), or a not-yet-onboarded
+    // household would bounce back into a redirect loop against itself.
     if (pathname === '/login') return;
 
     const saved = localStorage.getItem('currentUser');
@@ -35,22 +35,22 @@ export default function Sidebar() {
 
     fetch('/api/users').then(r => r.ok ? r.json() : []).then((list: { id: number; name: string }[]) => {
       setUsers(list);
-      // Fresh deployment with no household configured yet — this app
-      // originally hardcoded "Паша"/"Женя" as the only two options, which
-      // doesn't work once someone else runs their own instance.
-      if (list.length === 0) {
-        if (pathname !== '/setup') router.replace('/setup');
-        return;
-      }
-      if (!saved || !list.some(u => u.name === saved)) setUser(list[0].name);
+      if (!saved || !list.some(u => u.name === saved)) setUser(list[0]?.name ?? '');
     }).catch(() => {});
 
     // A Telegram-linked login identifies a specific household member —
     // default the "who's entering" toggle to them instead of whatever was
     // last picked (e.g. on a shared family tablet). Still just a default:
     // the buttons below stay switchable, nothing is locked.
+    //
+    // Also the onboarding gate: a household whose wizard hasn't run yet
+    // (empty categories, no PIN decision — see Household.onboardedAt) gets
+    // bounced to /onboarding from every other page. Client-side only —
+    // middleware runs on the Edge without Prisma, can't check this itself.
     fetch('/api/account/me').then(r => r.ok ? r.json() : null).then(data => {
-      if (data && !data.shared && data.user?.name) {
+      if (!data) return;
+      if (data.onboarded === false && pathname !== '/onboarding') { router.replace('/onboarding'); return; }
+      if (!data.shared && data.user?.name) {
         setUser(data.user.name);
         localStorage.setItem('currentUser', data.user.name);
       }
