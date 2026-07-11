@@ -176,6 +176,23 @@ export async function POST(req: NextRequest) {
     // --- Parse Ведення sheet (individual transactions) ---
     const vedSheet = wb.getWorksheet('Ведення');
     if (vedSheet) {
+      // Dedup by "which occurrence of this signature within THIS file", not
+      // by "does a transaction with this signature exist at all" — the
+      // latter silently dropped genuinely distinct rows that happen to
+      // share date+category+amount+details (e.g. coffee bought twice the
+      // same day for the same price), including within a single import: the
+      // first identical row created the transaction, the second saw it
+      // "already exists" and got skipped. Re-importing the exact same file
+      // must still be idempotent (no duplicates), so instead of a boolean
+      // exists-check, count how many matching transactions are already in
+      // the DB and compare against this row's 1-based occurrence count of
+      // the same signature seen so far in this file — occurrence N only
+      // gets created if fewer than N already exist, which handles both re-
+      // import (all occurrences already present, all skipped) and adding a
+      // genuinely new Nth duplicate row (only the new one gets created)
+      // correctly, with no schema change. Found during deep-review
+      // 2026-07-11.
+      const occurrenceBySignature = new Map<string, number>();
       for (let r = 3; r <= vedSheet.rowCount; r++) {
         const row = vedSheet.getRow(r);
         const rawDate = row.getCell(3).value;
@@ -202,10 +219,14 @@ export async function POST(req: NextRequest) {
         });
 
         const detailsStr = details ?? '';
-        const exists = await prisma.transaction.findFirst({
+        const signature = `${date.getTime()}|${cat.id}|${amount}|${detailsStr}`;
+        const occurrence = (occurrenceBySignature.get(signature) ?? 0) + 1;
+        occurrenceBySignature.set(signature, occurrence);
+
+        const existingCount = await prisma.transaction.count({
           where: { date, categoryId: cat.id, amount, details: detailsStr, householdId },
         });
-        if (!exists) {
+        if (existingCount < occurrence) {
           await prisma.transaction.create({
             data: { date, categoryId: cat.id, amount, details: detailsStr, householdId },
           });
