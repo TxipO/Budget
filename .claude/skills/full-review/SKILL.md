@@ -51,6 +51,36 @@ in the right order and carries findings forward between stages.
 5. Give the user **one consolidated report**, not three separate ones —
    merge findings from all three stages into a single Critical /
    Warnings / Reviewed-clean summary, noting which stage found what.
+6. Update project memory (`C:\Users\doter\.claude\projects\C--Users-doter-Budget\memory\`)
+   with what this pass actually changed — see below. Do this even if the
+   user didn't ask; a full-review pass is exactly the point where accumulated
+   session work (features shipped, bugs found, architecture that changed)
+   needs to land in memory before it's lost to context compaction.
+
+## Updating memory after a pass
+
+Don't treat this as optional cleanup — it's the last step, not a nice-to-have.
+
+- **What qualifies**: new architecture or subsystems shipped since the last
+  memory update (e.g. a new auth mechanism, a new external integration), real
+  bugs found and fixed (the failure mode + fix, not the diff), and any
+  security-relevant finding from the security-review stage — confirmed or a
+  pattern worth remembering even if this pass found it clean. Routine
+  selfcheck Criticals with no broader lesson don't need their own memory;
+  fold them into the summary of whichever project file covers that area.
+- **What doesn't**: anything already fully described by the code itself
+  (file paths, function names as of today) or by git history — memory is for
+  facts a future session can't re-derive by reading the repo, not a changelog.
+- **Where it goes**: update the existing project-scoped memory file that
+  already covers this area (e.g. a security-relevant fix goes in the
+  project's security-posture memory, not a new file) rather than defaulting
+  to a new file per pass. Create a new file only when the work is a genuinely
+  new subsystem with no existing home. Always update `MEMORY.md`'s index line
+  for any file you touch or add.
+- **Supersede, don't append**: if a memory file already describes the area
+  this pass touched, rewrite/trim the stale parts rather than stacking a new
+  paragraph on top of an now-inaccurate one — a memory file should read as
+  the current state of that area, not a log of every pass over it.
 
 ## After finding new bug patterns
 
