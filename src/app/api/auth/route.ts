@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sessionCookieValue, unlockCookieValue, SESSION_MAX_AGE_S, UNLOCK_MAX_AGE_S } from '@/lib/session';
+import { issueAuthCookies } from '@/lib/session';
 import { hashPin, safeEqual, currentPinHash, PIN_HOUSEHOLD_ID, registerPinFailure as registerFailure, clearPinFailures as clearFailures, pinLockoutResponse as tooManyAttempts } from '@/lib/pin';
 
 // PIN LOGIN — establishes identity for household #1 (see lib/pin.ts's
@@ -25,12 +25,10 @@ export async function POST(req: NextRequest) {
     await clearFailures(PIN_HOUSEHOLD_ID);
 
     const res = NextResponse.json({ ok: true });
-    const cookieOpts = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/' };
     // Typing the PIN correctly here proves both identity AND the P4 lock in
     // one step — household #1's whole login IS a PIN, so there's no
     // separate /lock screen to also pass right after this succeeds.
-    res.cookies.set('budget-auth', sessionCookieValue(secret, String(PIN_HOUSEHOLD_ID), 'shared', true), { ...cookieOpts, maxAge: SESSION_MAX_AGE_S });
-    res.cookies.set('budget-unlocked', unlockCookieValue(secret, String(PIN_HOUSEHOLD_ID)), { ...cookieOpts, maxAge: UNLOCK_MAX_AGE_S });
+    issueAuthCookies(res, secret, { householdId: String(PIN_HOUSEHOLD_ID), hasPin: true, unlock: true });
     return res;
   } catch (e) {
     console.error('[auth POST]', e);

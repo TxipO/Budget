@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireHouseholdId } from '@/lib/household';
-import { sessionCookieValue, unlockCookieValue, SESSION_MAX_AGE_S, UNLOCK_MAX_AGE_S } from '@/lib/session';
+import { issueAuthCookies } from '@/lib/session';
 import { hashPin, safeEqual, currentPinHash, setPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse, PIN_HOUSEHOLD_ID } from '@/lib/pin';
 import { badRequest } from '@/lib/validate';
 
@@ -54,16 +54,11 @@ export async function PUT(req: NextRequest) {
     // bare PIN session (x-current-user-id absent), the real id otherwise.
     const userId = req.headers.get('x-current-user-id') ?? 'shared';
     const res = NextResponse.json({ ok: true, hasPin: !!next });
-    const cookieOpts = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/' };
-    res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(householdId), userId, !!next), { ...cookieOpts, maxAge: SESSION_MAX_AGE_S });
-    if (next) {
-      // Setting/changing a PIN while already inside the app shouldn't
-      // immediately re-lock the person who just proved it — issue the
-      // unlock cookie in the same response.
-      res.cookies.set('budget-unlocked', unlockCookieValue(authSecret, String(householdId)), { ...cookieOpts, maxAge: UNLOCK_MAX_AGE_S });
-    } else {
-      res.cookies.set('budget-unlocked', '', { ...cookieOpts, maxAge: 0 });
-    }
+    // unlock: !!next — setting/changing a PIN while already inside the app
+    // shouldn't immediately re-lock the person who just proved it, so the
+    // unlock cookie is issued in the same response; removing one means the
+    // lock is off, so any stale unlock cookie is cleared instead.
+    issueAuthCookies(res, authSecret, { householdId: String(householdId), userId, hasPin: !!next, unlock: !!next });
     return res;
   } catch (e) {
     console.error('[account/pin PUT]', e);

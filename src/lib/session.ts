@@ -1,4 +1,5 @@
 import { createHmac } from 'crypto';
+import { NextResponse } from 'next/server';
 
 // Must match SESSION_MAX_AGE_MS in middleware.ts.
 export const SESSION_MAX_AGE_S = 60 * 60 * 24 * 30; // 30 днів
@@ -51,4 +52,30 @@ export function unlockCookieValue(secret: string, householdId: string): string {
   const issuedAt = Date.now();
   const sig = createHmac('sha256', secret).update(`budget-unlock:${householdId}:${issuedAt}`).digest('hex');
   return `${householdId}.${issuedAt}.${sig}`;
+}
+
+// Shared by every route that issues or reissues auth state (PIN login,
+// api/account/pin's set/change/remove, onboarding completion) — previously
+// each one hand-built the same cookieOpts object and two res.cookies.set
+// calls, and the three copies had already drifted (one always set both
+// cookies, one conditionally cleared the unlock cookie, one only ran at all
+// when a PIN was involved). One place now decides the cookie attributes;
+// callers only decide the three things that actually vary: identity,
+// whether the lock is on, and whether this response should also unlock.
+export function issueAuthCookies(
+  res: NextResponse,
+  secret: string,
+  opts: { householdId: string; userId?: string; hasPin: boolean; unlock: boolean },
+): void {
+  const cookieOpts = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/' };
+  res.cookies.set('budget-auth', sessionCookieValue(secret, opts.householdId, opts.userId ?? 'shared', opts.hasPin), { ...cookieOpts, maxAge: SESSION_MAX_AGE_S });
+  if (opts.unlock) {
+    res.cookies.set('budget-unlocked', unlockCookieValue(secret, opts.householdId), { ...cookieOpts, maxAge: UNLOCK_MAX_AGE_S });
+  } else {
+    // Explicit clear, not "leave whatever unlock cookie the browser already
+    // had" — callers that pass unlock:false mean the lock should NOT be
+    // considered open after this response (e.g. removing a PIN), so a stale
+    // still-valid unlock cookie from before must not linger.
+    res.cookies.set('budget-unlocked', '', { ...cookieOpts, maxAge: 0 });
+  }
 }

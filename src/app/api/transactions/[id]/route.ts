@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isValidDate, isPositiveInt, isPositiveNumber, roundMoney } from '@/lib/validate';
 import { normalizeMerchantKey } from '@/lib/monobank';
-import { requireHouseholdId } from '@/lib/household';
+import { requireHouseholdId, isOwnedCategory, isOwnedUser } from '@/lib/household';
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -33,12 +33,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     if (!before || before.householdId !== householdId) {
       return NextResponse.json({ error: 'Транзакцію не знайдено' }, { status: 404 });
     }
-    const newCat = await prisma.category.findFirst({ where: { id: newCategoryId, householdId }, select: { id: true } });
-    if (!newCat) return badRequest('Невалідна категорія');
-    if (body.userId) {
-      const u = await prisma.user.findFirst({ where: { id: parseInt(body.userId), householdId }, select: { id: true } });
-      if (!u) return badRequest('Невалідний користувач');
-    }
+    if (!(await isOwnedCategory(householdId, newCategoryId))) return badRequest('Невалідна категорія');
+    if (body.userId && !(await isOwnedUser(householdId, parseInt(body.userId)))) return badRequest('Невалідний користувач');
 
     // Truncate to a clean UTC calendar-day boundary — see the matching
     // comment in transactions/route.ts POST. Found during deep-review

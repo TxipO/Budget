@@ -4,7 +4,7 @@ import { badRequest, isValidType } from '@/lib/validate';
 import { requireHouseholdId } from '@/lib/household';
 import { hashPin } from '@/lib/pin';
 import { ICON_KEYS } from '@/lib/icons';
-import { sessionCookieValue, unlockCookieValue, SESSION_MAX_AGE_S, UNLOCK_MAX_AGE_S } from '@/lib/session';
+import { issueAuthCookies } from '@/lib/session';
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 const PIN_FORMAT = /^\d{4,8}$/;
@@ -91,15 +91,13 @@ export async function POST(req: NextRequest) {
     const res = NextResponse.json({ ok: true });
     // Reissue the session with the fresh hasPin bit if a PIN was just set,
     // so the immediate redirect home doesn't bounce straight into /lock
-    // asking for a PIN that was just typed one screen ago. Also set the
-    // unlock cookie itself for the same reason. No-op (both false/absent)
-    // when the PIN step was skipped.
+    // asking for a PIN that was just typed one screen ago. No-op when the
+    // PIN step was skipped — nothing to reissue, the session already has
+    // the correct hasPin:false from registration.
     if (pin) {
       const authSecret = process.env.AUTH_SECRET;
       if (authSecret) {
-        const cookieOpts = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/' };
-        res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(householdId), selfUserId, true), { ...cookieOpts, maxAge: SESSION_MAX_AGE_S });
-        res.cookies.set('budget-unlocked', unlockCookieValue(authSecret, String(householdId)), { ...cookieOpts, maxAge: UNLOCK_MAX_AGE_S });
+        issueAuthCookies(res, authSecret, { householdId: String(householdId), userId: selfUserId, hasPin: true, unlock: true });
       }
     }
     return res;

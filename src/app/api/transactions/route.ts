@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isValidDate, isPositiveInt, isPositiveNumber, roundMoney } from '@/lib/validate';
-import { requireHouseholdId } from '@/lib/household';
+import { requireHouseholdId, isOwnedCategory, isOwnedUser } from '@/lib/household';
 
 export async function GET(req: NextRequest) {
   try {
@@ -69,12 +69,8 @@ export async function POST(req: NextRequest) {
     // independent of what the client sent), but it would silently link to
     // and expose a foreign category's name/type via this transaction's own
     // `include: category`.
-    const cat = await prisma.category.findFirst({ where: { id: parseInt(categoryId), householdId }, select: { id: true } });
-    if (!cat) return badRequest('Невалідна категорія');
-    if (userId) {
-      const u = await prisma.user.findFirst({ where: { id: parseInt(userId), householdId }, select: { id: true } });
-      if (!u) return badRequest('Невалідний користувач');
-    }
+    if (!(await isOwnedCategory(householdId, parseInt(categoryId)))) return badRequest('Невалідна категорія');
+    if (userId && !(await isOwnedUser(householdId, parseInt(userId)))) return badRequest('Невалідний користувач');
 
     // Truncate to a clean UTC calendar-day boundary, matching every other
     // writer (monoIngest.ts, the voice webhook, import, recurring/apply) —

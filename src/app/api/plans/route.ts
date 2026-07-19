@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isValidYear, isValidMonth, isPositiveInt, isNonNegativeNumber, roundMoney } from '@/lib/validate';
-import { requireHouseholdId } from '@/lib/household';
+import { requireHouseholdId, isOwnedCategory } from '@/lib/household';
 
 export async function GET(req: NextRequest) {
   try {
@@ -47,8 +47,7 @@ export async function POST(req: NextRequest) {
     // confirm it belongs to THIS caller's household — otherwise this upsert
     // could silently overwrite another household's plan for their own
     // category id.
-    const cat = await prisma.category.findFirst({ where: { id: Number(categoryId), householdId }, select: { id: true } });
-    if (!cat) return badRequest('Невалідна категорія');
+    if (!(await isOwnedCategory(householdId, Number(categoryId)))) return badRequest('Невалідна категорія');
 
     const plan = await prisma.monthlyPlan.upsert({
       where: { year_month_categoryId: { year, month, categoryId } },

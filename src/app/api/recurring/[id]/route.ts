@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isPositiveInt, isPositiveNumber, roundMoney } from '@/lib/validate';
-import { requireHouseholdId } from '@/lib/household';
+import { requireHouseholdId, isOwnedCategory, isOwnedUser } from '@/lib/household';
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -22,13 +22,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     if (userId !== undefined && !isPositiveInt(Number(userId)))
       return badRequest('Невалідний користувач');
 
-    if (categoryId !== undefined) {
-      const cat = await prisma.category.findFirst({ where: { id: Number(categoryId), householdId }, select: { id: true } });
-      if (!cat) return badRequest('Невалідна категорія');
+    if (categoryId !== undefined && !(await isOwnedCategory(householdId, Number(categoryId)))) {
+      return badRequest('Невалідна категорія');
     }
-    if (userId !== undefined) {
-      const u = await prisma.user.findFirst({ where: { id: Number(userId), householdId }, select: { id: true } });
-      if (!u) return badRequest('Невалідний користувач');
+    if (userId !== undefined && !(await isOwnedUser(householdId, Number(userId)))) {
+      return badRequest('Невалідний користувач');
     }
 
     // updateMany scoped by householdId — a bare update({where:{id}}) would
