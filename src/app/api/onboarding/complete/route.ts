@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isValidType } from '@/lib/validate';
-import { requireHouseholdId } from '@/lib/household';
+import { requireHouseholdId, MAX_USERS } from '@/lib/household';
 import { hashPin } from '@/lib/pin';
 import { ICON_KEYS } from '@/lib/icons';
 import { issueAuthCookies } from '@/lib/session';
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 const PIN_FORMAT = /^\d{4,8}$/;
-// Same cap as api/users/route.ts's MAX_USERS — the wizard's "1 or 2 people"
-// step and the sidebar's quick-switch layout aren't designed for more.
-const MAX_USERS = 2;
 const MAX_CATEGORIES = 60;
 
 interface CategoryInput { name: string; type: string; color: string; icon: string }

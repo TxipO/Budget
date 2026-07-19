@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest } from '@/lib/validate';
-import { requireHouseholdId } from '@/lib/household';
-
-// Household is capped at 2 — matches the /setup wizard's "1 or 2 people"
-// model and the sidebar's quick-switch button layout, which isn't designed
-// for an arbitrary-length list.
-const MAX_USERS = 2;
+import { requireHouseholdId, MAX_USERS } from '@/lib/household';
 
 export async function GET(req: NextRequest) {
   try {

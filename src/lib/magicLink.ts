@@ -1,10 +1,5 @@
-import { createHmac, timingSafeEqual } from 'crypto';
-
-function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
-}
+import { createHmac } from 'crypto';
+import { safeEqual } from '@/lib/pin';
 
 // Short-lived HMAC-signed tokens for the email magic-link flow — same shape
 // as lib/telegramAuth.ts's signPendingRegistration/verifyPendingRegistration,

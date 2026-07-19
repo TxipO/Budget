@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { PIN_HOUSEHOLD_ID, hasPinConfigured } from '@/lib/pin';
+import { isPinHousehold as checkIsPinHousehold, hasPinForHousehold } from '@/lib/pin';
 import { requireHouseholdId } from '@/lib/household';
 
 // Not under /api/auth/ — that prefix is middleware's PUBLIC_PREFIXES bypass
@@ -17,12 +17,15 @@ export async function GET(req: NextRequest) {
     // a client-supplied value) rather than assumed from which branch below
     // runs, so it stays correct even for edge cases (e.g. a shared-PIN
     // session for a household that isn't #1, if that ever becomes possible).
-    const household = await prisma.household.findUnique({ where: { id: householdId }, select: { onboardedAt: true } });
+    // One query for both onboardedAt and pinHash — hasPinForHousehold()
+    // resolves the APP_PIN fallback locally instead of hasPinConfigured()
+    // re-fetching the same row a second time.
+    const household = await prisma.household.findUnique({ where: { id: householdId }, select: { onboardedAt: true, pinHash: true } });
     const onboarded = !!household?.onboardedAt;
-    const isPinHousehold = householdId === PIN_HOUSEHOLD_ID;
+    const isPinHousehold = checkIsPinHousehold(householdId);
     // Settings' Security section reads this to decide "set" vs "change/
     // remove" PIN mode, and whether to ask for the current PIN at all.
-    const hasPin = await hasPinConfigured(householdId);
+    const hasPin = hasPinForHousehold(householdId, household?.pinHash ?? null);
 
     const userId = req.headers.get('x-current-user-id');
     if (!userId) return NextResponse.json({ shared: true, isPinHousehold, onboarded, hasPin });

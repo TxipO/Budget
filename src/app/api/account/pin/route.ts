@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireHouseholdId } from '@/lib/household';
 import { issueAuthCookies } from '@/lib/session';
-import { hashPin, safeEqual, currentPinHash, setPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse, PIN_HOUSEHOLD_ID } from '@/lib/pin';
+import { hashPin, safeEqual, currentPinHash, setPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse, isPinHousehold } from '@/lib/pin';
 import { badRequest } from '@/lib/validate';
 
 const PIN_FORMAT = /^\d{4,8}$/;
@@ -30,7 +30,7 @@ export async function PUT(req: NextRequest) {
     // identity mechanism, not just an optional lock — changing is fine,
     // fully disabling isn't a real state this household can be in. Found
     // during deep-review 2026-07-11.
-    if (!next && householdId === PIN_HOUSEHOLD_ID) {
+    if (!next && isPinHousehold(householdId)) {
       return badRequest('Для цього акаунту PIN не можна прибрати — це основний спосіб входу. Можна лише змінити його.');
     }
 

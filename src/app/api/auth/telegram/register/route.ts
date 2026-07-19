@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { verifyPendingRegistration } from '@/lib/telegramAuth';
 import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
 import { badRequest, isPositiveInt } from '@/lib/validate';
-import { hashPin, safeEqual, currentPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse, hasPinConfigured, PIN_HOUSEHOLD_ID } from '@/lib/pin';
+import { hashPin, safeEqual, currentPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse, hasPinConfigured, isPinHousehold, PIN_HOUSEHOLD_ID } from '@/lib/pin';
 
 // Not verified in v1 (no email-sending service provisioned) — format-only,
 // treats the value as a claimed identifier rather than a proven one.
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
       // household's unlinked user and receive a session scoped to it. Found
       // live during deep-review 2026-07-11 (unlinked-users GET had the same
       // unscoped gap, fixed alongside this).
-      if (existing.householdId !== PIN_HOUSEHOLD_ID) return badRequest('Користувача не знайдено');
+      if (!existing.householdId || !isPinHousehold(existing.householdId)) return badRequest('Користувача не знайдено');
       if (existing.telegramId) return badRequest('До цього акаунту вже прив’язано інший Telegram');
 
       try {

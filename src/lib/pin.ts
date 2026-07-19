@@ -12,6 +12,16 @@ import { prisma } from '@/lib/prisma';
 // the first place.
 export const PIN_HOUSEHOLD_ID = 1;
 
+// Named guard for "is this the PIN household", not a bare `=== PIN_HOUSEHOLD_ID`
+// comparison inline at each call site — centralizing it here matches
+// currentPinHash/hasPinConfigured's existing convention of never letting
+// callers touch the constant directly. This exact class of gap (a route
+// that should have compared against PIN_HOUSEHOLD_ID but didn't) already
+// caused a real cross-household leak this session (unlinked-users GET).
+export function isPinHousehold(householdId: number): boolean {
+  return householdId === PIN_HOUSEHOLD_ID;
+}
+
 export function hashPin(pin: string): string {
   return createHash('sha256').update(`budget-pin:${pin}`).digest('hex');
 }
@@ -26,28 +36,44 @@ export function safeEqual(a: string, b: string): boolean {
   return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
 }
 
-export async function currentPinHash(householdId: number): Promise<string | null> {
-  const household = await prisma.household.findUnique({ where: { id: householdId }, select: { pinHash: true } });
-  if (household?.pinHash) return household.pinHash;
+// The APP_PIN-env-fallback rule, factored out as a pure function of an
+// already-fetched pinHash — lets a caller that's already querying the
+// Household row for something else (e.g. onboardedAt) resolve the PIN state
+// without a second round trip. currentPinHash()/hasPinConfigured() below are
+// just this plus the fetch, for callers that don't already have the row.
+function resolvePinHash(householdId: number, pinHash: string | null): string | null {
+  if (pinHash) return pinHash;
   // Fallback: PIN from .env until it is changed via Settings for the first
   // time — household #1 only. APP_PIN is a single global value; falling
   // back to it for an arbitrary OTHER household would mean every household
   // with no PIN configured shares the exact same PIN, which defeats the
   // entire point of a per-household lock.
-  if (householdId === PIN_HOUSEHOLD_ID) {
+  if (isPinHousehold(householdId)) {
     const envPin = process.env.APP_PIN;
     return envPin ? hashPin(envPin) : null;
   }
   return null;
 }
 
+export async function currentPinHash(householdId: number): Promise<string | null> {
+  const household = await prisma.household.findUnique({ where: { id: householdId }, select: { pinHash: true } });
+  return resolvePinHash(householdId, household?.pinHash ?? null);
+}
+
 // Single source of truth for "does this household currently have a working
 // PIN" — used to decide the session cookie's hasPin bit at issuance time.
-// Goes through currentPinHash() (not a raw pinHash-column check) so it
+// Goes through resolvePinHash() (not a raw pinHash-column check) so it
 // correctly reports true for household #1 even when it's still running on
 // the APP_PIN env fallback and has never touched Settings.
 export async function hasPinConfigured(householdId: number): Promise<boolean> {
   return !!(await currentPinHash(householdId));
+}
+
+// Sync variant for a caller that already has the Household row's pinHash in
+// hand (avoids the redundant findUnique currentPinHash() would otherwise do
+// for a row already fetched one line above it).
+export function hasPinForHousehold(householdId: number, pinHash: string | null): boolean {
+  return !!resolvePinHash(householdId, pinHash);
 }
 
 // hash === null removes the PIN entirely (Settings' "Прибрати PIN").

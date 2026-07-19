@@ -1,6 +1,14 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+// Household is capped at 2 members — matches the onboarding wizard's "1 or
+// 2 people" step and the sidebar's quick-switch button layout, neither of
+// which is designed for an arbitrary-length list. Enforced independently at
+// every place a household can gain a member (api/users POST,
+// api/onboarding/complete) — shared here so raising the cap later is a
+// one-line change instead of two that have to be kept in sync by hand.
+export const MAX_USERS = 2;
+
 // The tenant-isolation boundary for every route touching household-owned
 // data (User, Category, Transaction, RecurringTemplate, MonthlyPlan).
 // middleware.ts always sets this header itself from the verified session
