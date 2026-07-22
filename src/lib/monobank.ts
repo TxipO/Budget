@@ -174,13 +174,26 @@ const KEYWORD_CATEGORY: [RegExp, string][] = [
   // Женя's card is ever connected too, this would need to stop being a
   // blanket rule.
   [/^від: /i, 'Паша'],
-  [/аптек|pharmacy|фармаці|ліки|лекарств|medicine/i, 'Медицина'],
+  // apotek/legekontor/tannlege added 2026-07-22 — real Norwegian merchant
+  // names from SpareBank 1's first sync (BALESTRAND LEGEKONTOR, SUNNFJORD
+  // APOTE..., TANNLEGANE CLEM...), the Enable Banking integration's own
+  // equivalent of the аптек/pharmacy tier below.
+  // apotek?/tannleg (not "apotek"/"tannlege") deliberately loose — real
+  // Norwegian card statements truncate to "APOTE" and inflect to
+  // "TANNLEGANE" (definite plural), neither of which contains the
+  // dictionary-form word as a literal substring. Confirmed against real
+  // SpareBank 1 data (SUNNFJORD APOTE..., TANNLEGANE CLEM...).
+  [/аптек|pharmacy|фармаці|ліки|лекарств|medicine|apotek?|legekontor|tannleg/i, 'Медицина'],
   // "їжа"/"еда" are Ukrainian/Russian nouns with grammatical case endings
   // (їжа/їжу/їжі/їжею, еда/еды/еде/едой) — a bare "їжа" substring match
   // missed "Потратив 200 крон на їжу" entirely, since "їжу" (accusative)
   // doesn't contain "їжа" as a substring. Same bug class as the earlier
   // exact-verb-form fix in voiceParse.ts, just in the category keywords.
-  [/сільпо|silpo|атб|фора|ашан|novus|варус|ваш ?формат|вест ?лайн|кошик|продукт|їж(а|і|у|ею)|ед(а|ы|е|у|ой)|food|groceries|grocery/i, 'Їжа'],
+  // joker/coop/kiwi added 2026-07-22 — the three grocery chains that
+  // covered the bulk (>60 of 170) of SpareBank 1's first sync landing in
+  // "Незрозуміло": Norwegian grocery brands, no overlap with the Ukrainian
+  // chains above. Word-bounded since "coop"/"kiwi" are short common words.
+  [/сільпо|silpo|атб|фора|ашан|novus|варус|ваш ?формат|вест ?лайн|кошик|продукт|їж(а|і|у|ею)|ед(а|ы|е|у|ой)|food|groceries|grocery|\bjoker\b|\bcoop\b|\bkiwi\b/i, 'Їжа'],
   // Eating out, not groceries — restaurants/cafes/bars/fast food.
   [/ресторан|restaurant|кафе|cafe|café|бар\b|bar\b|паб|pub\b|суші|sushi|піцер|pizza|kebab|кебаб|grill|гриль|бургер|burger|кав'?ярн|coffee ?shop|кофейн/i, 'Балування'],
   [/netflix|spotify|youtube ?premium|apple\.com\/bill|google ?(play|one)|playstation|xbox|patreon|подпис|підписк/i, 'Підписки'],

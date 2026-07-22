@@ -59,9 +59,15 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     // does — but per spec.md's US1 acceptance criteria, a voice correction
     // must still reach the same learning mechanism, not be silently
     // excluded. Previously gated on source === 'mono' only, so a voice
-    // correction here never ran at all.
+    // correction here never ran at all. sparebank uses `details` too — it's
+    // set to the exact same text (remittance info or counterparty name)
+    // that lib/sparebankIngest.ts derives merchantKey from for a future
+    // sync of the same merchant, same shape as the voice case. Found while
+    // investigating why the first SpareBank 1 sync left almost everything
+    // in "Незрозуміло": correcting one manually would never have helped
+    // the next 34 JOKER BALESTRAND rows without this.
     const correctionKey = before?.source === 'mono' ? before.monoMerchant
-      : before?.source === 'voice' ? before.details
+      : (before?.source === 'voice' || before?.source === 'sparebank') ? before.details
       : null;
     if (correctionKey && before?.userId && newCategoryId !== before.categoryId) {
       const merchantKey = normalizeMerchantKey(correctionKey);
