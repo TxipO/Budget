@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       ? new Date(user.sbLastSyncedAt.getTime() - RECONCILIATION_OVERLAP_DAYS * 24 * 3600 * 1000).toISOString().slice(0, 10)
       : new Date(Date.now() - FALLBACK_LOOKBACK_DAYS * 24 * 3600 * 1000).toISOString().slice(0, 10);
 
-    let created = 0;
+    let createdIds: number[] = [];
     let skippedPending = 0;
     let skippedExisting = 0;
     let checked = 0;
@@ -65,10 +65,10 @@ export async function POST(req: NextRequest) {
       }
       for (const item of page.transactions ?? []) {
         checked++;
-        const result = await ingestTransaction(user.id, householdId, item);
-        if (result === 'created') created++;
-        else if (result === 'skipped_pending') skippedPending++;
-        else if (result === 'skipped_duplicate') skippedExisting++;
+        const outcome = await ingestTransaction(user.id, householdId, item);
+        if (outcome.status === 'created' && outcome.id) createdIds.push(outcome.id);
+        else if (outcome.status === 'skipped_pending') skippedPending++;
+        else if (outcome.status === 'skipped_duplicate') skippedExisting++;
       }
       continuationKey = page.continuation_key;
       if (!continuationKey) break;
@@ -77,10 +77,22 @@ export async function POST(req: NextRequest) {
     // Only advance the watermark once every page has been fetched and
     // ingested without error — an early return above (rate limit, API
     // error) must leave it where it was, so the next sync re-covers the gap
-    // instead of silently skipping it.
+    // instead of silently skipping it. previousSyncedAt (the value from
+    // before this update) travels back to the client so a "Скасувати" undo
+    // within the next few seconds can restore it exactly — see
+    // api/sparebank/undo-sync.
+    const previousSyncedAt = user.sbLastSyncedAt;
     await prisma.user.update({ where: { id: user.id }, data: { sbLastSyncedAt: new Date() } });
 
-    return NextResponse.json({ ok: true, created, skippedPending, skippedExisting, checked });
+    return NextResponse.json({
+      ok: true,
+      created: createdIds.length,
+      createdIds,
+      previousSyncedAt,
+      skippedPending,
+      skippedExisting,
+      checked,
+    });
   } catch (e) {
     console.error('[sparebank/sync POST]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

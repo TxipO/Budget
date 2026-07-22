@@ -37,6 +37,11 @@ export default function SettingsPage() {
   const [sbConnecting, setSbConnecting] = useState<number | null>(null);
   const [sbSyncing, setSbSyncing] = useState<number | null>(null);
 
+  // Which bank is picked in the not-yet-connected dropdown, per user — only
+  // relevant before a connection exists; once connected, the row just shows
+  // whichever bank actually is connected, no picker needed.
+  const [bankChoice, setBankChoice] = useState<Record<number, 'mono' | 'sparebank'>>({});
+
   interface AccountInfo { shared: boolean; isPinHousehold: boolean; hasPin: boolean; user?: { id: number; name: string; telegramUsername: string | null; telegramFirstName: string | null; email: string | null } }
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [unlinking, setUnlinking] = useState(false);
@@ -172,7 +177,34 @@ export default function SettingsPage() {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) { toast(data?.error || 'Помилка синхронізації', 'error'); return; }
-      toast(data.created > 0 ? `Додано транзакцій: ${data.created}` : 'Нових транзакцій немає');
+      if (data.created > 0) {
+        // Sync already committed the rows (unlike the transaction list's
+        // delete, which delays the real write) — "Скасувати" here calls a
+        // real reversal endpoint naming exactly this sync's created rows,
+        // rather than just clearing a pending timer.
+        toast(
+          `Додано транзакцій: ${data.created}`,
+          'info',
+          {
+            label: 'Скасувати',
+            onClick: async () => {
+              try {
+                const undoRes = await fetch('/api/sparebank/undo-sync', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ userId, transactionIds: data.createdIds, previousSyncedAt: data.previousSyncedAt }),
+                });
+                if (!undoRes.ok) { toast('Не вдалося скасувати', 'error'); return; }
+                toast('Скасовано', 'info');
+              } catch {
+                toast('Помилка з’єднання', 'error');
+              }
+            },
+          },
+          5000,
+        );
+      } else {
+        toast('Нових транзакцій немає');
+      }
     } catch {
       toast('Помилка з’єднання', 'error');
     } finally {
@@ -658,117 +690,126 @@ export default function SettingsPage() {
       </div>
       )}
 
-      {/* Monobank */}
+      {/* Bank connections — Monobank + SpareBank 1 merged into one card with
+          a per-user bank picker, instead of two separate cards each user had
+          to check. Once a user is connected to either bank, the picker goes
+          away and just shows that connection's status/sync/disconnect. */}
       <div className="card" style={{ padding: 24, marginBottom: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Landmark size={16} color="#000000" /> Monobank
+          <Landmark size={16} color="#000000" /> Банківське підключення
         </h2>
         <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>
-          Токен беріть у своєму кабінеті на{' '}
+          Monobank — токен зі свого кабінету на{' '}
           <a href="https://api.monobank.ua/" target="_blank" rel="noopener noreferrer" style={{ color: '#F97316' }}>
             api.monobank.ua
           </a>
-          . У кожного своя картка — токен підключається окремо для Паші й Жені.
+          . SpareBank 1 Sogn og Fjordane — підключення веде на сторінку входу банку (BankID), токен не потрібен.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {monoStatus.map(m => (
-            <div key={m.userId} style={{ borderTop: '1px solid var(--c-border)', paddingTop: 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: m.connected ? 0 : 8 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-sec)' }}>{m.name}</span>
-                {m.connected && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#4ADE80' }}>
-                      <CheckCircle size={13} /> Підключено
-                    </span>
-                    <button
-                      className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
-                      disabled={monoSyncing === m.userId} onClick={() => syncMono(m.userId)}
+          {users.map(u => {
+            const mono = monoStatus.find(m => m.userId === u.id);
+            const sb = sbStatus.find(m => m.userId === u.id);
+            const connectedToAny = mono?.connected || sb?.connected;
+            const choice = bankChoice[u.id] ?? 'mono';
+            return (
+              <div key={u.id} style={{ borderTop: '1px solid var(--c-border)', paddingTop: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: connectedToAny ? 0 : 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-sec)' }}>{u.name}</span>
+                  {!connectedToAny && (
+                    <select
+                      className="input-field" style={{ fontSize: 13, padding: '4px 8px', width: 'auto' }}
+                      value={choice}
+                      onChange={e => setBankChoice(prev => ({ ...prev, [u.id]: e.target.value as 'mono' | 'sparebank' }))}
                     >
-                      {monoSyncing === m.userId ? 'Синхронізація…' : 'Синхронізувати'}
-                    </button>
-                    <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => disconnectMono(m.userId, m.name)}>
-                      Відключити
-                    </button>
-                  </div>
-                )}
-              </div>
-              {!m.connected && (
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    className="input-field" type="password" placeholder="Персональний токен Monobank"
-                    value={monoTokenInput[m.userId] ?? ''}
-                    onChange={e => setMonoTokenInput(prev => ({ ...prev, [m.userId]: e.target.value }))}
-                    style={{ fontSize: 13 }}
-                  />
-                  <button
-                    className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap' }}
-                    disabled={monoConnecting === m.userId || !monoTokenInput[m.userId]?.trim()}
-                    onClick={() => connectMono(m.userId)}
-                  >
-                    {monoConnecting === m.userId ? 'Підключення…' : 'Підключити'}
-                  </button>
+                      <option value="mono">Monobank</option>
+                      <option value="sparebank">SpareBank 1 Sogn og Fjordane</option>
+                    </select>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
 
-      {/* SpareBank 1 (Enable Banking) */}
-      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Landmark size={16} color="#000000" /> SpareBank 1 Sogn og Fjordane
-        </h2>
-        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>
-          Підключення веде на сторінку входу банку (BankID) — токен чи пароль сюди вводити не треба.
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {sbStatus.map(m => (
-            <div key={m.userId} style={{ borderTop: '1px solid var(--c-border)', paddingTop: 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-sec)' }}>
-                  {m.name}{m.iban ? ` — ${m.iban}` : ''}
-                </span>
-                {m.connected ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {m.expired ? (
-                      <span style={{ fontSize: 12, color: '#F97316' }}>Доступ прострочено</span>
-                    ) : (
+                {mono?.connected && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 12, color: '#64748B' }}>Monobank</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#4ADE80' }}>
                         <CheckCircle size={13} /> Підключено
                       </span>
-                    )}
-                    {m.expired ? (
                       <button
                         className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
-                        disabled={sbConnecting === m.userId} onClick={() => connectSb(m.userId)}
+                        disabled={monoSyncing === u.id} onClick={() => syncMono(u.id)}
                       >
-                        {sbConnecting === m.userId ? 'Перенаправлення…' : 'Перепідключити'}
+                        {monoSyncing === u.id ? 'Синхронізація…' : 'Синхронізувати'}
                       </button>
-                    ) : (
-                      <button
-                        className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
-                        disabled={sbSyncing === m.userId} onClick={() => syncSb(m.userId)}
-                      >
-                        {sbSyncing === m.userId ? 'Синхронізація…' : 'Синхронізувати'}
+                      <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => disconnectMono(u.id, u.name)}>
+                        Відключити
                       </button>
-                    )}
-                    <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => disconnectSb(m.userId, m.name)}>
-                      Відключити
+                    </div>
+                  </div>
+                )}
+
+                {sb?.connected && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 12, color: '#64748B' }}>SpareBank 1{sb.iban ? ` — ${sb.iban}` : ''}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      {sb.expired ? (
+                        <span style={{ fontSize: 12, color: '#F97316' }}>Доступ прострочено</span>
+                      ) : (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#4ADE80' }}>
+                          <CheckCircle size={13} /> Підключено
+                        </span>
+                      )}
+                      {sb.expired ? (
+                        <button
+                          className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                          disabled={sbConnecting === u.id} onClick={() => connectSb(u.id)}
+                        >
+                          {sbConnecting === u.id ? 'Перенаправлення…' : 'Перепідключити'}
+                        </button>
+                      ) : (
+                        <button
+                          className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                          disabled={sbSyncing === u.id} onClick={() => syncSb(u.id)}
+                        >
+                          {sbSyncing === u.id ? 'Синхронізація…' : 'Синхронізувати'}
+                        </button>
+                      )}
+                      <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => disconnectSb(u.id, u.name)}>
+                        Відключити
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {!connectedToAny && choice === 'mono' && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      className="input-field" type="password" placeholder="Персональний токен Monobank"
+                      value={monoTokenInput[u.id] ?? ''}
+                      onChange={e => setMonoTokenInput(prev => ({ ...prev, [u.id]: e.target.value }))}
+                      style={{ fontSize: 13 }}
+                    />
+                    <button
+                      className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap' }}
+                      disabled={monoConnecting === u.id || !monoTokenInput[u.id]?.trim()}
+                      onClick={() => connectMono(u.id)}
+                    >
+                      {monoConnecting === u.id ? 'Підключення…' : 'Підключити'}
                     </button>
                   </div>
-                ) : (
+                )}
+
+                {!connectedToAny && choice === 'sparebank' && (
                   <button
                     className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap' }}
-                    disabled={sbConnecting === m.userId}
-                    onClick={() => connectSb(m.userId)}
+                    disabled={sbConnecting === u.id}
+                    onClick={() => connectSb(u.id)}
                   >
-                    {sbConnecting === m.userId ? 'Перенаправлення…' : 'Підключити'}
+                    {sbConnecting === u.id ? 'Перенаправлення…' : 'Підключити'}
                   </button>
                 )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
