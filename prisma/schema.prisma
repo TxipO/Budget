@@ -61,6 +61,18 @@ model User {
   monoAccountId     String?
   monoCategoryRules MonoCategoryRule[]
 
+  // SpareBank 1 (via Enable Banking, PSD2/Berlin Group AISP) integration.
+  // sbSessionEnc is the Enable Banking session_id, AES-256-GCM encrypted
+  // (see lib/crypto.ts) — it's a bearer credential granting read access to
+  // real bank data, same sensitivity class as monoTokenEnc. sbValidUntil is
+  // the consent expiry Enable Banking returns from POST /sessions; past it,
+  // the session is dead and the user must reconnect (there is no silent
+  // refresh in the restricted-mode flow this app uses).
+  sbSessionEnc  String?   @unique
+  sbAccountUid  String?
+  sbIban        String?
+  sbValidUntil  DateTime?
+
   // Telegram Login Widget auth (see lib/telegramAuth.ts). telegramId is
   // Telegram's own numeric user id, stored as a string (safer than Int for
   // an externally-issued id we never do arithmetic on). email can still be
@@ -186,6 +198,13 @@ model Transaction {
   // monoStatementId. A DB-level unique constraint, not an in-memory "seen"
   // set, so it survives across serverless invocations.
   telegramMessageId String? @unique
+
+  // SpareBank 1 (Enable Banking) fields — all null for non-sparebank rows.
+  // sbTransactionId is Enable Banking's own transaction/entry reference,
+  // the dedup key (same role as monoStatementId). No FX fields needed —
+  // SpareBank 1 is already NOK, the app's own currency.
+  sbTransactionId String? @unique
+  sbCounterparty  String? // debtor/creditor name, for future category-rule matching
 
   @@index([date])
   // Guards against the recurring/apply race: concurrent requests applying the

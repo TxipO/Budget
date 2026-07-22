@@ -33,6 +33,10 @@ export default function SettingsPage() {
   const [monoConnecting, setMonoConnecting] = useState<number | null>(null);
   const [monoSyncing, setMonoSyncing] = useState<number | null>(null);
 
+  const [sbStatus, setSbStatus] = useState<{ userId: number; name: string; connected: boolean; iban: string | null; expired: boolean }[]>([]);
+  const [sbConnecting, setSbConnecting] = useState<number | null>(null);
+  const [sbSyncing, setSbSyncing] = useState<number | null>(null);
+
   interface AccountInfo { shared: boolean; isPinHousehold: boolean; hasPin: boolean; user?: { id: number; name: string; telegramUsername: string | null; telegramFirstName: string | null; email: string | null } }
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [unlinking, setUnlinking] = useState(false);
@@ -134,6 +138,63 @@ export default function SettingsPage() {
     }
   }
 
+  function loadSbStatus() {
+    fetch('/api/sparebank/status').then(r => r.ok ? r.json() : Promise.reject()).then(setSbStatus).catch(() => {});
+  }
+
+  // Unlike Monobank's paste-a-token flow, connecting SpareBank 1 redirects
+  // the whole browser tab away to the bank's own BankID login — there is no
+  // response to await here, the flow completes on the callback route.
+  async function connectSb(userId: number) {
+    if (sbConnecting) return;
+    setSbConnecting(userId);
+    try {
+      const res = await fetch('/api/sparebank/connect', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) { toast(data?.error || 'Помилка підключення', 'error'); setSbConnecting(null); return; }
+      window.location.href = data.url;
+    } catch {
+      toast('Помилка з’єднання', 'error');
+      setSbConnecting(null);
+    }
+  }
+
+  async function syncSb(userId: number) {
+    if (sbSyncing) return;
+    setSbSyncing(userId);
+    try {
+      const res = await fetch('/api/sparebank/sync', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { toast(data?.error || 'Помилка синхронізації', 'error'); return; }
+      toast(data.created > 0 ? `Додано транзакцій: ${data.created}` : 'Нових транзакцій немає');
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setSbSyncing(null);
+    }
+  }
+
+  async function disconnectSb(userId: number, name: string) {
+    if (!confirm(`Відключити SpareBank 1 для ${name}?`)) return;
+    try {
+      const res = await fetch('/api/sparebank/disconnect', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      if (!res.ok) { toast('Помилка відключення', 'error'); return; }
+      toast('SpareBank 1 відключено', 'info');
+      loadSbStatus();
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    }
+  }
+
   function loadCats() {
     fetch('/api/categories')
       .then(r => r.ok ? r.json() : Promise.reject())
@@ -153,7 +214,25 @@ export default function SettingsPage() {
     loadCats();
     loadTemplates();
     loadMonoStatus();
+    loadSbStatus();
     loadUsers();
+
+    // Landed here straight off the bank's redirect (api/sparebank/callback) —
+    // surface the result once, then strip the param so a page refresh
+    // doesn't re-show the toast.
+    const params = new URLSearchParams(window.location.search);
+    const sbResult = params.get('sparebank');
+    if (sbResult === 'connected') {
+      toast('SpareBank 1 підключено');
+      loadSbStatus();
+    } else if (sbResult === 'error') {
+      toast('Не вдалося підключити SpareBank 1', 'error');
+    }
+    if (sbResult) {
+      params.delete('sparebank');
+      const qs = params.toString();
+      window.history.replaceState({}, '', qs ? `?${qs}` : window.location.pathname);
+    }
   }, []);
 
   async function addUser(e: React.FormEvent) {
@@ -630,6 +709,64 @@ export default function SettingsPage() {
                   </button>
                 </div>
               )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* SpareBank 1 (Enable Banking) */}
+      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Landmark size={16} color="#000000" /> SpareBank 1 Sogn og Fjordane
+        </h2>
+        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>
+          Підключення веде на сторінку входу банку (BankID) — токен чи пароль сюди вводити не треба.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {sbStatus.map(m => (
+            <div key={m.userId} style={{ borderTop: '1px solid var(--c-border)', paddingTop: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-sec)' }}>
+                  {m.name}{m.iban ? ` — ${m.iban}` : ''}
+                </span>
+                {m.connected ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {m.expired ? (
+                      <span style={{ fontSize: 12, color: '#F97316' }}>Доступ прострочено</span>
+                    ) : (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#4ADE80' }}>
+                        <CheckCircle size={13} /> Підключено
+                      </span>
+                    )}
+                    {m.expired ? (
+                      <button
+                        className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                        disabled={sbConnecting === m.userId} onClick={() => connectSb(m.userId)}
+                      >
+                        {sbConnecting === m.userId ? 'Перенаправлення…' : 'Перепідключити'}
+                      </button>
+                    ) : (
+                      <button
+                        className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                        disabled={sbSyncing === m.userId} onClick={() => syncSb(m.userId)}
+                      >
+                        {sbSyncing === m.userId ? 'Синхронізація…' : 'Синхронізувати'}
+                      </button>
+                    )}
+                    <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => disconnectSb(m.userId, m.name)}>
+                      Відключити
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap' }}
+                    disabled={sbConnecting === m.userId}
+                    onClick={() => connectSb(m.userId)}
+                  >
+                    {sbConnecting === m.userId ? 'Перенаправлення…' : 'Підключити'}
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
