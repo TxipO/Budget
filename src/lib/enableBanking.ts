@@ -55,7 +55,22 @@ async function call(path: string, init?: RequestInit) {
     ...init,
     headers: { Authorization: `Bearer ${signJwt()}`, 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
-  if (res.status === 429) throw new EnableBankingError('Забагато запитів до Enable Banking — спробуйте пізніше', 429);
+  if (res.status === 429) {
+    // Two different things can produce a 429 here, worth telling apart:
+    // Enable Banking's own gateway throttling OUR app's credentials
+    // (error_name absent or something else), vs the ASPSP's own backend
+    // throttling THIS specific account's data (error === 'ASPSP_RATE_LIMIT_EXCEEDED').
+    // Confirmed live 2026-07-22: GET /aspsps (Enable Banking's own catalog)
+    // returned 200 while GET /accounts/{uid}/transactions returned 429 with
+    // error_name "RateLimitException" for the exact same request — proving
+    // it was SpareBank 1's backend, not Enable Banking's gateway, and likely
+    // a longer/bank-specific cooldown than a generic API rate limit.
+    const body = await res.json().catch(() => null);
+    if (body?.error === 'ASPSP_RATE_LIMIT_EXCEEDED') {
+      throw new EnableBankingError('Банк тимчасово обмежив запити до цього рахунку — спробуйте синхронізувати пізніше (може знадобитись більше часу, ніж звичайний ліміт)', 429);
+    }
+    throw new EnableBankingError('Забагато запитів до Enable Banking — спробуйте пізніше', 429);
+  }
   if (!res.ok) throw new EnableBankingError(`Enable Banking API помилка: ${res.status}`, res.status);
   return res.json();
 }
