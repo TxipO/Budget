@@ -23,6 +23,7 @@ interface Stats {
     category: { id: number; name: string; type: string; color: string; icon: string };
     user: { id: number; name: string } | null;
   }[];
+  lastByUser: { userId: number; name: string; date: string | null }[];
   prev: { income: number; expenses: number; savings: number; balance: number } | null;
 }
 
@@ -644,6 +645,22 @@ export default function Dashboard() {
             </button>
           </div>
         ))}
+
+        {/* All-time per-user last entry — deliberately NOT scoped to the
+            period filter above (stats.lastByUser is computed all-time
+            server-side): the point is "did someone forget to log
+            something recently", which a period-filtered answer would
+            silently hide if it's been longer than the current view. */}
+        {!loading && stats && stats.lastByUser.length > 0 && (
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--c-border)', fontSize: 13, color: 'var(--c-text-muted)' }}>
+            <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--c-text-sec)' }}>Останнє додавання:</div>
+            {stats.lastByUser.map(u => (
+              <div key={u.userId}>
+                {u.name} — {u.date ? new Date(u.date).toLocaleDateString('uk-UA') : 'ще немає транзакцій'}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       )}
 

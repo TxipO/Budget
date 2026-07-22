@@ -163,6 +163,25 @@ export async function GET(req: NextRequest) {
     take: 8,
   });
 
+  // Per-user last-transaction date — deliberately ALL-TIME, not scoped to
+  // rangeStart/rangeEnd like everything else above. `recent` can't answer
+  // this: it's both period-filtered and capped at 8 total (not per-user), so
+  // a less-active person's genuinely most recent entry can silently fall
+  // outside the window or get pushed out of the top-8 by the other person's
+  // activity. "When did each person last log anything" is an absolute fact,
+  // not relative to whatever period the dashboard happens to be showing.
+  const householdUsers = await prisma.user.findMany({ where: { householdId }, select: { id: true, name: true } });
+  const lastDatesByUser = await prisma.transaction.groupBy({
+    by: ['userId'],
+    where: { householdId, userId: { not: null } },
+    _max: { date: true },
+  });
+  const lastByUser = householdUsers.map(u => ({
+    userId: u.id,
+    name: u.name,
+    date: lastDatesByUser.find(d => d.userId === u.id)?._max.date ?? null,
+  }));
+
   // End-of-month forecast (only for month view)
   let forecast: number | null = null;
   if (period === 'month') {
@@ -183,7 +202,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     income, expenses, savings, balance, cumBalance,
-    byCategory, byUser, trend, recent, forecast,
+    byCategory, byUser, trend, recent, forecast, lastByUser,
     prev: prev ? { income: prev.income, expenses: prev.expenses, savings: prev.savings, balance: prev.balance } : null,
   });
   } catch (e) {
