@@ -22,19 +22,38 @@ export async function POST(req: NextRequest) {
       || !transactionIds.every(id => isPositiveInt(Number(id)))) {
       return badRequest('Невалідний список транзакцій');
     }
-    if (previousSyncedAt !== null && isNaN(Date.parse(previousSyncedAt))) {
+    // previousSyncedAt is normally just echoed back verbatim from a sync
+    // response we issued seconds earlier — but the client could send
+    // anything. A future date here would silently push sbLastSyncedAt ahead
+    // of real time, and every later sync would compute dateFrom from THAT,
+    // meaning all real transaction history between now and that future date
+    // gets skipped with no error anywhere the next time a real sync runs.
+    // Found during deep-review 2026-07-22 — same "silent data loss via an
+    // unvalidated trust boundary" shape this skill watches for.
+    if (previousSyncedAt !== null && (isNaN(Date.parse(previousSyncedAt)) || Date.parse(previousSyncedAt) > Date.now())) {
       return badRequest('Невалідна дата синхронізації');
     }
 
     const user = await prisma.user.findUnique({ where: { id: Number(userId) }, select: { householdId: true } });
     if (!user || user.householdId !== householdId) return badRequest('Користувача не знайдено');
 
+    // UNDO_WINDOW_MS caps deletion to rows created moments ago — without
+    // this, transactionIds is a client-supplied list of ids that could name
+    // ANY of this user's past sparebank transactions (ids are sequential,
+    // easy to guess), not just the ones the triggering sync actually just
+    // created. householdId + userId + source scoping already stops this from
+    // reaching another household's or another source's rows; this stops it
+    // reaching this user's OWN older, legitimately-kept sparebank history.
+    const UNDO_WINDOW_MS = 60 * 1000;
     await prisma.$transaction([
-      // householdId + userId + source scoping means this can only ever
-      // remove this specific user's own sparebank rows, even if the id list
-      // were tampered with client-side.
       prisma.transaction.deleteMany({
-        where: { id: { in: transactionIds.map(Number) }, householdId, userId: Number(userId), source: 'sparebank' },
+        where: {
+          id: { in: transactionIds.map(Number) },
+          householdId,
+          userId: Number(userId),
+          source: 'sparebank',
+          createdAt: { gte: new Date(Date.now() - UNDO_WINDOW_MS) },
+        },
       }),
       prisma.user.update({
         where: { id: Number(userId) },
