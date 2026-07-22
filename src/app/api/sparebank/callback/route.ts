@@ -54,6 +54,11 @@ export async function GET(req: NextRequest) {
         sbAccountUid: account.uid,
         sbIban: account.account_id?.iban ?? null,
         sbValidUntil: session.access?.valid_until ? new Date(session.access.valid_until) : null,
+        // Watermark starts at connection time, not null — a fresh connect
+        // should behave like Monobank's webhook (only new transactions from
+        // here forward), never an automatic historical backfill. sync/route.ts
+        // reads this to decide how far back to look.
+        sbLastSyncedAt: new Date(),
       },
     });
 

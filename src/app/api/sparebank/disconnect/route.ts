@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     await prisma.user.update({
       where: { id: Number(userId) },
-      data: { sbSessionEnc: null, sbAccountUid: null, sbIban: null, sbValidUntil: null },
+      data: { sbSessionEnc: null, sbAccountUid: null, sbIban: null, sbValidUntil: null, sbLastSyncedAt: null },
     });
 
     return NextResponse.json({ ok: true });

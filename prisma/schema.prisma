@@ -72,6 +72,14 @@ model User {
   sbAccountUid  String?
   sbIban        String?
   sbValidUntil  DateTime?
+  // Watermark for incremental sync — set to now() at connect time (so the
+  // first sync only picks up transactions from the moment of connection
+  // forward, never a historical backfill) and advanced after every
+  // successful sync. Mirrors what Monobank gets for free from its webhook
+  // (only fires for new events going forward, with pull-sync as just a
+  // short reconciliation safety net) — without this, every sync click
+  // re-scanned a fixed 90-day window and recreated anything deleted since.
+  sbLastSyncedAt DateTime?
 
   // Telegram Login Widget auth (see lib/telegramAuth.ts). telegramId is
   // Telegram's own numeric user id, stored as a string (safer than Int for
