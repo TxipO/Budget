@@ -10,7 +10,17 @@ export type IngestResult = 'created' | 'skipped_pending' | 'skipped_duplicate' |
 // called only from the pull-based sync route (no push/webhook path for this
 // integration; see api/sparebank/sync's own comment on why pull-only).
 export async function ingestTransaction(userId: number, householdId: number, item: SbTransaction): Promise<IngestResult> {
-  const dedupKey = item.transaction_id || item.entry_reference;
+  // entry_reference first, NOT transaction_id — confirmed live 2026-07-22 by
+  // fetching the same real transaction twice a few seconds apart:
+  // transaction_id is an opaque per-request encrypted blob that's DIFFERENT
+  // on every call ("ZW5jISF..." — decodes to "enc!!..."), while
+  // entry_reference ("2026-07-21-0", date + same-day sequence number) was
+  // identical both times. Using transaction_id as the dedup key meant
+  // *every* sync recreated everything in its date range, since the "unique"
+  // id was never actually the same twice — this is exactly the "a
+  // valid-looking wrong value is more dangerous than a crash" trap: the
+  // field named transaction_id looked like the obviously-correct choice.
+  const dedupKey = item.entry_reference || item.transaction_id;
   if (!dedupKey) return 'skipped_malformed';
 
   // Same "provisional vs final" rule as Monobank's hold check (deep-review
