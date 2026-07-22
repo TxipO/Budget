@@ -35,7 +35,11 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // honor; this is the actual guarantee.
   if (item.status && item.status !== 'BOOK') return { status: 'skipped_pending' };
 
-  const existing = await prisma.transaction.findUnique({ where: { sbTransactionId: dedupKey } });
+  // Scoped by userId, not a bare lookup on sbTransactionId alone — see the
+  // field's own schema comment: entry_reference is only unique WITHIN one
+  // account's own daily sequence, not bank-wide, so two different users'
+  // first transaction of the same day can share the same raw value.
+  const existing = await prisma.transaction.findFirst({ where: { userId, sbTransactionId: dedupKey } });
   if (existing) return { status: 'skipped_duplicate' };
 
   const rawAmount = Number(item.transaction_amount?.amount);

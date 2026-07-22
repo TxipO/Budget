@@ -208,10 +208,16 @@ model Transaction {
   telegramMessageId String? @unique
 
   // SpareBank 1 (Enable Banking) fields — all null for non-sparebank rows.
-  // sbTransactionId is Enable Banking's own transaction/entry reference,
-  // the dedup key (same role as monoStatementId). No FX fields needed —
-  // SpareBank 1 is already NOK, the app's own currency.
-  sbTransactionId String? @unique
+  // sbTransactionId is Enable Banking's own transaction/entry reference —
+  // NOT globally unique the way monoStatementId is. Confirmed live: its
+  // value is "<date>-<sequence-number-within-day>" (e.g. "2026-07-21-0"),
+  // a per-account daily sequence, not a bank-wide hash. A bare @unique here
+  // let two different users' first transaction of the same day collide on
+  // the same key, silently dropping whichever one synced second as a false
+  // "duplicate" — found during security review 2026-07-22. Uniqueness is
+  // scoped per user below instead. No FX fields needed — SpareBank 1 is
+  // already NOK, the app's own currency.
+  sbTransactionId String?
   sbCounterparty  String? // debtor/creditor name, for future category-rule matching
 
   @@index([date])
@@ -221,6 +227,12 @@ model Transaction {
   // transactions) never conflicts with itself under Postgres unique-index
   // semantics, so this only constrains recurring-generated rows.
   @@unique([recurringTemplateId, date])
+  // sbTransactionId is only unique WITHIN one user's own account — see the
+  // field's own comment. NULL userId never conflicts with itself under
+  // Postgres unique-index semantics, and every sparebank row always has a
+  // real userId (ingestTransaction requires it), so this never loosens
+  // anything for real data.
+  @@unique([userId, sbTransactionId])
 }
 
 model RecurringTemplate {
