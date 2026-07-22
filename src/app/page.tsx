@@ -76,6 +76,12 @@ export default function Dashboard() {
   const [sections] = useDashboardPrefs();
   const [pending, setPending] = useState<{ id: string; description: string; amount: number; currency: string }[]>([]);
 
+  interface BankConnection { key: string; userId: number; name: string; bank: 'mono' | 'sparebank'; bankLabel: string }
+  const [bankConnections, setBankConnections] = useState<BankConnection[]>([]);
+  const [syncMenuOpen, setSyncMenuOpen] = useState(false);
+  const [syncSelected, setSyncSelected] = useState<Record<string, boolean>>({});
+  const [syncing, setSyncing] = useState(false);
+
   // Pending Monobank holds — never recorded as a Transaction (see
   // monoIngest.ts, they can still be declined/cancelled), but a purchase
   // that's genuinely just waiting to settle looking identical to "the sync
@@ -91,6 +97,77 @@ export default function Dashboard() {
       .then(lists => setPending(lists.flat()))
       .catch(() => {}); // decorative — dashboard works fine without this list
   }, []);
+
+  // One-click "sync all" widget in the header — same connect status this app
+  // already exposes in Settings, just aggregated here so syncing doesn't
+  // require a trip to Settings. Expired SpareBank 1 sessions are excluded
+  // (need reconnecting there first, syncing one would just error).
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/monobank/status').then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch('/api/sparebank/status').then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([mono, sb]: [{ userId: number; name: string; connected: boolean }[], { userId: number; name: string; connected: boolean; expired: boolean }[]]) => {
+      const conns: BankConnection[] = [
+        ...mono.filter(m => m.connected).map(m => ({ key: `mono-${m.userId}`, userId: m.userId, name: m.name, bank: 'mono' as const, bankLabel: 'Monobank' })),
+        ...sb.filter(s => s.connected && !s.expired).map(s => ({ key: `sparebank-${s.userId}`, userId: s.userId, name: s.name, bank: 'sparebank' as const, bankLabel: 'SpareBank 1' })),
+      ];
+      setBankConnections(conns);
+      setSyncSelected(Object.fromEntries(conns.map(c => [c.key, true])));
+    });
+  }, []);
+
+  // Sequential, not Promise.all — SpareBank 1's ASPSP enforces a strict daily
+  // call cap (see project memory), so this app never fires concurrent
+  // requests at the same account/bank if it can avoid it.
+  async function runBankSync() {
+    const toSync = bankConnections.filter(c => syncSelected[c.key]);
+    if (toSync.length === 0 || syncing) return;
+    setSyncing(true);
+    setSyncMenuOpen(false);
+    let monoTotalCreated = 0;
+    let anyCreated = false;
+    const errors: string[] = [];
+    for (const c of toSync) {
+      try {
+        const endpoint = c.bank === 'mono' ? '/api/monobank/sync' : '/api/sparebank/sync';
+        const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: c.userId }) });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) { errors.push(`${c.name} (${c.bankLabel}): ${data?.error || 'помилка'}`); continue; }
+        if (c.bank === 'mono') {
+          monoTotalCreated += data.created ?? 0;
+          if (data.created > 0) anyCreated = true;
+        } else if (data.created > 0) {
+          anyCreated = true;
+          // Same undo mechanism as Settings' syncSb — sync already committed
+          // the rows, so "Скасувати" is a real reversal call, not just
+          // clearing a pending timer.
+          toast(`${c.name} (SpareBank 1): додано ${data.created}`, 'info', {
+            label: 'Скасувати',
+            onClick: async () => {
+              try {
+                const undoRes = await fetch('/api/sparebank/undo-sync', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ userId: c.userId, transactionIds: data.createdIds, previousSyncedAt: data.previousSyncedAt }),
+                });
+                if (!undoRes.ok) { toast('Не вдалося скасувати', 'error'); return; }
+                toast('Скасовано', 'info');
+                loadStats();
+              } catch {
+                toast('Помилка з’єднання', 'error');
+              }
+            },
+          }, 5000);
+        }
+      } catch {
+        errors.push(`${c.name} (${c.bankLabel}): помилка з'єднання`);
+      }
+    }
+    setSyncing(false);
+    if (monoTotalCreated > 0) toast(`Monobank: додано ${monoTotalCreated}`);
+    if (errors.length > 0) toast(errors.join('; '), 'error');
+    if (!anyCreated && errors.length === 0) toast('Нових транзакцій немає');
+    loadStats();
+  }
 
   useEffect(() => {
     if (period !== 'month') { setPendingRecurring(0); return; }
@@ -158,6 +235,43 @@ export default function Dashboard() {
           <p style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>Огляд фінансів · {periodLabel()}</p>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {bankConnections.length > 0 && (
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setSyncMenuOpen(o => !o)}
+                className="btn-ghost"
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}
+              >
+                <RefreshCw size={15} className={syncing ? 'spin' : undefined} />
+                <span className="hide-on-xs">Синхронізувати</span>
+              </button>
+              {syncMenuOpen && (
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 20,
+                  background: 'var(--c-bg-card)', border: '1px solid var(--c-border)', borderRadius: 10,
+                  padding: 12, minWidth: 220, boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+                }}>
+                  {bankConnections.map(c => (
+                    <label key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '4px 0', cursor: 'pointer', color: 'var(--c-text-sec)' }}>
+                      <input
+                        type="checkbox"
+                        checked={syncSelected[c.key] ?? true}
+                        onChange={e => setSyncSelected(prev => ({ ...prev, [c.key]: e.target.checked }))}
+                      />
+                      {c.name} — {c.bankLabel}
+                    </label>
+                  ))}
+                  <button
+                    className="btn-primary" style={{ width: '100%', marginTop: 10, padding: '8px 0', fontSize: 13 }}
+                    disabled={syncing || !bankConnections.some(c => syncSelected[c.key])}
+                    onClick={runBankSync}
+                  >
+                    {syncing ? 'Синхронізація…' : 'Синхронізувати'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <button
             onClick={() => setShowRecurring(true)}
             className="btn-ghost"

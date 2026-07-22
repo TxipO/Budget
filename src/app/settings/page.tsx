@@ -41,6 +41,10 @@ export default function SettingsPage() {
   // relevant before a connection exists; once connected, the row just shows
   // whichever bank actually is connected, no picker needed.
   const [bankChoice, setBankChoice] = useState<Record<number, 'mono' | 'sparebank'>>({});
+  // Whether the "add another bank" form is expanded, per user — a user can
+  // have BOTH Monobank and SpareBank 1 connected at once (independent DB
+  // fields), so connecting one must not hide the option to add the other.
+  const [addingBank, setAddingBank] = useState<Record<number, boolean>>({});
 
   interface AccountInfo { shared: boolean; isPinHousehold: boolean; hasPin: boolean; user?: { id: number; name: string; telegramUsername: string | null; telegramFirstName: string | null; email: string | null } }
   const [account, setAccount] = useState<AccountInfo | null>(null);
@@ -709,25 +713,37 @@ export default function SettingsPage() {
           {users.map(u => {
             const mono = monoStatus.find(m => m.userId === u.id);
             const sb = sbStatus.find(m => m.userId === u.id);
-            const connectedToAny = mono?.connected || sb?.connected;
-            const choice = bankChoice[u.id] ?? 'mono';
+            const monoConnected = !!mono?.connected;
+            const sbConnected = !!sb?.connected;
+            // A user can have BOTH banks connected at once — independent
+            // fields on User, not mutually exclusive. remainingBanks is what's
+            // still available for the "+ Додати банк" flow below.
+            const remainingBanks: ('mono' | 'sparebank')[] = [
+              ...(!monoConnected ? (['mono'] as const) : []),
+              ...(!sbConnected ? (['sparebank'] as const) : []),
+            ];
+            const isAdding = addingBank[u.id] ?? false;
+            const choice = remainingBanks.length === 1 ? remainingBanks[0] : (bankChoice[u.id] ?? remainingBanks[0]);
             return (
               <div key={u.id} style={{ borderTop: '1px solid var(--c-border)', paddingTop: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: connectedToAny ? 0 : 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-sec)' }}>{u.name}</span>
-                  {!connectedToAny && (
-                    <select
-                      className="input-field" style={{ fontSize: 13, padding: '4px 8px', width: 'auto' }}
-                      value={choice}
-                      onChange={e => setBankChoice(prev => ({ ...prev, [u.id]: e.target.value as 'mono' | 'sparebank' }))}
+                  {remainingBanks.length > 0 && !isAdding && (
+                    <button
+                      className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                      onClick={() => setAddingBank(prev => ({ ...prev, [u.id]: true }))}
                     >
-                      <option value="mono">Monobank</option>
-                      <option value="sparebank">SpareBank 1 Sogn og Fjordane</option>
-                    </select>
+                      <Plus size={13} /> Додати банк
+                    </button>
+                  )}
+                  {isAdding && (
+                    <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setAddingBank(prev => ({ ...prev, [u.id]: false }))}>
+                      Скасувати
+                    </button>
                   )}
                 </div>
 
-                {mono?.connected && (
+                {monoConnected && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 12, color: '#64748B' }}>Monobank</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -747,7 +763,7 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                {sb?.connected && (
+                {sbConnected && sb && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 12, color: '#64748B' }}>SpareBank 1{sb.iban ? ` — ${sb.iban}` : ''}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -780,32 +796,49 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                {!connectedToAny && choice === 'mono' && (
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input
-                      className="input-field" type="password" placeholder="Персональний токен Monobank"
-                      value={monoTokenInput[u.id] ?? ''}
-                      onChange={e => setMonoTokenInput(prev => ({ ...prev, [u.id]: e.target.value }))}
-                      style={{ fontSize: 13 }}
-                    />
-                    <button
-                      className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap' }}
-                      disabled={monoConnecting === u.id || !monoTokenInput[u.id]?.trim()}
-                      onClick={() => connectMono(u.id)}
-                    >
-                      {monoConnecting === u.id ? 'Підключення…' : 'Підключити'}
-                    </button>
-                  </div>
-                )}
+                {isAdding && remainingBanks.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {/* Dropdown only when neither bank is connected yet — with
+                        exactly one remaining, there's nothing to pick. */}
+                    {remainingBanks.length > 1 && (
+                      <select
+                        className="input-field" style={{ fontSize: 13, padding: '4px 8px', width: 'auto' }}
+                        value={choice}
+                        onChange={e => setBankChoice(prev => ({ ...prev, [u.id]: e.target.value as 'mono' | 'sparebank' }))}
+                      >
+                        <option value="mono">Monobank</option>
+                        <option value="sparebank">SpareBank 1 Sogn og Fjordane</option>
+                      </select>
+                    )}
 
-                {!connectedToAny && choice === 'sparebank' && (
-                  <button
-                    className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap' }}
-                    disabled={sbConnecting === u.id}
-                    onClick={() => connectSb(u.id)}
-                  >
-                    {sbConnecting === u.id ? 'Перенаправлення…' : 'Підключити'}
-                  </button>
+                    {choice === 'mono' && (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input
+                          className="input-field" type="password" placeholder="Персональний токен Monobank"
+                          value={monoTokenInput[u.id] ?? ''}
+                          onChange={e => setMonoTokenInput(prev => ({ ...prev, [u.id]: e.target.value }))}
+                          style={{ fontSize: 13 }}
+                        />
+                        <button
+                          className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap' }}
+                          disabled={monoConnecting === u.id || !monoTokenInput[u.id]?.trim()}
+                          onClick={() => connectMono(u.id)}
+                        >
+                          {monoConnecting === u.id ? 'Підключення…' : 'Підключити'}
+                        </button>
+                      </div>
+                    )}
+
+                    {choice === 'sparebank' && (
+                      <button
+                        className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap', alignSelf: 'flex-start' }}
+                        disabled={sbConnecting === u.id}
+                        onClick={() => connectSb(u.id)}
+                      >
+                        {sbConnecting === u.id ? 'Перенаправлення…' : 'Підключити'}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             );
