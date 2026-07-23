@@ -25,7 +25,7 @@ export interface MonoStatementItem {
   currencyCode: number;
 }
 
-export const MONO_CCY_NAMES: Record<number, string> = { 980: 'UAH', 578: 'NOK' };
+export const MONO_CCY_NAMES: Record<number, string> = { 980: 'UAH', 578: 'NOK', 840: 'USD' };
 
 export type IngestResult = 'created' | 'skipped_hold' | 'skipped_duplicate' | 'skipped_malformed';
 
