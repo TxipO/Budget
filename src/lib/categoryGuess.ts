@@ -1,6 +1,48 @@
 import { prisma } from '@/lib/prisma';
 import { guessCategoryByMcc, guessCategoryByKeyword } from '@/lib/monobank';
 
+// LLM guess tier — the natural extension point this project's own memory
+// flagged when the free rule/MCC/keyword chain was built ("if they later
+// want smarter guessing, adding a Claude call as a tier between MCC and
+// keyword-match... is the natural extension point"). Reuses the same
+// GROQ_API_KEY already provisioned for voice transcription (lib/voiceExtract.ts)
+// — no new key, no new dependency. Deliberately the LAST tier before the
+// safe fallback, not earlier: it's a network call with real (if small)
+// latency/cost, so every free/instant tier gets first refusal. Best-effort
+// like every sibling tier in this chain — any failure (no key, rate limit,
+// bad JSON, no matching name) falls through to the safe fallback, never a
+// crash and never blocks the write.
+async function guessCategoryByLLM(merchantText: string, categoryNames: string[]): Promise<string | null> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey || categoryNames.length === 0 || !merchantText.trim()) return null;
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: 'Ти визначаєш категорію особистого бюджету за описом банківської транзакції (назва мерчанта/отримувача — часто норвезькою, англійською чи обрізана/з кодами термінала). Поверни ЛИШЕ JSON: {"category": рядок або null}. "category" МАЄ бути точно одним із наданих варіантів, символ у символ, або null якщо жоден явно не підходить. Не вигадуй нову назву. Обирай null частіше, ніж здається правильним, якщо є хоч якийсь сумнів — краще не вгадувати, ніж вгадати неправильно.',
+          },
+          { role: 'user', content: `Категорії: ${categoryNames.join(', ')}\n\nОпис транзакції: "${merchantText}"` },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0,
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    const content = data?.choices?.[0]?.message?.content;
+    if (typeof content !== 'string') return null;
+    const parsed = JSON.parse(content);
+    return typeof parsed?.category === 'string' && categoryNames.includes(parsed.category) ? parsed.category : null;
+  } catch {
+    return null;
+  }
+}
+
 // Extracted out of the Monobank webhook route (was resolveCategoryId there) —
 // voice-logged transactions need the exact same rule → MCC → keyword →
 // fallback tiers, just called with mcc: undefined (a voice transcript has no
@@ -22,11 +64,11 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
   });
   if (rule?.category.isActive) return rule.categoryId;
 
-  // Tiers 2-5 (MCC guess, keyword guess, safe fallback, last resort) are all
-  // just "find an active category of this type by name" against the same
-  // set — one query instead of up to four separate round-trips. householdId
-  // scoped so one household's voice/Monobank transactions never resolve to
-  // another household's category ids.
+  // Tiers 2-6 (MCC guess, keyword guess, LLM guess, safe fallback, last
+  // resort) are all just "find an active category of this type by name"
+  // against the same set — one query instead of up to five separate
+  // round-trips. householdId scoped so one household's voice/Monobank/
+  // sparebank transactions never resolve to another household's category ids.
   const categories = await prisma.category.findMany({ where: { householdId, type: txType, isActive: true }, orderBy: { id: 'asc' } });
   const idByName = new Map(categories.map(c => [c.name, c.id]));
 
@@ -40,11 +82,18 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
   const keywordGuess = guessCategoryByKeyword(merchantKey);
   if (keywordGuess && idByName.has(keywordGuess)) return idByName.get(keywordGuess)!;
 
-  // 4. Safe fallback — a bucket that always exists for the type.
+  // 4. LLM guess — only reached once every free/instant tier above has
+  // already refused. Handles merchant text no keyword list will ever fully
+  // cover (foreign-language stores, one-off purchases, truncated terminal
+  // codes) without hardcoding an ever-growing list of brand names.
+  const llmGuess = await guessCategoryByLLM(merchantKey, categories.map(c => c.name));
+  if (llmGuess && idByName.has(llmGuess)) return idByName.get(llmGuess)!;
+
+  // 5. Safe fallback — a bucket that always exists for the type.
   const fallbackName = txType === 'expense' ? 'Незрозуміло' : 'Додаткове';
   if (idByName.has(fallbackName)) return idByName.get(fallbackName)!;
 
-  // 5. Absolute last resort — any active category of the right type, so a
+  // 6. Absolute last resort — any active category of the right type, so a
   // write never crashes even if the expected fallback category was renamed
   // or deleted.
   if (categories[0]) return categories[0].id;
