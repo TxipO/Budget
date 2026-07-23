@@ -16,7 +16,16 @@ import { requireHouseholdId } from '@/lib/household';
 // the exact same ingestStatementItem() the webhook uses, so anything the
 // push missed gets picked up here, and anything it already recorded is
 // skipped via the monoStatementId uniqueness check inside that function.
-const LOOKBACK_DAYS = 7;
+//
+// 30 days, not 7 — widened 2026-07-23 after finding two real UAH
+// transactions (01.07, 12.07) still missing three weeks later: the
+// per-item batch-abort bug (fixed same day — one bad currency threw and
+// silently dropped every OLDER item in that same call, since Monobank
+// returns newest-first) had already caused a gap wider than the old 7-day
+// window could ever re-cover on its own. 30 is Monobank's own max span for
+// a single statement call, so this costs no extra API calls, just a
+// bigger one-time response.
+const LOOKBACK_DAYS = 30;
 
 export async function POST(req: NextRequest) {
   try {
