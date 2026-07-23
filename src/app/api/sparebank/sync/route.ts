@@ -48,6 +48,16 @@ export async function POST(req: NextRequest) {
       ? new Date(user.sbLastSyncedAt.getTime() - RECONCILIATION_OVERLAP_DAYS * 24 * 3600 * 1000).toISOString().slice(0, 10)
       : new Date(Date.now() - FALLBACK_LOOKBACK_DAYS * 24 * 3600 * 1000).toISOString().slice(0, 10);
 
+    // The PSU (Женя) is genuinely present — this route only ever runs from a
+    // real button click in her live browser. Passing her real IP + user-agent
+    // marks the fetch "attended", which exempts it from the ASPSP's strict
+    // ~4/day UNATTENDED background-fetch cap (see getTransactions' own comment
+    // and Enable Banking's FAQ). x-forwarded-for's first hop is the real
+    // client IP on Vercel; fall back to a non-empty placeholder only if it's
+    // somehow absent (the header must be present and syntactically an IP).
+    const psuIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+    const psuUserAgent = req.headers.get('user-agent') || undefined;
+
     let createdIds: number[] = [];
     let skippedPending = 0;
     let skippedExisting = 0;
@@ -58,7 +68,7 @@ export async function POST(req: NextRequest) {
     for (let pageNum = 0; pageNum < MAX_PAGES; pageNum++) {
       let page;
       try {
-        page = await getTransactions(user.sbAccountUid, { dateFrom, continuationKey, transactionStatus: 'BOOK' });
+        page = await getTransactions(user.sbAccountUid, { ipAddress: psuIp, userAgent: psuUserAgent }, { dateFrom, continuationKey, transactionStatus: 'BOOK' });
       } catch (e) {
         if (e instanceof EnableBankingError) return NextResponse.json({ error: e.message }, { status: e.status === 429 ? 429 : 400 });
         throw e;
