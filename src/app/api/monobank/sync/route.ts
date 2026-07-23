@@ -48,14 +48,25 @@ export async function POST(req: NextRequest) {
     let created = 0;
     let skippedHold = 0;
     let skippedExisting = 0;
+    let skippedError = 0;
     for (const item of items) {
-      const result = await ingestStatementItem(user.id, householdId, item);
-      if (result === 'created') created++;
-      else if (result === 'skipped_hold') skippedHold++;
-      else if (result === 'skipped_duplicate') skippedExisting++;
+      // One bad item (e.g. a currency with no rate available at all) must
+      // never abort the whole batch — found live 2026-07-23: a single USD
+      // transaction's exchange-rate throw 500'd the entire sync, silently
+      // hiding every OTHER legitimate transaction in the same 7-day window
+      // behind it, not just the one that actually failed.
+      try {
+        const result = await ingestStatementItem(user.id, householdId, item);
+        if (result === 'created') created++;
+        else if (result === 'skipped_hold') skippedHold++;
+        else if (result === 'skipped_duplicate') skippedExisting++;
+      } catch (e) {
+        console.error('[monobank/sync] item failed, continuing with the rest', item.id, e);
+        skippedError++;
+      }
     }
 
-    return NextResponse.json({ ok: true, created, skippedHold, skippedExisting, checked: items.length });
+    return NextResponse.json({ ok: true, created, skippedHold, skippedExisting, skippedError, checked: items.length });
   } catch (e) {
     console.error('[monobank/sync POST]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

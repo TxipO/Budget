@@ -75,20 +75,42 @@ export function getStatement(token: string, accountId: string, fromUnixSec: numb
   return call(`/personal/statement/${accountId}/${fromUnixSec}/${toUnixSec}`, token);
 }
 
-// Public endpoint, no token needed. Used to convert UAH statement amounts to
-// the app's own currency (kr / NOK) at import time.
+export const ISO_4217 = { UAH: 980, NOK: 578, USD: 840 };
+
+// Public endpoint, no token needed. Used to convert a card purchase's own
+// currency to the app's currency (kr / NOK) at import time.
 export async function getExchangeRate(fromCcy: number, toCcy: number): Promise<number | null> {
   const res = await fetch(`${BASE}/bank/currency`);
   if (!res.ok) return null;
   const rates: { currencyCodeA: number; currencyCodeB: number; rateCross?: number; rateBuy?: number; rateSell?: number }[] = await res.json();
-  const direct = rates.find(r => r.currencyCodeA === fromCcy && r.currencyCodeB === toCcy);
-  if (direct) return direct.rateCross ?? direct.rateBuy ?? direct.rateSell ?? null;
-  const inverse = rates.find(r => r.currencyCodeA === toCcy && r.currencyCodeB === fromCcy);
-  const inverseRate = inverse?.rateCross ?? inverse?.rateBuy ?? inverse?.rateSell;
-  return inverseRate ? 1 / inverseRate : null;
-}
 
-export const ISO_4217 = { UAH: 980, NOK: 578 };
+  function directOrInverse(a: number, b: number): number | null {
+    const direct = rates.find(r => r.currencyCodeA === a && r.currencyCodeB === b);
+    if (direct) return direct.rateCross ?? direct.rateBuy ?? direct.rateSell ?? null;
+    const inverse = rates.find(r => r.currencyCodeA === b && r.currencyCodeB === a);
+    const inverseRate = inverse?.rateCross ?? inverse?.rateBuy ?? inverse?.rateSell;
+    return inverseRate ? 1 / inverseRate : null;
+  }
+
+  const direct = directOrInverse(fromCcy, toCcy);
+  if (direct !== null) return direct;
+
+  // Monobank's feed is UAH-centric — every currency pairs against UAH, but
+  // two foreign currencies rarely pair with each other directly. Confirmed
+  // live 2026-07-23: no USD<->NOK pair exists at all, despite both having
+  // their own UAH pair (USD/UAH rateBuy/rateSell, NOK/UAH rateCross) — a real
+  // foreign-currency card purchase (a USD-billed subscription) threw "No
+  // exchange rate available" and 500'd the whole sync, silently never
+  // recording that transaction via either the webhook or the sync safety
+  // net. Triangulate through UAH whenever neither side already is UAH.
+  if (fromCcy !== ISO_4217.UAH && toCcy !== ISO_4217.UAH) {
+    const fromToUah = directOrInverse(fromCcy, ISO_4217.UAH);
+    const toToUah = directOrInverse(toCcy, ISO_4217.UAH);
+    if (fromToUah !== null && toToUah !== null && toToUah !== 0) return fromToUah / toToUah;
+  }
+
+  return null;
+}
 const FX_CACHE_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 
 // Monobank's currency endpoint has no auth but is still a live network call
