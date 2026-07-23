@@ -1,7 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { X, Save, Plus } from 'lucide-react';
-import { TYPE_LABELS, formatMoney } from '@/lib/utils';
+import { TYPE_LABELS } from '@/lib/utils';
+import { useCurrency } from '@/lib/useCurrency';
 import { toast } from '@/lib/toast';
 
 interface Category { id: number; name: string; type: string; color: string }
@@ -33,6 +34,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
   const [cats, setCats] = useState<Category[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [saving, setSaving] = useState(false);
+  const { formatMoney } = useCurrency();
 
   // Multi-amount entry ("100 + 200 + 500" -> one 800 transaction) — each
   // confirmed part sits here, the amount field itself holds only the part

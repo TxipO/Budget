@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { downloadVoice, sendMessage } from '@/lib/telegramBot';
 import { transcribe } from '@/lib/groq';
+import { getCurrencyInfo } from '@/lib/currencies';
 import { extractWithLLM } from '@/lib/voiceExtract';
 import { parseVoiceTransaction } from '@/lib/voiceParse';
 import { guessCategoryId } from '@/lib/categoryGuess';
@@ -50,6 +51,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
     const householdId = user.householdId;
+    const household = await prisma.household.findUnique({ where: { id: householdId }, select: { currency: true } });
+    const currencyInfo = getCurrencyInfo(household?.currency);
 
     const audio = await downloadVoice(voice.file_id);
     if (!audio) {
@@ -57,7 +60,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    const transcript = await transcribe(audio);
+    const transcript = await transcribe(audio, currencyInfo);
     if (!transcript) {
       await sendMessage(senderId, 'Не вдалося розпізнати голосове повідомлення. Спробуйте сказати чіткіше.');
       return NextResponse.json({ ok: true });

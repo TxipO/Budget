@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
     let createdIds: number[] = [];
     let skippedPending = 0;
     let skippedExisting = 0;
+    let skippedError = 0;
     let checked = 0;
     let continuationKey: string | undefined;
     const MAX_PAGES = 50; // safety cap — a 90-day personal account statement should never need this many pages
@@ -75,10 +76,19 @@ export async function POST(req: NextRequest) {
       }
       for (const item of page.transactions ?? []) {
         checked++;
-        const outcome = await ingestTransaction(user.id, householdId, item);
-        if (outcome.status === 'created' && outcome.id) createdIds.push(outcome.id);
-        else if (outcome.status === 'skipped_pending') skippedPending++;
-        else if (outcome.status === 'skipped_duplicate') skippedExisting++;
+        // One bad item must never abort the whole batch — same fix as
+        // monobank/sync's, applied here for the same reason (a currency
+        // conversion throw, or any other single-item failure, mustn't hide
+        // every OTHER transaction in the page behind it).
+        try {
+          const outcome = await ingestTransaction(user.id, householdId, item);
+          if (outcome.status === 'created' && outcome.id) createdIds.push(outcome.id);
+          else if (outcome.status === 'skipped_pending') skippedPending++;
+          else if (outcome.status === 'skipped_duplicate') skippedExisting++;
+        } catch (e) {
+          console.error('[sparebank/sync] item failed, continuing with the rest', item.entry_reference, e);
+          skippedError++;
+        }
       }
       continuationKey = page.continuation_key;
       if (!continuationKey) break;
@@ -101,6 +111,7 @@ export async function POST(req: NextRequest) {
       previousSyncedAt,
       skippedPending,
       skippedExisting,
+      skippedError,
       checked,
     });
   } catch (e) {

@@ -23,6 +23,12 @@ model Household {
   // and any household that predates the onboarding flow is backfilled to
   // now() so it's never sent through the wizard retroactively.
   onboardedAt DateTime?
+  // ISO 4217 alpha code (e.g. "NOK", "PLN") — the household's own display/
+  // conversion-target currency, chosen once at onboarding. Defaults to NOK
+  // so household #1 (predates this field) and any pre-onboarding row keep
+  // their existing behavior unchanged. See lib/currencies.ts for the
+  // curated code/numeric/symbol list this must stay in sync with.
+  currency String @default("NOK")
 
   users              User[]
   categories         Category[]

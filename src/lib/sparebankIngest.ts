@@ -2,6 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { roundMoney } from '@/lib/validate';
 import { guessCategoryId } from '@/lib/categoryGuess';
 import { SbTransaction } from '@/lib/enableBanking';
+import { getCachedExchangeRate, ISO_4217 } from '@/lib/monobank';
+import { numericForCurrency } from '@/lib/currencies';
 
 export type IngestResult = 'created' | 'skipped_pending' | 'skipped_duplicate' | 'skipped_malformed';
 export interface IngestOutcome { status: IngestResult; id?: number }
@@ -45,7 +47,21 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   const rawAmount = Number(item.transaction_amount?.amount);
   if (!Number.isFinite(rawAmount)) return { status: 'skipped_malformed' };
   const txType: 'expense' | 'income' = item.credit_debit_indicator === 'CRDT' ? 'income' : 'expense';
-  const amount = roundMoney(Math.abs(rawAmount)); // SpareBank 1 is already NOK — no FX conversion needed, unlike Monobank
+  const amountOriginal = roundMoney(Math.abs(rawAmount));
+
+  // SpareBank 1's own account currency is always NOK — but the HOUSEHOLD's
+  // chosen display currency (lib/currencies.ts) might not be. Reuses
+  // Monobank's public-feed exchange-rate lookup (no dependency on the
+  // household even having Monobank connected — it's just a public rate
+  // source, same UAH-triangulation logic already proven for Monobank).
+  const household = await prisma.household.findUnique({ where: { id: householdId }, select: { currency: true } });
+  const targetCcy = numericForCurrency(household?.currency ?? 'NOK');
+  let amount = amountOriginal;
+  if (targetCcy !== ISO_4217.NOK) {
+    const rate = await getCachedExchangeRate(ISO_4217.NOK, targetCcy);
+    if (rate === null) throw new Error(`No exchange rate available for currency NOK -> ${targetCcy}`);
+    amount = roundMoney(amountOriginal * rate);
+  }
 
   // The counterparty is whoever's on the OTHER side of the money: the
   // creditor received an expense, the debtor sent an income.

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { decrypt } from '@/lib/crypto';
-import { getStatement, MonobankError, ISO_4217, getCachedExchangeRate } from '@/lib/monobank';
+import { getStatement, MonobankError, getCachedExchangeRate } from '@/lib/monobank';
 import { MONO_CCY_NAMES, ingestStatementItem } from '@/lib/monoIngest';
 import { requireHouseholdId } from '@/lib/household';
 import { roundMoney } from '@/lib/validate';
+import { numericForCurrency } from '@/lib/currencies';
 
 // Reports holds for the dashboard's "Очікують підтвердження" block — holds
 // themselves are provisional (see monoIngest.ts) and deliberately never
@@ -52,6 +53,11 @@ export async function GET(req: NextRequest) {
     });
     if (!user || user.householdId !== householdId) return NextResponse.json([]);
 
+    // Household's own chosen currency (lib/currencies.ts), not hardcoded
+    // NOK — see monoIngest.ts's matching fix.
+    const household = await prisma.household.findUnique({ where: { id: householdId }, select: { currency: true } });
+    const targetCcy = numericForCurrency(household?.currency ?? 'NOK');
+
     const cacheKey = `monoPending:${userId}`;
     const cached = await prisma.appSetting.findUnique({ where: { key: cacheKey } });
     if (cached) {
@@ -89,20 +95,20 @@ export async function GET(req: NextRequest) {
         // dashboard's formatMoney(). See lib/monoIngest.ts's matching fix for
         // confirmed transactions (same underlying bug).
         const rawAmount = i.operationAmount ?? i.amount;
-        let amountNok = Math.abs(rawAmount) / 100;
-        if (i.currencyCode !== ISO_4217.NOK) {
-          const rate = await getCachedExchangeRate(i.currencyCode, ISO_4217.NOK);
+        let amountTarget = Math.abs(rawAmount) / 100;
+        if (i.currencyCode !== targetCcy) {
+          const rate = await getCachedExchangeRate(i.currencyCode, targetCcy);
           // No cached/live rate available (rare — this same lookup already
           // runs on every ingest) — skip this hold rather than show a
           // plausible-looking but wrong number; it reappears next refresh
           // once a rate is available, or once it settles for real.
           if (rate === null) continue;
-          amountNok = roundMoney(amountNok * rate);
+          amountTarget = roundMoney(amountTarget * rate);
         }
         holds.push({
           id: i.id,
           description: i.description || '',
-          amount: amountNok,
+          amount: amountTarget,
           currency: MONO_CCY_NAMES[i.currencyCode] ?? String(i.currencyCode),
           time: i.time,
         });

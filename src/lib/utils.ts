@@ -5,20 +5,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatMoney(amount: number): string {
-  return new Intl.NumberFormat('nb-NO', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.abs(amount)) + ' kr';
-}
-
-export function formatMoneySign(amount: number): string {
-  const abs = new Intl.NumberFormat('nb-NO', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.abs(amount));
-  return (amount >= 0 ? '+' : '-') + abs + ' kr';
-}
+// formatMoney/formatMoneySign moved to lib/currencies.ts — they now take the
+// household's own currency code instead of hardcoding NOK/'kr'. Use the
+// useCurrency() hook (lib/useCurrency.ts) from a component instead of
+// importing these two names from here.
 
 export const MONTH_NAMES = [
   'Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень',

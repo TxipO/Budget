@@ -1,7 +1,8 @@
 'use client';
 import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
-import { formatMoney, MONTH_SHORT } from '@/lib/utils';
+import { MONTH_SHORT } from '@/lib/utils';
+import { useCurrency } from '@/lib/useCurrency';
 import { toast } from '@/lib/toast';
 
 const MonthlyBarChart = dynamic(() => import('@/components/charts/MonthlyBarChart'), { ssr: false });
@@ -23,6 +24,7 @@ const INSIGHT_STYLE: Record<Insight['tone'], { bg: string; border: string; color
 };
 
 export default function AnalyticsPage() {
+  const { formatMoney } = useCurrency();
   const [year, setYear] = useState(2026);
   const [data, setData] = useState<MonthData[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);

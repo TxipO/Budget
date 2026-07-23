@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import { Plus, Search, Trash2, Pencil, ChevronLeft, ChevronRight, Download, RefreshCw, Globe, AlertTriangle, Landmark } from 'lucide-react';
-import { formatMoney, MONTH_NAMES, TYPE_LABELS } from '@/lib/utils';
+import { MONTH_NAMES, TYPE_LABELS } from '@/lib/utils';
+import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
 import CategoryIcon from '@/components/CategoryIcon';
 import { toast } from '@/lib/toast';
@@ -17,6 +18,7 @@ interface Tx {
 const PAGE_SIZE = 25;
 
 export default function TransactionsPage() {
+  const { formatMoney } = useCurrency();
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);

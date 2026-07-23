@@ -1,6 +1,6 @@
 'use client';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
-import { formatMoney } from '@/lib/utils';
+import { useCurrency } from '@/lib/useCurrency';
 
 interface Item { name: string; amount: number; color: string; planned?: number }
 
@@ -10,6 +10,7 @@ interface Props {
 }
 
 const CustomTooltip = ({ active, payload }: any) => {
+  const { formatMoney } = useCurrency();
   if (!active || !payload?.length) return null;
   const { name, value, payload: p } = payload[0];
   const pct = p.total > 0 ? Math.round((value / p.total) * 100) : 0;
@@ -26,6 +27,7 @@ const CustomTooltip = ({ active, payload }: any) => {
 };
 
 export default function ExpenseDonut({ data, total }: Props) {
+  const { formatMoney } = useCurrency();
   if (!data.length) return (
     <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: 14 }}>
       Немає витрат за цей місяць

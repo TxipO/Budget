@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, ArrowRight, ArrowLeft, Check, Lock, Landmark } from 'lucide-react';
 import { CATEGORY_PALETTE, TYPE_LABELS } from '@/lib/utils';
+import { CURRENCIES } from '@/lib/currencies';
 import { ICON_KEYS } from '@/lib/icons';
 import { DEFAULT_CATEGORIES, type DefaultCategory } from '@/lib/defaultCategories';
 import CategoryIcon from '@/components/CategoryIcon';
@@ -22,6 +23,7 @@ export default function OnboardingPage() {
   const [selfName, setSelfName] = useState('');
   const [addSecondUser, setAddSecondUser] = useState(false);
   const [secondUserName, setSecondUserName] = useState('');
+  const [currency, setCurrency] = useState('NOK');
 
   // Step 2 — categories
   const [categories, setCategories] = useState<DefaultCategory[]>(DEFAULT_CATEGORIES);
@@ -86,6 +88,7 @@ export default function OnboardingPage() {
           selfName: selfName.trim(),
           secondUserName: addSecondUser ? secondUserName.trim() : '',
           categories,
+          currency,
           pin: pin || undefined,
         }),
       });
@@ -155,6 +158,12 @@ export default function OnboardingPage() {
                 <input className="input-field" value={secondUserName} onChange={e => setSecondUserName(e.target.value)} placeholder="Наприклад, ім'я партнера" />
               </div>
             )}
+            <div>
+              <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Валюта бюджету</label>
+              <select className="input-field" value={currency} onChange={e => setCurrency(e.target.value)}>
+                {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+              </select>
+            </div>
           </>
         )}
 

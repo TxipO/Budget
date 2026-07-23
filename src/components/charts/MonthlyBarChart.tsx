@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { formatMoney } from '@/lib/utils';
+import { useCurrency } from '@/lib/useCurrency';
 
 interface MonthData {
   month: string;
@@ -13,6 +13,7 @@ interface MonthData {
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
+  const { formatMoney } = useCurrency();
   if (!active || !payload?.length) return null;
   return (
     <div style={{

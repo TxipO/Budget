@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { X, RefreshCw, Plus } from 'lucide-react';
-import { formatMoney } from '@/lib/utils';
+import { useCurrency } from '@/lib/useCurrency';
 import { toast } from '@/lib/toast';
 
 interface Template {
@@ -25,6 +25,7 @@ export default function RecurringModal({ year, month, onClose, onApplied }: Prop
   const [toUnapply, setToUnapply] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
+  const { formatMoney } = useCurrency();
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState(emptyForm);

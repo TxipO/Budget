@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, RefreshCw, Landmark, Pencil, UserPlus } from 'lucide-react';
-import { CATEGORY_PALETTE, formatMoney } from '@/lib/utils';
+import { CATEGORY_PALETTE } from '@/lib/utils';
+import { useCurrency } from '@/lib/useCurrency';
 import { toast } from '@/lib/toast';
 import { useTheme } from '@/lib/theme';
 import { useDashboardPrefs, PREF_LABELS, type DashboardPrefs } from '@/lib/dashboardPrefs';
@@ -16,6 +17,7 @@ interface RecurringTemplate {
 }
 
 export default function SettingsPage() {
+  const { formatMoney } = useCurrency();
   const [cats, setCats] = useState<Category[]>([]);
   const [form, setForm] = useState({ name: '', type: 'expense', color: CATEGORY_PALETTE[0], icon: 'circle' });
   const [importStatus, setImportStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');

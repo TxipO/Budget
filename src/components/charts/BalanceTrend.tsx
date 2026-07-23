@@ -3,7 +3,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { formatMoney } from '@/lib/utils';
+import { useCurrency } from '@/lib/useCurrency';
 
 interface TrendPoint {
   month: string;
@@ -14,6 +14,7 @@ interface TrendPoint {
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
+  const { formatMoney } = useCurrency();
   if (!active || !payload?.length) return null;
   return (
     <div style={{

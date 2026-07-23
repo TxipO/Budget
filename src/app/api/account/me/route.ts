@@ -20,22 +20,27 @@ export async function GET(req: NextRequest) {
     // One query for both onboardedAt and pinHash — hasPinForHousehold()
     // resolves the APP_PIN fallback locally instead of hasPinConfigured()
     // re-fetching the same row a second time.
-    const household = await prisma.household.findUnique({ where: { id: householdId }, select: { onboardedAt: true, pinHash: true } });
+    const household = await prisma.household.findUnique({ where: { id: householdId }, select: { onboardedAt: true, pinHash: true, currency: true } });
     const onboarded = !!household?.onboardedAt;
     const isPinHousehold = checkIsPinHousehold(householdId);
     // Settings' Security section reads this to decide "set" vs "change/
     // remove" PIN mode, and whether to ask for the current PIN at all.
     const hasPin = hasPinForHousehold(householdId, household?.pinHash ?? null);
+    // Every page's useCurrency() hook (lib/useCurrency.ts) reads this one
+    // field from this exact response — this route is already the one thing
+    // every page hits on load, so it doubles as the currency bootstrap
+    // instead of adding a second endpoint.
+    const currency = household?.currency ?? 'NOK';
 
     const userId = req.headers.get('x-current-user-id');
-    if (!userId) return NextResponse.json({ shared: true, isPinHousehold, onboarded, hasPin });
+    if (!userId) return NextResponse.json({ shared: true, isPinHousehold, onboarded, hasPin, currency });
 
     const user = await prisma.user.findUnique({
       where: { id: Number(userId) },
       select: { id: true, name: true, telegramUsername: true, telegramFirstName: true, email: true },
     });
-    if (!user) return NextResponse.json({ shared: true, isPinHousehold, onboarded, hasPin });
-    return NextResponse.json({ shared: false, user, isPinHousehold, onboarded, hasPin });
+    if (!user) return NextResponse.json({ shared: true, isPinHousehold, onboarded, hasPin, currency });
+    return NextResponse.json({ shared: false, user, isPinHousehold, onboarded, hasPin, currency });
   } catch (e) {
     console.error('[account/me GET]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

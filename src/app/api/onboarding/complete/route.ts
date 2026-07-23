@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isValidType } from '@/lib/validate';
 import { requireHouseholdId, MAX_USERS } from '@/lib/household';
+import { CURRENCIES } from '@/lib/currencies';
 import { hashPin } from '@/lib/pin';
 import { ICON_KEYS } from '@/lib/icons';
 import { issueAuthCookies } from '@/lib/session';
@@ -24,11 +25,17 @@ export async function POST(req: NextRequest) {
     const secondUserName = typeof body?.secondUserName === 'string' ? body.secondUserName.trim() : '';
     const rawCategories = Array.isArray(body?.categories) ? body.categories : [];
     const pin = typeof body?.pin === 'string' ? body.pin : '';
+    // Never trust an arbitrary client-supplied string as a currency code —
+    // must be one of the known codes lib/currencies.ts actually knows how to
+    // format/convert, same "validate against the known set" rule as
+    // isValidType below for category type.
+    const currency = typeof body?.currency === 'string' ? body.currency : 'NOK';
 
     if (!selfName) return badRequest("Вкажіть ваше ім'я");
     if (rawCategories.length === 0) return badRequest('Додайте хоча б одну категорію');
     if (rawCategories.length > MAX_CATEGORIES) return badRequest('Забагато категорій');
     if (pin && !PIN_FORMAT.test(pin)) return badRequest('PIN — від 4 до 8 цифр');
+    if (!CURRENCIES.some(c => c.code === currency)) return badRequest('Невалідна валюта');
 
     const categories: CategoryInput[] = [];
     for (const raw of rawCategories) {
@@ -77,7 +84,7 @@ export async function POST(req: NextRequest) {
           await tx.household.update({ where: { id: householdId }, data: { pinHash: hashPin(pin) } });
         }
 
-        await tx.household.update({ where: { id: householdId }, data: { onboardedAt: new Date() } });
+        await tx.household.update({ where: { id: householdId }, data: { onboardedAt: new Date(), currency } });
       });
     } catch (e: any) {
       if (e?.message === 'MAX_USERS') return badRequest(`Можна додати не більше ${MAX_USERS} користувачів`);

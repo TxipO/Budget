@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import { roundMoney } from '@/lib/validate';
-import { ISO_4217, normalizeMerchantKey, getCachedExchangeRate } from '@/lib/monobank';
+import { normalizeMerchantKey, getCachedExchangeRate } from '@/lib/monobank';
 import { guessCategoryId as resolveCategoryId } from '@/lib/categoryGuess';
+import { numericForCurrency } from '@/lib/currencies';
 
 export interface MonoStatementItem {
   id: string;
@@ -58,13 +59,21 @@ export async function ingestStatementItem(userId: number, householdId: number, i
   const rawAmount = item.operationAmount ?? item.amount;
   const amountOriginal = roundMoney(Math.abs(rawAmount) / 100);
 
+  // Convert to the HOUSEHOLD's own chosen currency, not a hardcoded NOK —
+  // see lib/currencies.ts. Household.currency defaults to "NOK" for every
+  // pre-existing row, so this is behaviorally identical to before for any
+  // household that hasn't explicitly chosen something else at onboarding.
+  const household = await prisma.household.findUnique({ where: { id: householdId }, select: { currency: true } });
+  const targetCcy = numericForCurrency(household?.currency ?? 'NOK');
+
   let fxRate = 1;
-  if (item.currencyCode !== ISO_4217.NOK) {
-    const rate = await getCachedExchangeRate(item.currencyCode, ISO_4217.NOK);
-    // No silent 1.0 fallback: defaulting to "1 UAH = 1 kr" when the rate is
-    // genuinely unavailable (no cache yet AND the live endpoint is down)
-    // would record a real ~4-5x overstatement with no error anywhere.
-    if (rate === null) throw new Error(`No exchange rate available for currency ${item.currencyCode} -> NOK`);
+  if (item.currencyCode !== targetCcy) {
+    const rate = await getCachedExchangeRate(item.currencyCode, targetCcy);
+    // No silent 1.0 fallback: defaulting to "1 unit = 1 unit" when the rate
+    // is genuinely unavailable (no cache yet AND the live endpoint is down)
+    // would record a real, possibly multi-x overstatement with no error
+    // anywhere.
+    if (rate === null) throw new Error(`No exchange rate available for currency ${item.currencyCode} -> ${targetCcy}`);
     fxRate = rate;
   }
   const amount = roundMoney(amountOriginal * fxRate);
