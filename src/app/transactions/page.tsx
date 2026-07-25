@@ -381,7 +381,7 @@ export default function TransactionsPage() {
                     {tx.category.name}
                     {tx.recurringTemplateId && <span title="Recurring" style={{ display: 'flex' }}><RefreshCw size={11} color="#F97316" /></span>}
                     {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є шаблонна/імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex' }}><AlertTriangle size={11} color="#FBBF24" /></span>}
-                    {tx.source === 'mono' && <span title="Автоматично підтягнуто з Monobank" style={{ display: 'flex' }}><Landmark size={11} color="#38BDF8" /></span>}
+                    {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex' }}><Landmark size={11} color="#38BDF8" /></span>}
                   </div>
                   {tx.details && (
                     <div style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -427,7 +427,7 @@ export default function TransactionsPage() {
                   {tx.category.name}
                   {tx.recurringTemplateId && <span title="Recurring" style={{ display: 'flex', flexShrink: 0 }}><RefreshCw size={10} color="#F97316" /></span>}
                   {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є шаблонна/імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex', flexShrink: 0 }}><AlertTriangle size={10} color="#FBBF24" /></span>}
-                  {tx.source === 'mono' && <span title="Автоматично підтягнуто з Monobank" style={{ display: 'flex', flexShrink: 0 }}><Landmark size={10} color="#38BDF8" /></span>}
+                  {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex', flexShrink: 0 }}><Landmark size={10} color="#38BDF8" /></span>}
                 </div>
                 <div style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {dateStr}{tx.details && ` · ${tx.details}`}{tx.user && ` · ${tx.user.name}`}

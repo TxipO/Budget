@@ -622,7 +622,7 @@ export default function Dashboard() {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', display: 'flex', alignItems: 'center', gap: 5 }}>
                 {tx.category.name}
-                {tx.source === 'mono' && <span title="Автоматично підтягнуто з Monobank" style={{ display: 'flex' }}><Landmark size={11} color="#38BDF8" /></span>}
+                {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex' }}><Landmark size={11} color="#38BDF8" /></span>}
               </div>
               <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
                 {new Date(tx.date).toLocaleDateString('uk-UA')}
