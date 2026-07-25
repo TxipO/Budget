@@ -265,7 +265,7 @@ export default function Dashboard() {
                     </label>
                   ))}
                   <button
-                    className="btn-primary" style={{ width: '100%', marginTop: 10, padding: '8px 0', fontSize: 13 }}
+                    className="btn-primary" style={{ width: '100%', marginTop: 10, padding: '8px 0', fontSize: 13, justifyContent: 'center' }}
                     disabled={syncing || !bankConnections.some(c => syncSelected[c.key])}
                     onClick={runBankSync}
                   >
