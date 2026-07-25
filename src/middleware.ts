@@ -24,6 +24,10 @@ const PUBLIC_PREFIXES = [
   // Each of those routes is its own gate (HMAC signature verification), not
   // the middleware.
   '/api/auth/',
+  // Vercel Cron triggers this with no browser session behind it at all — its
+  // own gate is a constant-time Bearer CRON_SECRET comparison inside the
+  // route itself, same pattern as the webhook secrets above.
+  '/api/cron/',
 ];
 
 // Must match SESSION_MAX_AGE_MS / the cookie's maxAge in api/auth/route.ts.

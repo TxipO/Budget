@@ -11,7 +11,10 @@ export async function GET(req: NextRequest) {
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const users = await prisma.user.findMany({
       where: { householdId },
-      select: { id: true, name: true, sbSessionEnc: true, sbAccountUid: true, sbIban: true, sbValidUntil: true },
+      select: {
+        id: true, name: true, sbSessionEnc: true, sbAccountUid: true, sbIban: true, sbValidUntil: true,
+        sbAutoSync: true, sbLastAutoSyncAt: true, sbSyncFailCount: true,
+      },
       orderBy: { id: 'asc' },
     });
     return NextResponse.json(users.map(u => ({
@@ -21,6 +24,9 @@ export async function GET(req: NextRequest) {
       iban: u.sbIban,
       validUntil: u.sbValidUntil,
       expired: u.sbValidUntil ? u.sbValidUntil.getTime() < Date.now() : false,
+      autoSync: u.sbAutoSync,
+      lastAutoSyncAt: u.sbLastAutoSyncAt,
+      autoSyncFailCount: u.sbSyncFailCount,
     })));
   } catch (e) {
     console.error('[sparebank/status GET]', e);

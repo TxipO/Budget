@@ -96,6 +96,20 @@ model User {
   // can resurrect a transaction the user deleted on purpose.
   sbSyncFloor DateTime?
 
+  // Unattended (cron-triggered) sync — opt-in, off by default. Automatically
+  // reaching into someone's bank without a click each time is a consent
+  // question, not just a convenience toggle, so this is never flipped true
+  // implicitly by connecting a bank. sbLastAutoSyncAt is separate from
+  // sbLastSyncedAt (which any sync, manual or auto, advances) specifically so
+  // the cron route can enforce its own minimum gap between runs — a retry or
+  // a double-fire (e.g. the two DST-candidate cron slots both matching in the
+  // same run) must never burn two calls from Enable Banking's tiny ~4/day
+  // unattended quota. sbSyncFailCount drives the "consent probably expired,
+  // notify the user" Telegram alert — reset on any successful auto-sync.
+  sbAutoSync       Boolean   @default(false)
+  sbLastAutoSyncAt DateTime?
+  sbSyncFailCount  Int       @default(0)
+
   // Telegram Login Widget auth (see lib/telegramAuth.ts). telegramId is
   // Telegram's own numeric user id, stored as a string (safer than Int for
   // an externally-issued id we never do arithmetic on). email can still be

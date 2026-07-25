@@ -35,7 +35,8 @@ export default function SettingsPage() {
   const [monoConnecting, setMonoConnecting] = useState<number | null>(null);
   const [monoSyncing, setMonoSyncing] = useState<number | null>(null);
 
-  const [sbStatus, setSbStatus] = useState<{ userId: number; name: string; connected: boolean; iban: string | null; expired: boolean }[]>([]);
+  const [sbStatus, setSbStatus] = useState<{ userId: number; name: string; connected: boolean; iban: string | null; expired: boolean; autoSync: boolean; lastAutoSyncAt: string | null; autoSyncFailCount: number }[]>([]);
+  const [sbAutoSyncToggling, setSbAutoSyncToggling] = useState<number | null>(null);
   const [sbConnecting, setSbConnecting] = useState<number | null>(null);
   const [sbSyncing, setSbSyncing] = useState<number | null>(null);
 
@@ -215,6 +216,24 @@ export default function SettingsPage() {
       toast('Помилка з’єднання', 'error');
     } finally {
       setSbSyncing(null);
+    }
+  }
+
+  async function toggleSbAutoSync(userId: number, enabled: boolean) {
+    if (sbAutoSyncToggling) return;
+    setSbAutoSyncToggling(userId);
+    try {
+      const res = await fetch('/api/sparebank/auto-sync', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, enabled }),
+      });
+      if (!res.ok) { toast('Не вдалося змінити налаштування', 'error'); return; }
+      toast(enabled ? 'Автосинхронізацію увімкнено' : 'Автосинхронізацію вимкнено', 'info');
+      loadSbStatus();
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setSbAutoSyncToggling(null);
     }
   }
 
@@ -795,6 +814,29 @@ export default function SettingsPage() {
                         Відключити
                       </button>
                     </div>
+                  </div>
+                )}
+
+                {sbConnected && sb && !sb.expired && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748B', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={sb.autoSync}
+                        disabled={sbAutoSyncToggling === u.id}
+                        onChange={e => toggleSbAutoSync(u.id, e.target.checked)}
+                      />
+                      Автосинхронізація (раз на добу, опівночі за Осло)
+                    </label>
+                    {sb.autoSync && (
+                      <span style={{ fontSize: 11, color: sb.autoSyncFailCount > 0 ? '#F97316' : '#64748B' }}>
+                        {sb.autoSyncFailCount > 0
+                          ? `Не вдалось ${sb.autoSyncFailCount} раз(и) поспіль`
+                          : sb.lastAutoSyncAt
+                            ? `Востаннє: ${new Date(sb.lastAutoSyncAt).toLocaleString('uk-UA')}`
+                            : 'Ще не запускалась'}
+                      </span>
+                    )}
                   </div>
                 )}
 

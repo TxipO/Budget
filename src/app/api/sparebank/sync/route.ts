@@ -1,31 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isPositiveInt } from '@/lib/validate';
-import { getTransactions, EnableBankingError } from '@/lib/enableBanking';
-import { ingestTransaction } from '@/lib/sparebankIngest';
+import { EnableBankingError } from '@/lib/enableBanking';
+import { syncSparebankUser } from '@/lib/sparebankSync';
 import { requireHouseholdId } from '@/lib/household';
 
-// Pull-only, same lesson as Monobank's sync route: this app never relies on
-// push delivery being complete or timely for financial data — a manually
-// triggered reconciliation against the ASPSP's own transaction list is the
-// only thing treated as a source of truth. Enable Banking also has no
-// webhook mechanism comparable to Monobank's for this restricted-mode setup,
-// so pull is the ONLY path here, not just the safety net.
-//
-// Incremental, not a full-history re-scan every click: user.sbLastSyncedAt
-// is the watermark (set to "now" at connect time, advanced after each
-// successful sync — see api/sparebank/callback), so a normal sync only asks
-// for what's happened since last time, mirroring what Monobank gets for
-// free from its webhook firing only on new events. Found live 2026-07-22:
-// without this, every sync re-scanned a fixed 90-day window and silently
-// recreated anything the user had deleted in the meantime — same trap as
-// the Monobank webhook-redelivery incident, just via re-scan instead of
-// redelivery. RECONCILIATION_OVERLAP_DAYS re-checks a few days behind the
-// watermark on every sync (cheap — dedup skips anything already stored) to
-// cover transactions that were still PDNG/settling at the previous sync.
-const FALLBACK_LOOKBACK_DAYS = 90; // only used if sbLastSyncedAt is somehow unset (pre-dates this fix)
-const RECONCILIATION_OVERLAP_DAYS = 3;
-
+// Manual (attended) sync — a real button click in a live browser. The actual
+// pagination/watermark/dedup algorithm lives in lib/sparebankSync.ts, shared
+// with api/cron/sparebank-sync's unattended path; this route's whole job is
+// sourcing a genuine PSU (the person clicking the button) and translating
+// the result into an HTTP response.
 export async function POST(req: NextRequest) {
   try {
     const householdId = requireHouseholdId(req);
@@ -44,18 +28,6 @@ export async function POST(req: NextRequest) {
       return badRequest('Доступ до банку прострочено — перепідключіть SpareBank 1');
     }
 
-    let dateFrom = user.sbLastSyncedAt
-      ? new Date(user.sbLastSyncedAt.getTime() - RECONCILIATION_OVERLAP_DAYS * 24 * 3600 * 1000).toISOString().slice(0, 10)
-      : new Date(Date.now() - FALLBACK_LOOKBACK_DAYS * 24 * 3600 * 1000).toISOString().slice(0, 10);
-    // Never let the overlap window (or the fallback lookback) cross below a
-    // user-set floor — see the field's own schema comment. Without this, the
-    // 3-day overlap re-touches whatever the last few days are on every sync,
-    // which can resurrect a transaction the user deleted on purpose.
-    if (user.sbSyncFloor) {
-      const floorStr = user.sbSyncFloor.toISOString().slice(0, 10);
-      if (dateFrom < floorStr) dateFrom = floorStr;
-    }
-
     // The PSU (Женя) is genuinely present — this route only ever runs from a
     // real button click in her live browser. Passing her real IP + user-agent
     // marks the fetch "attended", which exempts it from the ASPSP's strict
@@ -66,61 +38,27 @@ export async function POST(req: NextRequest) {
     const psuIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
     const psuUserAgent = req.headers.get('user-agent') || undefined;
 
-    let createdIds: number[] = [];
-    let skippedPending = 0;
-    let skippedExisting = 0;
-    let skippedError = 0;
-    let checked = 0;
-    let continuationKey: string | undefined;
-    const MAX_PAGES = 50; // safety cap — a 90-day personal account statement should never need this many pages
-
-    for (let pageNum = 0; pageNum < MAX_PAGES; pageNum++) {
-      let page;
-      try {
-        page = await getTransactions(user.sbAccountUid, { ipAddress: psuIp, userAgent: psuUserAgent }, { dateFrom, continuationKey, transactionStatus: 'BOOK' });
-      } catch (e) {
-        if (e instanceof EnableBankingError) return NextResponse.json({ error: e.message }, { status: e.status === 429 ? 429 : 400 });
-        throw e;
-      }
-      for (const item of page.transactions ?? []) {
-        checked++;
-        // One bad item must never abort the whole batch — same fix as
-        // monobank/sync's, applied here for the same reason (a currency
-        // conversion throw, or any other single-item failure, mustn't hide
-        // every OTHER transaction in the page behind it).
-        try {
-          const outcome = await ingestTransaction(user.id, householdId, item);
-          if (outcome.status === 'created' && outcome.id) createdIds.push(outcome.id);
-          else if (outcome.status === 'skipped_pending') skippedPending++;
-          else if (outcome.status === 'skipped_duplicate') skippedExisting++;
-        } catch (e) {
-          console.error('[sparebank/sync] item failed, continuing with the rest', item.entry_reference, e);
-          skippedError++;
-        }
-      }
-      continuationKey = page.continuation_key;
-      if (!continuationKey) break;
+    let result;
+    try {
+      result = await syncSparebankUser(
+        { id: user.id, sbAccountUid: user.sbAccountUid, sbLastSyncedAt: user.sbLastSyncedAt, sbSyncFloor: user.sbSyncFloor },
+        householdId,
+        { ipAddress: psuIp, userAgent: psuUserAgent },
+      );
+    } catch (e) {
+      if (e instanceof EnableBankingError) return NextResponse.json({ error: e.message }, { status: e.status === 429 ? 429 : 400 });
+      throw e;
     }
-
-    // Only advance the watermark once every page has been fetched and
-    // ingested without error — an early return above (rate limit, API
-    // error) must leave it where it was, so the next sync re-covers the gap
-    // instead of silently skipping it. previousSyncedAt (the value from
-    // before this update) travels back to the client so a "Скасувати" undo
-    // within the next few seconds can restore it exactly — see
-    // api/sparebank/undo-sync.
-    const previousSyncedAt = user.sbLastSyncedAt;
-    await prisma.user.update({ where: { id: user.id }, data: { sbLastSyncedAt: new Date() } });
 
     return NextResponse.json({
       ok: true,
-      created: createdIds.length,
-      createdIds,
-      previousSyncedAt,
-      skippedPending,
-      skippedExisting,
-      skippedError,
-      checked,
+      created: result.createdIds.length,
+      createdIds: result.createdIds,
+      previousSyncedAt: result.previousSyncedAt,
+      skippedPending: result.skippedPending,
+      skippedExisting: result.skippedExisting,
+      skippedError: result.skippedError,
+      checked: result.checked,
     });
   } catch (e) {
     console.error('[sparebank/sync POST]', e);

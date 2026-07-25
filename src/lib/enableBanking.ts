@@ -170,20 +170,31 @@ export interface TransactionsPage {
 // number of data fetches per day, do not apply." Strict Nordic banks
 // (SpareBank 1 among them) cap UNATTENDED background fetches at ~4/day; an
 // ATTENDED request (with a real PSU IP/user-agent) is in a different bucket
-// and exempt. Our sync is always triggered by a real person clicking a button
-// with a live browser, so sending these is both legitimate and necessary —
-// without them EVERY sync counted against the tiny background quota and burned
-// through it in a day of testing. These headers belong on the DATA FETCH, not
-// just the /auth call (a prior version only sent psu-ip-address on /auth,
-// which is why sync kept getting 429'd).
-export function getTransactions(accountUid: string, psu: { ipAddress: string; userAgent?: string }, opts?: { dateFrom?: string; continuationKey?: string; transactionStatus?: 'BOOK' | 'PEND' }): Promise<TransactionsPage> {
+// and exempt. A manual sync is always triggered by a real person clicking a
+// button with a live browser, so sending these is both legitimate and
+// necessary — without them EVERY sync counted against the tiny background
+// quota and burned through it in a day of testing. These headers belong on
+// the DATA FETCH, not just the /auth call (a prior version only sent
+// psu-ip-address on /auth, which is why sync kept getting 429'd).
+//
+// psu is `null` specifically for a cron-triggered unattended sync (see
+// lib/sparebankSync.ts) — there is no real end-user IP for a server-side job,
+// and faking one would be lying to the bank about who's present, not just a
+// technicality. Passing null here is what deliberately routes that request
+// into the small unattended quota bucket instead of pretending to be
+// attended; it's an intentional, honest choice, not a fallback for a missing
+// value.
+export function getTransactions(accountUid: string, psu: { ipAddress: string; userAgent?: string } | null, opts?: { dateFrom?: string; continuationKey?: string; transactionStatus?: 'BOOK' | 'PEND' }): Promise<TransactionsPage> {
   const params = new URLSearchParams();
   if (opts?.dateFrom) params.set('date_from', opts.dateFrom);
   if (opts?.continuationKey) params.set('continuation_key', opts.continuationKey);
   if (opts?.transactionStatus) params.set('transaction_status', opts.transactionStatus);
   const qs = params.toString() ? `?${params.toString()}` : '';
-  const headers: Record<string, string> = { 'psu-ip-address': psu.ipAddress };
-  if (psu.userAgent) headers['psu-user-agent'] = psu.userAgent;
+  const headers: Record<string, string> = {};
+  if (psu) {
+    headers['psu-ip-address'] = psu.ipAddress;
+    if (psu.userAgent) headers['psu-user-agent'] = psu.userAgent;
+  }
   return call(`/accounts/${accountUid}/transactions${qs}`, { headers });
 }
 
