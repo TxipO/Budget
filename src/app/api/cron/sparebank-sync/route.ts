@@ -12,14 +12,17 @@ import { sendMessage } from '@/lib/telegramBot';
 // routes every call here into Enable Banking's small ~4/day UNATTENDED
 // quota, a separate bucket from what manual clicks use, by design.
 //
-// Vercel Cron Jobs always fire in UTC and always as a GET request. Europe/
-// Oslo's UTC offset flips between +1 (CET) and +2 (CEST) twice a year, so a
-// single fixed UTC cron time would silently drift an hour off "Oslo
-// midnight" across the DST boundary. vercel.json instead schedules this at
-// BOTH UTC candidate hours for each Oslo target; this handler is the real
-// gate — it only does anything when the current Oslo wall-clock hour
-// actually matches TARGET_HOURS_OSLO, so exactly one of the daily fires does
-// real work per target and the other is a harmless no-op.
+// The scheduled trigger (.github/workflows/sparebank-sync.yml — Vercel
+// Hobby's Cron Jobs hard-cap the whole config at one fire per day, which a
+// two-candidate-per-day schedule violates, so GitHub Actions carries the
+// schedule instead) always fires in UTC. Europe/Oslo's UTC offset flips
+// between +1 (CET) and +2 (CEST) twice a year, so a single fixed UTC time
+// would silently drift an hour off "Oslo midnight" across the DST boundary.
+// The workflow instead fires at BOTH UTC candidate hours for each Oslo
+// target; this handler is the real gate — it only does anything when the
+// current Oslo wall-clock hour actually matches TARGET_HOURS_OSLO, so
+// exactly one of the daily fires does real work per target and the other is
+// a harmless no-op.
 //
 // Week 1 (2026-07-25): a single midnight slot only, per explicit user
 // decision to watch how Enable Banking's undocumented unattended quota

@@ -1,0 +1,25 @@
+name: SpareBank 1 auto-sync
+
+# Vercel Hobby's Cron Jobs are hard-capped at one fire per day for the whole
+# config — this needs two candidate UTC fires (Europe/Oslo's offset flips
+# between +1 and +2 across DST, so a single fixed UTC time drifts an hour off
+# "Oslo midnight" for half the year), which Vercel's own Cron rejected at
+# deploy time. GitHub Actions has no such restriction, so the schedule lives
+# here instead — the target endpoint's own Oslo-wall-clock check is still the
+# real gate either way, so this only had to change WHERE the trigger comes
+# from, not how the endpoint decides whether to actually run.
+on:
+  schedule:
+    - cron: '0 22 * * *' # Oslo midnight during CEST (summer, UTC+2)
+    - cron: '0 23 * * *' # Oslo midnight during CET (winter, UTC+1)
+  workflow_dispatch: {} # manual trigger, for testing without waiting for a scheduled fire
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger sync
+        run: |
+          curl --fail-with-body -sS \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://budget-tracker-budget0.vercel.app/api/cron/sparebank-sync

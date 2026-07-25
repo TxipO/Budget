@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/sparebank-sync",
-      "schedule": "0 22,23 * * *"
-    }
-  ]
-}
