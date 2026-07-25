@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { id: Number(userId) },
-      select: { id: true, householdId: true, sbSessionEnc: true, sbAccountUid: true, sbValidUntil: true, sbLastSyncedAt: true },
+      select: { id: true, householdId: true, sbSessionEnc: true, sbAccountUid: true, sbValidUntil: true, sbLastSyncedAt: true, sbSyncFloor: true },
     });
     if (!user || user.householdId !== householdId) return badRequest('Користувача не знайдено');
     if (!user.sbSessionEnc || !user.sbAccountUid) return badRequest('Не підключено');
@@ -44,9 +44,17 @@ export async function POST(req: NextRequest) {
       return badRequest('Доступ до банку прострочено — перепідключіть SpareBank 1');
     }
 
-    const dateFrom = user.sbLastSyncedAt
+    let dateFrom = user.sbLastSyncedAt
       ? new Date(user.sbLastSyncedAt.getTime() - RECONCILIATION_OVERLAP_DAYS * 24 * 3600 * 1000).toISOString().slice(0, 10)
       : new Date(Date.now() - FALLBACK_LOOKBACK_DAYS * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    // Never let the overlap window (or the fallback lookback) cross below a
+    // user-set floor — see the field's own schema comment. Without this, the
+    // 3-day overlap re-touches whatever the last few days are on every sync,
+    // which can resurrect a transaction the user deleted on purpose.
+    if (user.sbSyncFloor) {
+      const floorStr = user.sbSyncFloor.toISOString().slice(0, 10);
+      if (dateFrom < floorStr) dateFrom = floorStr;
+    }
 
     // The PSU (Женя) is genuinely present — this route only ever runs from a
     // real button click in her live browser. Passing her real IP + user-agent
