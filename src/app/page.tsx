@@ -251,7 +251,7 @@ export default function Dashboard() {
               {syncMenuOpen && (
                 <div style={{
                   position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 20,
-                  background: 'var(--c-bg-card)', border: '1px solid var(--c-border)', borderRadius: 10,
+                  background: 'var(--c-raised)', border: '1px solid var(--c-border-hi)', borderRadius: 10,
                   padding: 12, minWidth: 220, boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
                 }}>
                   {bankConnections.map(c => (
