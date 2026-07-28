@@ -16,6 +16,14 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // PIN login is exclusive to household #1 (Паша/Женя) — every other
+  // visitor on this shared public /login page is registering fresh via
+  // Telegram/email and has no PIN at all. The page can't know in advance
+  // which kind of visitor this is (no session exists yet), so instead of
+  // guessing, PIN is a collapsed secondary option rather than the first,
+  // most prominent thing shown — found live: a new registrant saw the PIN
+  // box as the primary screen and assumed the app required one.
+  const [showPin, setShowPin] = useState(false);
 
   // Registration step — appears after a first-time Telegram login with no
   // linked account yet (see api/auth/telegram's needsRegistration signal).
@@ -393,48 +401,28 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
           background: 'linear-gradient(135deg, #F97316, #F59E0B)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          <Lock size={24} color="white" />
+          <Mail size={24} color="white" />
         </div>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--c-text)' }}>Бюджет</div>
-          <div style={{ fontSize: 13, color: 'var(--c-text-muted)', marginTop: 4 }}>Введіть PIN для входу</div>
+          <div style={{ fontSize: 13, color: 'var(--c-text-muted)', marginTop: 4 }}>Увійдіть або зареєструйтесь</div>
         </div>
-        <input
-          className="input-field"
-          type="password"
-          inputMode="numeric"
-          autoFocus
-          value={pin}
-          onChange={e => setPin(e.target.value)}
-          placeholder="••••••"
-          style={{ textAlign: 'center', fontSize: 20, letterSpacing: 6 }}
-        />
-        {error && <div style={{ fontSize: 13, color: '#FCA5A5' }}>{error}</div>}
-        <button type="submit" className="btn-primary" disabled={busy} style={{ width: '100%', justifyContent: 'center' }}>
-          {busy ? 'Перевірка…' : 'Увійти'}
-        </button>
 
         {hasTelegram && (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', color: 'var(--c-text-muted)', fontSize: 12 }}>
-              <div style={{ flex: 1, height: 1, background: 'var(--c-border)' }} />
-              або
-              <div style={{ flex: 1, height: 1, background: 'var(--c-border)' }} />
-            </div>
             <div ref={widgetContainerRef} style={{ minHeight: 40, display: 'flex', justifyContent: 'center' }} />
             {busy && (
               <div style={{ fontSize: 12, color: 'var(--c-text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Send size={12} /> Перевірка Telegram…
               </div>
             )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', color: 'var(--c-text-muted)', fontSize: 12 }}>
+              <div style={{ flex: 1, height: 1, background: 'var(--c-border)' }} />
+              або
+              <div style={{ flex: 1, height: 1, background: 'var(--c-border)' }} />
+            </div>
           </>
         )}
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', color: 'var(--c-text-muted)', fontSize: 12 }}>
-          <div style={{ flex: 1, height: 1, background: 'var(--c-border)' }} />
-          або
-          <div style={{ flex: 1, height: 1, background: 'var(--c-border)' }} />
-        </div>
 
         {emailStep === 'sent' ? (
           <div style={{ fontSize: 13, color: 'var(--c-text-muted)', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
@@ -450,6 +438,42 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
             {emailError && <div style={{ fontSize: 13, color: '#FCA5A5' }}>{emailError}</div>}
             <button type="button" onClick={submitEmailRequest} disabled={emailBusy || !emailInput.trim()} className="btn-primary" style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Mail size={14} /> {emailBusy ? 'Надсилання…' : 'Увійти через email'}
+            </button>
+          </div>
+        )}
+
+        {/* PIN login is exclusive to household #1 — a collapsed secondary
+            option, not the first thing every visitor sees (see the showPin
+            state's own comment above). */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', color: 'var(--c-text-muted)', fontSize: 12 }}>
+          <div style={{ flex: 1, height: 1, background: 'var(--c-border)' }} />
+          або
+          <div style={{ flex: 1, height: 1, background: 'var(--c-border)' }} />
+        </div>
+
+        {!showPin ? (
+          <button
+            type="button"
+            onClick={() => setShowPin(true)}
+            style={{ background: 'none', border: 'none', color: 'var(--c-text-muted)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <Lock size={12} /> Увійти за PIN
+          </button>
+        ) : (
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <input
+              className="input-field"
+              type="password"
+              inputMode="numeric"
+              autoFocus
+              value={pin}
+              onChange={e => setPin(e.target.value)}
+              placeholder="PIN"
+              style={{ textAlign: 'center', fontSize: 20, letterSpacing: 6 }}
+            />
+            {error && <div style={{ fontSize: 13, color: '#FCA5A5' }}>{error}</div>}
+            <button type="submit" className="btn-primary" disabled={busy} style={{ width: '100%', justifyContent: 'center' }}>
+              {busy ? 'Перевірка…' : 'Увійти'}
             </button>
           </div>
         )}
