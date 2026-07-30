@@ -15,7 +15,7 @@ const BalanceTrend = dynamic(() => import('@/components/charts/BalanceTrend'), {
 
 interface Stats {
   income: number; expenses: number; savings: number;
-  balance: number; cumBalance: number; forecast: number | null;
+  balance: number; cumBalance: number;
   byCategory: { name: string; amount: number; color: string; icon: string; planned: number }[];
   byUser: { name: string; income: number; expenses: number; savings: number; net: number }[];
   trend: { month: string; income: number; expenses: number; savings: number; balance: number }[];
@@ -403,9 +403,9 @@ export default function Dashboard() {
         }
       </div>
 
-      {/* Banners row: cumulative + forecast */}
+      {/* Cumulative balance banner */}
       {sections.banners && stats && (
-        <div className={stats.forecast !== null ? 'grid-2' : ''} style={{ marginBottom: 24 }}>
+        <div style={{ marginBottom: 24 }}>
           <div style={{
             background: 'linear-gradient(135deg, rgba(249,115,22,0.15), rgba(245,158,11,0.1))',
             border: '1px solid rgba(249,115,22,0.2)', borderRadius: 16,
@@ -417,23 +417,6 @@ export default function Dashboard() {
               {formatMoneySign(stats.cumBalance)}
             </span>
           </div>
-
-          {stats.forecast !== null && (
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(34,197,94,0.1), rgba(16,185,129,0.07))',
-              border: '1px solid rgba(34,197,94,0.15)', borderRadius: 16,
-              padding: '14px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}>
-              <div>
-                <span style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>Прогноз до кінця місяця</span>
-                <div style={{ fontSize: 11, color: 'var(--c-text-sub)', marginTop: 2 }}>За поточним темпом</div>
-              </div>
-              <span style={{ fontSize: 20, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
-                color: stats.forecast >= 0 ? '#4ADE80' : '#FCA5A5' }}>
-                {formatMoneySign(stats.forecast)}
-              </span>
-            </div>
-          )}
         </div>
       )}
 

@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 
 export interface DashboardPrefs {
-  banners: boolean;  // накопичений залишок + прогноз
+  banners: boolean;  // накопичений залишок
   budget:  boolean;  // бюджет по категоріях
   charts:  boolean;  // донат витрат + тренд
   byUser:  boolean;  // хто скільки
@@ -14,7 +14,7 @@ export const DEFAULT_PREFS: DashboardPrefs = {
 };
 
 export const PREF_LABELS: Record<keyof DashboardPrefs, string> = {
-  banners: 'Накопичений залишок і прогноз',
+  banners: 'Накопичений залишок',
   budget:  'Бюджет по категоріях',
   charts:  'Графіки (витрати + тренд)',
   byUser:  'Хто скільки',

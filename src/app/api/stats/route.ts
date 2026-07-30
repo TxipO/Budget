@@ -183,27 +183,9 @@ export async function GET(req: NextRequest) {
     date: lastDatesByUser.find(d => d.userId === u.id)?._max.date ?? null,
   }));
 
-  // End-of-month forecast (only for month view)
-  let forecast: number | null = null;
-  if (period === 'month') {
-    const today       = new Date();
-    const isCurrentMonth = today.getUTCFullYear() === year && today.getUTCMonth() + 1 === month;
-    if (isCurrentMonth && today.getUTCDate() > 1) {
-      const dayOfMonth  = today.getUTCDate();
-      const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-      // Income and savings usually land as one-off payments (salary, transfers),
-      // not a steady daily trickle — extrapolating them by day/month wildly
-      // overshoots early in the month. Only expenses accrue gradually, so only
-      // they get projected forward; income/savings are taken as already-realized.
-      const expenseRate      = expenses / dayOfMonth;
-      const projectedExpense = expenseRate * (daysInMonth - dayOfMonth);
-      forecast = Math.round(balance - projectedExpense);
-    }
-  }
-
   return NextResponse.json({
     income, expenses, savings, balance, cumBalance,
-    byCategory, byUser, trend, recent, forecast, lastByUser,
+    byCategory, byUser, trend, recent, lastByUser,
     prev: prev ? { income: prev.income, expenses: prev.expenses, savings: prev.savings, balance: prev.balance } : null,
   });
   } catch (e) {
