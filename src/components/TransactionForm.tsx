@@ -22,6 +22,12 @@ interface TxForm {
   amount: string;
   details: string;
   userId: string;
+  // Only meaningful when type === 'savings' — see Transaction.savingsWithdrawal's
+  // schema comment. false ("Внесок") is the default: money set aside,
+  // reduces available balance, same as "savings" always meant before this
+  // existed. true ("Зняття") is money coming back out of the pot — increases
+  // available balance instead of double-subtracting it.
+  savingsWithdrawal: boolean;
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -29,7 +35,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 export default function TransactionForm({ onClose, onSaved, initial, editId }: Props) {
   const [form, setForm] = useState<TxForm>({
     date: today(), type: 'expense', categoryId: '', amount: '',
-    details: '', userId: '', ...initial,
+    details: '', userId: '', savingsWithdrawal: false, ...initial,
   });
   const [cats, setCats] = useState<Category[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -209,6 +215,35 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
               ))}
             </select>
           </div>
+
+          {/* Savings direction — only matters for the "savings" type. Внесок
+              (deposit) sets money aside and reduces available balance, same
+              as "savings" always meant. Зняття (withdrawal) is money coming
+              back out of the pot — increases available balance instead of
+              double-subtracting it (see Transaction.savingsWithdrawal). */}
+          {form.type === 'savings' && (
+            <div>
+              <label style={{ fontSize: 12, color: '#64748B', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Напрямок
+              </label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {([{ v: false, label: 'Внесок' }, { v: true, label: 'Зняття' }] as const).map(opt => (
+                  <button
+                    key={String(opt.v)} type="button"
+                    onClick={() => setForm(f => ({ ...f, savingsWithdrawal: opt.v }))}
+                    style={{
+                      flex: 1, padding: '8px 4px', borderRadius: 8, border: 'none',
+                      cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.15s',
+                      background: form.savingsWithdrawal === opt.v ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.04)',
+                      color: form.savingsWithdrawal === opt.v ? '#FCD34D' : '#64748B',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Amount */}
           <div>

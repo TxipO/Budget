@@ -214,6 +214,20 @@ model Transaction {
   // apart from "two genuinely separate transactions."
   source String @default("manual")
 
+  // Only meaningful when category.type === "savings" — see
+  // lib/validate.ts's savingsAmount() for the actual math. A savings
+  // DEPOSIT (the default, false — the only meaning "savings" had before
+  // this field existed) sets money aside and reduces available balance,
+  // same as always. A WITHDRAWAL (true) is money coming back out of that
+  // pot into general spending money: it increases available balance and
+  // shrinks the pot's own running total, instead of being counted as a
+  // second deduction on top of the deposit that put the money there.
+  // Found live 2026-07-27: a bank-learned category rule filed an internal
+  // transfer between Женя's own checking and savings sub-accounts under
+  // "Фінансова подушка" in BOTH directions with no distinction, silently
+  // double-subtracting every withdrawal from the household's balance.
+  savingsWithdrawal Boolean @default(false)
+
   // Monobank fields — all null for non-mono rows.
   monoStatementId    String? @unique // dedup key: Monobank's own transaction id
   monoMerchant       String?         // raw merchant description, for MonoCategoryRule matching

@@ -57,11 +57,12 @@ export async function POST(req: NextRequest) {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
-    const { date, categoryId, amount, details, userId } = body;
+    const { date, categoryId, amount, details, userId, savingsWithdrawal } = body;
 
     if (!isValidDate(date))                  return badRequest('Невалідна дата');
     if (!isPositiveInt(Number(categoryId)))  return badRequest('Невалідна категорія');
     if (!isPositiveNumber(Number(amount)))   return badRequest('Сума має бути більше 0');
+    if (savingsWithdrawal !== undefined && typeof savingsWithdrawal !== 'boolean') return badRequest('Невалідне значення напрямку');
 
     // Without this, a request could reference another household's category
     // (or user) by id — the created row itself would still only be visible
@@ -91,6 +92,10 @@ export async function POST(req: NextRequest) {
         details:    details || '',
         userId:     userId ? parseInt(userId) : null,
         householdId,
+        // Ignored by every reader unless the category is type "savings"
+        // (see Transaction.savingsWithdrawal's schema comment) — harmless
+        // to always store whatever the client sent (default false).
+        savingsWithdrawal: savingsWithdrawal === true,
       },
       include: { category: true, user: { select: { id: true, name: true } } },
     });

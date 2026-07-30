@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireHouseholdId } from '@/lib/household';
+import { savingsAmount } from '@/lib/validate';
 
 const MONTHS_UA = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
 const MONTHS_UA_LOC = ['січні','лютому','березні','квітні','травні','червні','липні','серпні','вересні','жовтні','листопаді','грудні'];
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
         householdId,
         date: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) },
       },
-      select: { date: true, amount: true, details: true, category: { select: { name: true, type: true } } },
+      select: { date: true, amount: true, details: true, savingsWithdrawal: true, category: { select: { name: true, type: true } } },
     });
 
     const months = Array.from({ length: 12 }, () => ({
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
           biggestExpense = { amount: tx.amount, details: tx.details, name, date: tx.date };
         }
       }
-      if (type === 'savings') { months[m].savings  += tx.amount; }
+      if (type === 'savings') { months[m].savings  += savingsAmount(tx); }
     }
 
     for (const m of months) {

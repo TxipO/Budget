@@ -81,6 +81,13 @@ export async function ingestStatementItem(userId: number, householdId: number, i
   const merchantKey = normalizeMerchantKey(item.description || '');
   const categoryId = await resolveCategoryId(householdId, userId, txType, merchantKey, item.mcc);
 
+  // Only read when the resolved category turns out to be type "savings" —
+  // see Transaction.savingsWithdrawal's own schema comment and the matching
+  // note in sparebankIngest.ts. A transfer OUT of a connected account
+  // (amount < 0, "expense"-shaped) into a savings pot is a deposit; money
+  // coming back IN (amount >= 0, "income"-shaped) is a withdrawal.
+  const savingsWithdrawal = txType === 'income';
+
   // Truncate to UTC midnight of the calendar day — matches this app's
   // existing convention (manual/import rows land on UTC midnight,
   // recurring-generated rows on UTC noon). item.time is an unambiguous UTC
@@ -121,6 +128,7 @@ export async function ingestStatementItem(userId: number, householdId: number, i
         monoAmountOriginal: amountOriginal,
         monoCurrency: MONO_CCY_NAMES[item.currencyCode] ?? String(item.currencyCode),
         fxRate,
+        savingsWithdrawal,
       },
     });
   } catch (e: any) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireHouseholdId } from '@/lib/household';
+import { savingsAmount } from '@/lib/validate';
 
 const MONTHS_SHORT = ['Січ','Лют','Бер','Кві','Тра','Чер','Лип','Сер','Вер','Жов','Лис','Гру'];
 
@@ -11,7 +12,7 @@ async function sumByType(householdId: number, start: Date, end: Date) {
   });
   const income   = txs.filter(t => t.category.type === 'income')  .reduce((s, t) => s + t.amount, 0);
   const expenses = txs.filter(t => t.category.type === 'expense') .reduce((s, t) => s + t.amount, 0);
-  const savings  = txs.filter(t => t.category.type === 'savings') .reduce((s, t) => s + t.amount, 0);
+  const savings  = txs.filter(t => t.category.type === 'savings') .reduce((s, t) => s + savingsAmount(t), 0);
   return { income, expenses, savings, balance: income - expenses - savings, txs };
 }
 
@@ -86,7 +87,7 @@ export async function GET(req: NextRequest) {
   const cumBalance = allTxs.reduce((s, t) => {
     if (t.category.type === 'income')  return s + t.amount;
     if (t.category.type === 'expense') return s - t.amount;
-    if (t.category.type === 'savings') return s - t.amount;
+    if (t.category.type === 'savings') return s - savingsAmount(t);
     return s;
   }, 0);
 
@@ -108,7 +109,7 @@ export async function GET(req: NextRequest) {
     const bucket = userAgg.get(key)!;
     if (t.category.type === 'income')  bucket.income   += t.amount;
     if (t.category.type === 'expense') bucket.expenses += t.amount;
-    if (t.category.type === 'savings') bucket.savings  += t.amount;
+    if (t.category.type === 'savings') bucket.savings  += savingsAmount(t);
   }
   const byUser = [...userAgg.values()]
     .map(u => ({ ...u, net: u.income - u.expenses - u.savings }))
@@ -144,7 +145,7 @@ export async function GET(req: NextRequest) {
     });
     const inc = mTxs.filter(t => t.category.type === 'income') .reduce((s, t) => s + t.amount, 0);
     const exp = mTxs.filter(t => t.category.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    const sav = mTxs.filter(t => t.category.type === 'savings').reduce((s, t) => s + t.amount, 0);
+    const sav = mTxs.filter(t => t.category.type === 'savings').reduce((s, t) => s + savingsAmount(t), 0);
     trend.push({
       month: MONTHS_SHORT[d.getUTCMonth()] + (period === 'year' || period === 'all' ? ` '${String(d.getUTCFullYear()).slice(2)}` : ''),
       income: inc, expenses: exp, savings: sav, balance: inc - exp - sav,

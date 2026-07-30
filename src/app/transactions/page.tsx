@@ -11,6 +11,7 @@ interface Tx {
   id: number; date: string; amount: number; details: string; source: string;
   recurringTemplateId: number | null;
   possibleDuplicateOf: number | null;
+  savingsWithdrawal: boolean;
   category: { id: number; name: string; type: string; color: string; icon: string };
   user: { name: string } | null;
 }
@@ -356,8 +357,14 @@ export default function TransactionsPage() {
           const dateStr = new Date(tx.date).toLocaleDateString('uk-UA', globalSearch
             ? { day: '2-digit', month: '2-digit', year: '2-digit' }
             : { day: '2-digit', month: '2-digit' });
-          const amountStr = `${tx.category.type === 'income' ? '+' : '-'}${formatMoney(tx.amount)}`;
-          const amountColor = tx.category.type === 'income' ? '#4ADE80'
+          // A savings withdrawal is money coming back OUT of the pot into
+          // general spending money — it should read as a "+" like income,
+          // not the "-" a deposit gets, or the sign would contradict the
+          // whole point of tracking it separately (see savingsWithdrawal's
+          // schema comment).
+          const isSavingsWithdrawal = tx.category.type === 'savings' && tx.savingsWithdrawal;
+          const amountStr = `${tx.category.type === 'income' || isSavingsWithdrawal ? '+' : '-'}${formatMoney(tx.amount)}`;
+          const amountColor = tx.category.type === 'income' || isSavingsWithdrawal ? '#4ADE80'
                              : tx.category.type === 'expense' ? '#FCA5A5' : '#FCD34D';
           return (
           <div key={tx.id} className="table-row">
@@ -499,6 +506,7 @@ export default function TransactionsPage() {
             categoryId: String(editing.category.id),
             amount: String(editing.amount),
             details: editing.details,
+            savingsWithdrawal: editing.savingsWithdrawal,
           } : undefined}
         />
       )}

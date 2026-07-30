@@ -15,6 +15,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     if (!isValidDate(body.date))                   return badRequest('Невалідна дата');
     if (!isPositiveInt(Number(body.categoryId)))   return badRequest('Невалідна категорія');
     if (!isPositiveNumber(Number(body.amount)))    return badRequest('Сума має бути більше 0');
+    if (body.savingsWithdrawal !== undefined && typeof body.savingsWithdrawal !== 'boolean') return badRequest('Невалідне значення напрямку');
 
     const newCategoryId = parseInt(body.categoryId);
 
@@ -50,6 +51,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         amount:     roundMoney(parseFloat(body.amount)),
         details:    body.details || '',
         userId:     body.userId ? parseInt(body.userId) : null,
+        savingsWithdrawal: body.savingsWithdrawal === true,
       },
       include: { category: true, user: { select: { id: true, name: true } } },
     });

@@ -21,6 +21,7 @@ interface Stats {
   trend: { month: string; income: number; expenses: number; savings: number; balance: number }[];
   recent: {
     id: number; date: string; amount: number; details: string; source: string;
+    savingsWithdrawal: boolean;
     category: { id: number; name: string; type: string; color: string; icon: string };
     user: { id: number; name: string } | null;
   }[];
@@ -632,10 +633,10 @@ export default function Dashboard() {
             </div>
             <span style={{
               fontSize: 15, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-              color: tx.category.type === 'income' ? '#4ADE80'
+              color: tx.category.type === 'income' || (tx.category.type === 'savings' && tx.savingsWithdrawal) ? '#4ADE80'
                    : tx.category.type === 'expense' ? '#FCA5A5' : '#FCD34D',
             }}>
-              {tx.category.type === 'income' ? '+' : '-'}{formatMoney(tx.amount)}
+              {tx.category.type === 'income' || (tx.category.type === 'savings' && tx.savingsWithdrawal) ? '+' : '-'}{formatMoney(tx.amount)}
             </span>
             <button
               className="btn-ghost"
@@ -678,6 +679,7 @@ export default function Dashboard() {
             amount: String(editing.amount),
             details: editing.details,
             userId: editing.user ? String(editing.user.id) : '',
+            savingsWithdrawal: editing.savingsWithdrawal,
           } : undefined}
         />
       )}

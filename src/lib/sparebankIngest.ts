@@ -77,6 +77,17 @@ export async function ingestTransaction(userId: number, householdId: number, ite
 
   const categoryId = await guessCategoryId(householdId, userId, txType, merchantKey, undefined);
 
+  // Only read when the resolved category turns out to be type "savings"
+  // (see Transaction.savingsWithdrawal's own schema comment) — otherwise
+  // ignored. A transfer INTO a savings sub-account leaves the connected
+  // checking account (DBIT/"expense"-shaped); money coming BACK OUT of it
+  // arrives as a CRDT/"income"-shaped credit. This is what makes an
+  // internal transfer's two directions distinguishable at all, since a
+  // bank-learned category rule (MonoCategoryRule) picks the category by
+  // counterparty name alone and would otherwise file both directions under
+  // the same savings category with no way to tell them apart.
+  const savingsWithdrawal = txType === 'income';
+
   // Same double-count guard as Ф5 (Monobank) — a sparebank transaction
   // landing in a category+month that already has a recurring/import row is a
   // real signal two independent writers might be recording the same event.
@@ -105,6 +116,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
         possibleDuplicateOf: possibleDup?.id ?? null,
         sbTransactionId: dedupKey,
         sbCounterparty: counterparty || null,
+        savingsWithdrawal,
       },
       select: { id: true },
     });

@@ -40,3 +40,15 @@ export function isValidMonth(val: unknown): val is number {
 export function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
 }
+
+// A savings-type transaction can be a deposit (money set aside — the ONLY
+// meaning "savings" had before withdrawals were tracked, still the default)
+// or a withdrawal (money coming back out of the pot into general spending
+// money). Every place that sums "savings" must use this, not the bare
+// amount column, or a withdrawal double-counts as an extra deduction on top
+// of the deposit that put the money there in the first place — found live
+// 2026-07-27 when a bank-learned category rule filed both directions of an
+// internal transfer under the same savings category with no distinction.
+export function savingsAmount(t: { amount: number; savingsWithdrawal: boolean }): number {
+  return t.savingsWithdrawal ? -t.amount : t.amount;
+}
