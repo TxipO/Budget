@@ -44,6 +44,10 @@ export default function SettingsPage() {
   // relevant before a connection exists; once connected, the row just shows
   // whichever bank actually is connected, no picker needed.
   const [bankChoice, setBankChoice] = useState<Record<number, 'mono' | 'sparebank'>>({});
+  // Optional "backfill from this date" per user, shown only while connecting
+  // a NEW bank (Monobank or SpareBank 1) — empty means the default behavior
+  // (webhook/watermark-forward-only, no historical pull).
+  const [syncFromDate, setSyncFromDate] = useState<Record<number, string>>({});
   // Whether the "add another bank" form is expanded, per user — a user can
   // have BOTH Monobank and SpareBank 1 connected at once (independent DB
   // fields), so connecting one must not hide the option to add the other.
@@ -103,12 +107,13 @@ export default function SettingsPage() {
     try {
       const res = await fetch('/api/monobank/connect', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, token }),
+        body: JSON.stringify({ userId, token, syncFromDate: syncFromDate[userId] || undefined }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) { toast(data?.error || 'Помилка підключення', 'error'); return; }
-      toast('Monobank підключено');
+      toast(data.backfill ? `Monobank підключено, додано транзакцій: ${data.backfill.created}` : 'Monobank підключено');
       setMonoTokenInput(prev => ({ ...prev, [userId]: '' }));
+      setSyncFromDate(prev => ({ ...prev, [userId]: '' }));
       loadMonoStatus();
     } catch {
       toast('Помилка з’єднання', 'error');
@@ -163,7 +168,7 @@ export default function SettingsPage() {
     try {
       const res = await fetch('/api/sparebank/connect', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId, syncFromDate: syncFromDate[userId] || undefined }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.url) { toast(data?.error || 'Помилка підключення', 'error'); setSbConnecting(null); return; }
@@ -280,13 +285,15 @@ export default function SettingsPage() {
     const params = new URLSearchParams(window.location.search);
     const sbResult = params.get('sparebank');
     if (sbResult === 'connected') {
-      toast('SpareBank 1 підключено');
+      const created = params.get('created');
+      toast(created !== null ? `SpareBank 1 підключено, додано транзакцій: ${created}` : 'SpareBank 1 підключено');
       loadSbStatus();
     } else if (sbResult === 'error') {
       toast('Не вдалося підключити SpareBank 1', 'error');
     }
     if (sbResult) {
       params.delete('sparebank');
+      params.delete('created');
       const qs = params.toString();
       window.history.replaceState({}, '', qs ? `?${qs}` : window.location.pathname);
     }
@@ -856,24 +863,49 @@ export default function SettingsPage() {
                     )}
 
                     {choice === 'mono' && (
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <input
-                          className="input-field" type="password" placeholder="Персональний токен Monobank"
-                          value={monoTokenInput[u.id] ?? ''}
-                          onChange={e => setMonoTokenInput(prev => ({ ...prev, [u.id]: e.target.value }))}
-                          style={{ fontSize: 13 }}
-                        />
-                        <button
-                          className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap' }}
-                          disabled={monoConnecting === u.id || !monoTokenInput[u.id]?.trim()}
-                          onClick={() => connectMono(u.id)}
-                        >
-                          {monoConnecting === u.id ? 'Підключення…' : 'Підключити'}
-                        </button>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <input
+                            className="input-field" type="password" placeholder="Персональний токен Monobank"
+                            value={monoTokenInput[u.id] ?? ''}
+                            onChange={e => setMonoTokenInput(prev => ({ ...prev, [u.id]: e.target.value }))}
+                            style={{ fontSize: 13 }}
+                          />
+                          <button
+                            className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap' }}
+                            disabled={monoConnecting === u.id || !monoTokenInput[u.id]?.trim()}
+                            onClick={() => connectMono(u.id)}
+                          >
+                            {monoConnecting === u.id ? 'Підключення…' : 'Підключити'}
+                          </button>
+                        </div>
+                        <span style={{ fontSize: 11, color: '#64748B' }}>
+                          Токен видається у{' '}
+                          <a href="https://api.monobank.ua/" target="_blank" rel="noopener noreferrer" style={{ color: '#F97316' }}>
+                            особистому кабінеті на api.monobank.ua
+                          </a>
+                        </span>
+                        <label style={{ fontSize: 11, color: '#64748B' }}>
+                          Синхронізувати з дати (необов'язково, не більше 30 днів тому):{' '}
+                          <input
+                            type="date" className="input-field" style={{ fontSize: 12, padding: '3px 6px', width: 'auto', display: 'inline-block' }}
+                            value={syncFromDate[u.id] ?? ''}
+                            onChange={e => setSyncFromDate(prev => ({ ...prev, [u.id]: e.target.value }))}
+                          />
+                        </label>
                       </div>
                     )}
 
                     {choice === 'sparebank' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+                      <label style={{ fontSize: 11, color: '#64748B' }}>
+                        Синхронізувати з дати (необов'язково):{' '}
+                        <input
+                          type="date" className="input-field" style={{ fontSize: 12, padding: '3px 6px', width: 'auto', display: 'inline-block' }}
+                          value={syncFromDate[u.id] ?? ''}
+                          onChange={e => setSyncFromDate(prev => ({ ...prev, [u.id]: e.target.value }))}
+                        />
+                      </label>
                       <button
                         className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap', alignSelf: 'flex-start' }}
                         disabled={sbConnecting === u.id}
@@ -881,6 +913,7 @@ export default function SettingsPage() {
                       >
                         {sbConnecting === u.id ? 'Перенаправлення…' : 'Підключити'}
                       </button>
+                      </div>
                     )}
                   </div>
                 )}

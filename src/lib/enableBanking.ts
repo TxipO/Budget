@@ -218,14 +218,19 @@ const STATE_MAX_AGE_MS = 15 * 60 * 1000; // 15 хвилин — bank redirect ro
 // short-lived-token shape as lib/magicLink.ts, kept separate rather than
 // shared since the payload and trust boundary differ (household+user pair
 // here vs. a bare email there).
-export function signConnectState(secret: string, householdId: string, userId: string): string {
+// fromDate (YYYY-MM-DD, optional) rides along in the same signed payload so
+// the callback — which only ever sees whatever Enable Banking echoes back in
+// `state` — knows whether the user asked for a historical backfill starting
+// point instead of the default "connect time forward, no backfill" behavior.
+// Safe to join with ':' — an ISO date string never contains one.
+export function signConnectState(secret: string, householdId: string, userId: string, fromDate?: string): string {
   const issuedAt = Date.now();
-  const payload = Buffer.from(`${householdId}:${userId}`).toString('base64url');
+  const payload = Buffer.from(`${householdId}:${userId}:${fromDate ?? ''}`).toString('base64url');
   const sig = createHmac('sha256', secret).update(`sparebank-connect:${payload}:${issuedAt}`).digest('hex');
   return `${payload}.${issuedAt}.${sig}`;
 }
 
-export function verifyConnectState(secret: string, state: string): { householdId: string; userId: string } | null {
+export function verifyConnectState(secret: string, state: string): { householdId: string; userId: string; fromDate: string | null } | null {
   const parts = state.split('.');
   if (parts.length !== 3) return null;
   const [payload, issuedAtStr, sig] = parts;
@@ -234,9 +239,9 @@ export function verifyConnectState(secret: string, state: string): { householdId
   const expected = createHmac('sha256', secret).update(`sparebank-connect:${payload}:${issuedAt}`).digest('hex');
   if (!safeEqual(sig, expected)) return null;
   try {
-    const [householdId, userId] = Buffer.from(payload, 'base64url').toString('utf8').split(':');
+    const [householdId, userId, fromDate] = Buffer.from(payload, 'base64url').toString('utf8').split(':');
     if (!householdId || !userId) return null;
-    return { householdId, userId };
+    return { householdId, userId, fromDate: fromDate || null };
   } catch {
     return null;
   }
