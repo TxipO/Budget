@@ -190,11 +190,17 @@ async function main() {
   if (!apiUrl || !apiPin) {
     console.log('  (skipped — set VERIFY_URL and VERIFY_PIN env vars to run this against a live deployment)');
   } else {
-    const jar = [];
     const login = await fetch(`${apiUrl}/api/auth`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: apiPin }),
     });
-    const cookie = login.headers.get('set-cookie')?.split(';')[0];
+    // The login response sets TWO cookies (session + PIN-lock "unlocked"
+    // marker) — headers.get('set-cookie') only ever returns one of them
+    // (undici joins multiple Set-Cookie values with ", " per the Fetch spec,
+    // which also collides with the ", " inside each cookie's own Expires
+    // date). getSetCookie() returns the real array; every cookie's
+    // name=value pair (dropping Path/Expires/etc attributes) is what an
+    // actual browser would send back as the request's Cookie header.
+    const cookie = login.headers.getSetCookie().map(c => c.split(';')[0]).join('; ') || null;
     if (!login.ok || !cookie) { fail(`login to ${apiUrl} failed with status ${login.status}`); }
     else {
       const stats = await fetch(`${apiUrl}/api/stats?period=month&year=${y}&month=${m}`, { headers: { Cookie: cookie } }).then(r => r.json());
