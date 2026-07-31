@@ -27,7 +27,15 @@ import { numericForCurrency } from '@/lib/currencies';
 // through the same ingestStatementItem() the webhook/sync use closes that
 // gap on the very next dashboard load a few minutes later, for free.
 const CACHE_TTL_MS = 5 * 60 * 1000; // holds don't need to be fresher than this, and Monobank's statement endpoint is rate-limited to ~1 req/60s per token
-const LOOKBACK_DAYS = 3; // holds settle within a few days in practice; no need to scan further back
+// 14, not 3 — the original "holds settle within a few days" assumption held
+// for domestic UAH card use but not for FOREIGN purchases: confirmed live
+// 2026-07-31 that six NOK purchases made in Norway on 30.07 were still
+// hold:true a full day later, and international settlement routinely takes
+// several business days. At 3 days a foreign hold could silently drop out of
+// this list while STILL not being in the transaction list (it only lands
+// there once settled), leaving the purchase invisible in both places — the
+// exact "чому не бачу транзакцій" confusion this route exists to prevent.
+const LOOKBACK_DAYS = 14;
 
 interface PendingItem {
   id: string;
@@ -58,6 +66,8 @@ export async function GET(req: NextRequest) {
     const household = await prisma.household.findUnique({ where: { id: householdId }, select: { currency: true } });
     const targetCcy = numericForCurrency(household?.currency ?? 'NOK');
 
+    const floorMs = user.monoSyncFloor ? user.monoSyncFloor.getTime() : null;
+
     const cacheKey = `monoPending:${userId}`;
     const cached = await prisma.appSetting.findUnique({ where: { key: cacheKey } });
     if (cached) {
@@ -71,12 +81,14 @@ export async function GET(req: NextRequest) {
     try {
       const token = decrypt(user.monoTokenEnc);
       const to = Math.floor(Date.now() / 1000);
-      // Same floor as monobank/sync — otherwise this route's own opportunistic
-      // ingest (see the function comment above) could still re-touch a date
-      // the user explicitly asked never to be re-scanned.
-      const rollingFrom = to - LOOKBACK_DAYS * 24 * 3600;
-      const floorFrom = user.monoSyncFloor ? Math.floor(user.monoSyncFloor.getTime() / 1000) : null;
-      const from = floorFrom !== null ? Math.max(rollingFrom, floorFrom) : rollingFrom;
+      // Deliberately NOT clamped to monoSyncFloor. The floor's job is to stop
+      // sync from RE-CREATING rows the user deleted on purpose — it has no
+      // business hiding what the bank is currently holding. Clamping the
+      // fetch window here (as an earlier version did) made a real hold
+      // invisible in both the pending list and the transaction list at the
+      // same time. The floor is applied below, to the opportunistic INGEST
+      // only, which is the part that actually writes rows.
+      const from = to - LOOKBACK_DAYS * 24 * 3600;
       statement = await getStatement(token, user.monoAccountId, from, to);
     } catch (e) {
       // Serve stale cache rather than fail the dashboard over a transient
@@ -117,10 +129,13 @@ export async function GET(req: NextRequest) {
           currency: MONO_CCY_NAMES[i.currencyCode] ?? String(i.currencyCode),
           time: i.time,
         });
-      } else {
+      } else if (floorMs === null || i.time * 1000 >= floorMs) {
         // No-op for anything already recorded (idempotent via monoStatementId);
         // a failure here must never break the pending list this route exists
-        // to serve.
+        // to serve. Gated on monoSyncFloor so this path can't resurrect a row
+        // the user deliberately deleted before that date — the same guard
+        // monobank/sync applies, but here it wraps only the write, leaving
+        // the hold display above untouched.
         try { await ingestStatementItem(userId, householdId, i); } catch (e) { console.error('[monobank/pending] opportunistic ingest failed', e); }
       }
     }
