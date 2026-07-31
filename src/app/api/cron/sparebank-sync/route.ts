@@ -18,16 +18,27 @@ import { sendMessage } from '@/lib/telegramBot';
 // schedule instead) always fires in UTC. Europe/Oslo's UTC offset flips
 // between +1 (CET) and +2 (CEST) twice a year, so a single fixed UTC time
 // would silently drift an hour off "Oslo midnight" across the DST boundary.
-// The workflow instead fires at BOTH UTC candidate hours for each Oslo
-// target; this handler is the real gate — it only does anything when the
-// current Oslo wall-clock hour actually matches TARGET_HOURS_OSLO, so
-// exactly one of the daily fires does real work per target and the other is
-// a harmless no-op.
+// The workflow fires at BOTH UTC candidate hours for each Oslo target; this
+// handler is the real gate — it only does anything when the current Oslo
+// wall-clock hour actually matches TARGET_HOURS_OSLO.
 //
-// Week 1 (2026-07-25): a single midnight slot only, per explicit user
+// A single exact hour (just [0]) turned out to be too narrow: confirmed live
+// 2026-07-31, after 6 days of daily runs, that EVERY run had silently no-op'd
+// — `gh run list` showed all of them "success", but every response body was
+// {"skipped":"not a target hour"}. GitHub Actions' own scheduled-workflow
+// docs warn triggers are best-effort and "may be delayed during periods of
+// high load"; both daily fires were consistently landing 55–70 minutes after
+// their nominal time (the 22:00 UTC entry executing around 22:55–23:12, the
+// 23:00 UTC entry around 00:01–00:07 the next day) — just far enough past
+// midnight in Oslo that neither ever matched hour 0 exactly. Widened to a
+// window rather than a point; MIN_GAP_HOURS below already stops the other
+// daily fire (they land about an hour apart) from double-triggering once one
+// of them lands inside it.
+//
+// Week 1 (2026-07-25): a single midnight window only, per explicit user
 // decision to watch how Enable Banking's undocumented unattended quota
-// behaves in practice before adding the second (noon) slot.
-const TARGET_HOURS_OSLO = [0];
+// behaves in practice before adding the second (noon) window.
+const TARGET_HOURS_OSLO = [23, 0, 1, 2];
 
 // Guards against the same day's two DST-candidate cron fires both matching
 // (shouldn't happen since only one can equal a TARGET_HOURS_OSLO value on

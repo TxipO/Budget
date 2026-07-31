@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     // its userId in the query string.
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { householdId: true, monoTokenEnc: true, monoAccountId: true },
+      select: { householdId: true, monoTokenEnc: true, monoAccountId: true, monoSyncFloor: true },
     });
     if (!user || user.householdId !== householdId) return NextResponse.json([]);
 
@@ -71,7 +71,12 @@ export async function GET(req: NextRequest) {
     try {
       const token = decrypt(user.monoTokenEnc);
       const to = Math.floor(Date.now() / 1000);
-      const from = to - LOOKBACK_DAYS * 24 * 3600;
+      // Same floor as monobank/sync — otherwise this route's own opportunistic
+      // ingest (see the function comment above) could still re-touch a date
+      // the user explicitly asked never to be re-scanned.
+      const rollingFrom = to - LOOKBACK_DAYS * 24 * 3600;
+      const floorFrom = user.monoSyncFloor ? Math.floor(user.monoSyncFloor.getTime() / 1000) : null;
+      const from = floorFrom !== null ? Math.max(rollingFrom, floorFrom) : rollingFrom;
       statement = await getStatement(token, user.monoAccountId, from, to);
     } catch (e) {
       // Serve stale cache rather than fail the dashboard over a transient

@@ -66,6 +66,13 @@ model User {
   monoWebhookSecret String? @unique
   monoAccountId     String?
   monoCategoryRules MonoCategoryRule[]
+  // Hard floor for monobank/sync's LOOKBACK_DAYS window, same idea as
+  // sbSyncFloor below for SpareBank 1 — sync will never fetch a transaction
+  // dated on or before this day, no matter what the rolling lookback window
+  // would otherwise compute. Set explicitly (via a one-off script, not app
+  // UI, same convention as sbSyncFloor) after the user has manually
+  // reconciled everything through a given date.
+  monoSyncFloor DateTime?
 
   // SpareBank 1 (via Enable Banking, PSD2/Berlin Group AISP) integration.
   // sbSessionEnc is the Enable Banking session_id, AES-256-GCM encrypted

@@ -37,14 +37,20 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { id: Number(userId) },
-      select: { id: true, householdId: true, monoTokenEnc: true, monoAccountId: true },
+      select: { id: true, householdId: true, monoTokenEnc: true, monoAccountId: true, monoSyncFloor: true },
     });
     if (!user || user.householdId !== householdId) return badRequest('Користувача не знайдено');
     if (!user.monoTokenEnc || !user.monoAccountId) return badRequest('Не підключено');
 
     const token = decrypt(user.monoTokenEnc);
     const to = Math.floor(Date.now() / 1000);
-    const from = to - LOOKBACK_DAYS * 24 * 3600;
+    // Never let the rolling window cross below a user-set floor — see the
+    // field's own schema comment. Without this, every sync re-touches the
+    // same rolling 30 days regardless of what was already manually
+    // reconciled or deliberately deleted in that range.
+    const rollingFrom = to - LOOKBACK_DAYS * 24 * 3600;
+    const floorFrom = user.monoSyncFloor ? Math.floor(user.monoSyncFloor.getTime() / 1000) : null;
+    const from = floorFrom !== null ? Math.max(rollingFrom, floorFrom) : rollingFrom;
 
     let items: MonoStatementItem[];
     try {
