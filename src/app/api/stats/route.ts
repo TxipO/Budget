@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireHouseholdId } from '@/lib/household';
-import { savingsAmount } from '@/lib/validate';
+import { savingsAmount, isBudgetRelevant } from '@/lib/validate';
 
 const MONTHS_SHORT = ['Січ','Лют','Бер','Кві','Тра','Чер','Лип','Сер','Вер','Жов','Лис','Гру'];
 
@@ -10,10 +10,16 @@ async function sumByType(householdId: number, start: Date, end: Date) {
     where: { householdId, date: { gte: start, lt: end } },
     include: { category: true, user: { select: { id: true, name: true } } },
   });
-  const income   = txs.filter(t => t.category.type === 'income')  .reduce((s, t) => s + t.amount, 0);
-  const expenses = txs.filter(t => t.category.type === 'expense') .reduce((s, t) => s + t.amount, 0);
-  const savings  = txs.filter(t => t.category.type === 'savings') .reduce((s, t) => s + savingsAmount(t), 0);
-  return { income, expenses, savings, balance: income - expenses - savings, txs };
+  // Every downstream consumer of the returned `txs` (expense-by-category,
+  // per-user breakdown) only ever needs budget-relevant rows — an internal
+  // transfer between two of the same person's own accounts (see
+  // isBudgetRelevant's own comment) has no business in any of them, so it's
+  // filtered out once here rather than at every call site.
+  const budgetTxs = txs.filter(isBudgetRelevant);
+  const income   = budgetTxs.filter(t => t.category.type === 'income')  .reduce((s, t) => s + t.amount, 0);
+  const expenses = budgetTxs.filter(t => t.category.type === 'expense') .reduce((s, t) => s + t.amount, 0);
+  const savings  = budgetTxs.filter(t => t.category.type === 'savings') .reduce((s, t) => s + savingsAmount(t), 0);
+  return { income, expenses, savings, balance: income - expenses - savings, txs: budgetTxs };
 }
 
 export async function GET(req: NextRequest) {
@@ -84,7 +90,7 @@ export async function GET(req: NextRequest) {
     where: { householdId, date: { lt: rangeEnd } },
     include: { category: true },
   });
-  const cumBalance = allTxs.reduce((s, t) => {
+  const cumBalance = allTxs.filter(isBudgetRelevant).reduce((s, t) => {
     if (t.category.type === 'income')  return s + t.amount;
     if (t.category.type === 'expense') return s - t.amount;
     if (t.category.type === 'savings') return s - savingsAmount(t);
@@ -142,7 +148,7 @@ export async function GET(req: NextRequest) {
     const mTxs = trendTxs.filter(t => {
       const td = new Date(t.date);
       return td.getUTCFullYear() * 100 + td.getUTCMonth() === ym;
-    });
+    }).filter(isBudgetRelevant);
     const inc = mTxs.filter(t => t.category.type === 'income') .reduce((s, t) => s + t.amount, 0);
     const exp = mTxs.filter(t => t.category.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const sav = mTxs.filter(t => t.category.type === 'savings').reduce((s, t) => s + savingsAmount(t), 0);

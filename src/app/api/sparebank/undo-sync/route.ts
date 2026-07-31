@@ -6,9 +6,9 @@ import { requireHouseholdId } from '@/lib/household';
 // Sync commits to the DB immediately (unlike the single-transaction delete's
 // delay-then-write pattern), so its "Скасувати" undo has to be a real
 // reversal — this deletes exactly the rows the triggering sync call
-// reported creating and restores the sbLastSyncedAt watermark to what it
-// was before that sync, so the next real sync re-covers the same window
-// instead of silently treating it as already-seen.
+// reported creating and restores the SparebankAccount's own lastSyncedAt
+// watermark to what it was before that sync, so the next real sync
+// re-covers the same window instead of silently treating it as already-seen.
 const MAX_IDS = 2000; // generous — a single sync's created-row count should never realistically approach this
 
 export async function POST(req: NextRequest) {
@@ -16,15 +16,16 @@ export async function POST(req: NextRequest) {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
-    const { userId, transactionIds, previousSyncedAt } = body;
+    const { userId, accountId, transactionIds, previousSyncedAt } = body;
     if (!isPositiveInt(Number(userId))) return badRequest('Невалідний користувач');
+    if (!isPositiveInt(Number(accountId))) return badRequest('Невалідний рахунок');
     if (!Array.isArray(transactionIds) || transactionIds.length === 0 || transactionIds.length > MAX_IDS
       || !transactionIds.every(id => isPositiveInt(Number(id)))) {
       return badRequest('Невалідний список транзакцій');
     }
     // previousSyncedAt is normally just echoed back verbatim from a sync
     // response we issued seconds earlier — but the client could send
-    // anything. A future date here would silently push sbLastSyncedAt ahead
+    // anything. A future date here would silently push the watermark ahead
     // of real time, and every later sync would compute dateFrom from THAT,
     // meaning all real transaction history between now and that future date
     // gets skipped with no error anywhere the next time a real sync runs.
@@ -36,6 +37,12 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({ where: { id: Number(userId) }, select: { householdId: true } });
     if (!user || user.householdId !== householdId) return badRequest('Користувача не знайдено');
+
+    // The account must actually belong to this user — otherwise a crafted
+    // accountId could rewind a DIFFERENT account's (even another
+    // household's) watermark.
+    const account = await prisma.sparebankAccount.findUnique({ where: { id: Number(accountId) }, select: { userId: true } });
+    if (!account || account.userId !== Number(userId)) return badRequest('Рахунок не знайдено');
 
     // UNDO_WINDOW_MS caps deletion to rows created moments ago — without
     // this, transactionIds is a client-supplied list of ids that could name
@@ -55,9 +62,9 @@ export async function POST(req: NextRequest) {
           createdAt: { gte: new Date(Date.now() - UNDO_WINDOW_MS) },
         },
       }),
-      prisma.user.update({
-        where: { id: Number(userId) },
-        data: { sbLastSyncedAt: previousSyncedAt ? new Date(previousSyncedAt) : null },
+      prisma.sparebankAccount.update({
+        where: { id: Number(accountId) },
+        data: { lastSyncedAt: previousSyncedAt ? new Date(previousSyncedAt) : null },
       }),
     ]);
 

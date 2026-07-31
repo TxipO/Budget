@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireHouseholdId } from '@/lib/household';
-import { savingsAmount } from '@/lib/validate';
+import { savingsAmount, isBudgetRelevant } from '@/lib/validate';
 
 const MONTHS_UA = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
 const MONTHS_UA_LOC = ['січні','лютому','березні','квітні','травні','червні','липні','серпні','вересні','жовтні','листопаді','грудні'];
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
         householdId,
         date: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) },
       },
-      select: { date: true, amount: true, details: true, savingsWithdrawal: true, category: { select: { name: true, type: true } } },
+      select: { date: true, amount: true, details: true, savingsWithdrawal: true, isTransfer: true, category: { select: { name: true, type: true } } },
     });
 
     const months = Array.from({ length: 12 }, () => ({
@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
     let biggestExpense: { amount: number; details: string; name: string; date: Date } | null = null;
 
     for (const tx of txs) {
+      if (!isBudgetRelevant(tx)) continue;
       const m = tx.date.getUTCMonth();
       const { type, name } = tx.category;
       if (type === 'income')  { months[m].income   += tx.amount; }

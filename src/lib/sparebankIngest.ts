@@ -1,9 +1,41 @@
 import { prisma } from '@/lib/prisma';
 import { roundMoney } from '@/lib/validate';
 import { guessCategoryId } from '@/lib/categoryGuess';
-import { SbTransaction } from '@/lib/enableBanking';
+import { SbTransaction, SbAccountId } from '@/lib/enableBanking';
 import { getCachedExchangeRate, ISO_4217 } from '@/lib/monobank';
 import { numericForCurrency } from '@/lib/currencies';
+
+const TRANSFER_CATEGORY_NAME = 'Переказ між рахунками';
+
+// True when the counterparty side of this transaction (whichever of
+// creditor_account/debtor_account is NOT the account being synced) matches
+// another SparebankAccount belonging to the SAME user — i.e. this specific
+// money movement is between two accounts the same person owns (confirmed
+// live 2026-08-01: SpareBank 1 populates account_id.other.identification,
+// a BBAN-style local number, more reliably than iban on these fields).
+// Matching by account number, not by counterparty NAME, is deliberate — a
+// name-based rule (what an earlier version of this feature effectively did
+// via the learned-category-rule mechanism) is exactly the kind of
+// merchant/person-specific hardcoding this project's own convention warns
+// against; an account number is a real, structural fact that works for any
+// user without hardcoding anything about who they are.
+async function findTransferCounterpartAccountId(userId: number, counterpart: SbAccountId | null | undefined): Promise<number | null> {
+  if (!counterpart) return null;
+  const identification = counterpart.other?.identification;
+  const iban = counterpart.iban;
+  if (!identification && !iban) return null;
+  const match = await prisma.sparebankAccount.findFirst({
+    where: {
+      userId,
+      OR: [
+        ...(identification ? [{ identification }] : []),
+        ...(iban ? [{ iban }] : []),
+      ],
+    },
+    select: { id: true },
+  });
+  return match?.id ?? null;
+}
 
 export type IngestResult = 'created' | 'skipped_pending' | 'skipped_duplicate' | 'skipped_malformed';
 export interface IngestOutcome { status: IngestResult; id?: number }
@@ -75,17 +107,30 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   const date = new Date(`${dateStr}T00:00:00Z`);
   if (isNaN(date.getTime())) return { status: 'skipped_malformed' };
 
-  const categoryId = await guessCategoryId(householdId, userId, txType, merchantKey, undefined);
+  // Is the OTHER side of this transaction one of this same user's own known
+  // accounts? DBIT's counterparty is who received it (creditor_account);
+  // CRDT's is who sent it (debtor_account) — the account being synced is
+  // never its own counterparty, so no need to exclude it explicitly.
+  const counterpartAccount = txType === 'expense' ? item.creditor_account : item.debtor_account;
+  const transferAccountId = await findTransferCounterpartAccountId(userId, counterpartAccount);
+  const isTransfer = transferAccountId !== null;
 
-  // Only read when the resolved category turns out to be type "savings"
-  // (see Transaction.savingsWithdrawal's own schema comment) — otherwise
-  // ignored. A transfer INTO a savings sub-account leaves the connected
-  // checking account (DBIT/"expense"-shaped); money coming BACK OUT of it
-  // arrives as a CRDT/"income"-shaped credit. This is what makes an
-  // internal transfer's two directions distinguishable at all, since a
-  // bank-learned category rule (MonoCategoryRule) picks the category by
-  // counterparty name alone and would otherwise file both directions under
-  // the same savings category with no way to tell them apart.
+  const categoryId = isTransfer
+    ? (await prisma.category.upsert({
+        where: { householdId_name_type: { householdId, name: TRANSFER_CATEGORY_NAME, type: 'savings' } },
+        update: {},
+        create: { householdId, name: TRANSFER_CATEGORY_NAME, type: 'savings', color: '#64748B', icon: 'wallet' },
+        select: { id: true },
+      })).id
+    : await guessCategoryId(householdId, userId, txType, merchantKey, undefined);
+
+  // Purely a DISPLAY signal now (see the transactions-list sign/color logic
+  // that reads it) — whether money is flowing INTO this account (CRDT,
+  // shown "+") or OUT of it (DBIT, shown "-"). Applies the same whether the
+  // row landed in the dedicated transfer category or an ordinary savings
+  // category (e.g. a manually-entered cash/crypto cushion movement) — see
+  // Transaction.savingsWithdrawal's own schema comment. isTransfer (not
+  // this) is what actually excludes a row from budget math.
   const savingsWithdrawal = txType === 'income';
 
   // Same double-count guard as Ф5 (Monobank) — a sparebank transaction
@@ -117,6 +162,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
         sbTransactionId: dedupKey,
         sbCounterparty: counterparty || null,
         savingsWithdrawal,
+        isTransfer,
       },
       select: { id: true },
     });

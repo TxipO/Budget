@@ -26,10 +26,15 @@ export async function POST(req: NextRequest) {
       console.error('[sparebank/disconnect] session revoke failed, continuing', e);
     }
 
-    await prisma.user.update({
-      where: { id: Number(userId) },
-      data: { sbSessionEnc: null, sbAccountUid: null, sbIban: null, sbValidUntil: null, sbLastSyncedAt: null },
-    });
+    // The whole consent is revoked above, so every account under it goes
+    // with it — not just the one that happened to be syncEnabled.
+    await prisma.$transaction([
+      prisma.sparebankAccount.deleteMany({ where: { userId: Number(userId) } }),
+      prisma.user.update({
+        where: { id: Number(userId) },
+        data: { sbSessionEnc: null, sbValidUntil: null, sbAutoSync: false, sbLastAutoSyncAt: null, sbSyncFailCount: 0 },
+      }),
+    ]);
 
     return NextResponse.json({ ok: true });
   } catch (e) {

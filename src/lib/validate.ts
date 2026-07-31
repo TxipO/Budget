@@ -52,3 +52,16 @@ export function roundMoney(n: number): number {
 export function savingsAmount(t: { amount: number; savingsWithdrawal: boolean }): number {
   return t.savingsWithdrawal ? -t.amount : t.amount;
 }
+
+// A transaction between two of the SAME person's own bank accounts (see
+// SparebankAccount, lib/sparebankIngest.ts's detection) is not income, an
+// expense, or new savings — the money didn't appear or disappear, it just
+// moved. Every budget sum (stats.ts, analytics.ts) must exclude it entirely,
+// regardless of what category.type it happens to be filed under. Found live
+// 2026-07-31: a transfer INTO checking from a "pillow" savings account was
+// filed as a savings category, whose type-based summing counted it as new
+// money either way it was signed — an internal transfer needs to be excluded
+// outright, not just correctly signed within one bucket.
+export function isBudgetRelevant(t: { isTransfer: boolean }): boolean {
+  return !t.isTransfer;
+}

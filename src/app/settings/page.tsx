@@ -35,10 +35,16 @@ export default function SettingsPage() {
   const [monoConnecting, setMonoConnecting] = useState<number | null>(null);
   const [monoSyncing, setMonoSyncing] = useState<number | null>(null);
 
-  const [sbStatus, setSbStatus] = useState<{ userId: number; name: string; connected: boolean; iban: string | null; expired: boolean; autoSync: boolean; lastAutoSyncAt: string | null; autoSyncFailCount: number }[]>([]);
+  interface SbAccount { id: number; label: string; iban: string | null; syncEnabled: boolean; lastSyncedAt: string | null; balanceAmount: number | null; balanceCurrency: string | null; balanceFetchedAt: string | null }
+  const [sbStatus, setSbStatus] = useState<{ userId: number; name: string; connected: boolean; expired: boolean; autoSync: boolean; lastAutoSyncAt: string | null; autoSyncFailCount: number; accounts: SbAccount[] }[]>([]);
   const [sbAutoSyncToggling, setSbAutoSyncToggling] = useState<number | null>(null);
   const [sbConnecting, setSbConnecting] = useState<number | null>(null);
   const [sbSyncing, setSbSyncing] = useState<number | null>(null);
+  const [sbBalanceRefreshing, setSbBalanceRefreshing] = useState<number | null>(null); // userId
+  const [sbAccountToggling, setSbAccountToggling] = useState<number | null>(null); // accountId
+  const [sbEditingLabelId, setSbEditingLabelId] = useState<number | null>(null); // accountId
+  const [sbLabelInput, setSbLabelInput] = useState('');
+  const [sbSavingLabel, setSbSavingLabel] = useState(false);
 
   // Which bank is picked in the not-yet-connected dropdown, per user — only
   // relevant before a connection exists; once connected, the row just shows
@@ -192,18 +198,22 @@ export default function SettingsPage() {
       if (data.created > 0) {
         // Sync already committed the rows (unlike the transaction list's
         // delete, which delays the real write) — "Скасувати" here calls a
-        // real reversal endpoint naming exactly this sync's created rows,
-        // rather than just clearing a pending timer.
+        // real reversal endpoint naming exactly this sync's created rows.
+        // Only offered when exactly one account was actually synced — with
+        // several, undo would need to name every account's own watermark at
+        // once, which undo-sync (deliberately kept single-account, see its
+        // own comment) doesn't support.
+        const single = data.perAccount?.length === 1 ? data.perAccount[0] : null;
         toast(
           `Додано транзакцій: ${data.created}`,
           'info',
-          {
+          single ? {
             label: 'Скасувати',
             onClick: async () => {
               try {
                 const undoRes = await fetch('/api/sparebank/undo-sync', {
                   method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ userId, transactionIds: data.createdIds, previousSyncedAt: data.previousSyncedAt }),
+                  body: JSON.stringify({ userId, accountId: single.accountId, transactionIds: data.createdIds, previousSyncedAt: single.previousSyncedAt }),
                 });
                 if (!undoRes.ok) { toast('Не вдалося скасувати', 'error'); return; }
                 toast('Скасовано', 'info');
@@ -211,12 +221,13 @@ export default function SettingsPage() {
                 toast('Помилка з’єднання', 'error');
               }
             },
-          },
+          } : undefined,
           5000,
         );
       } else {
         toast('Нових транзакцій немає');
       }
+      loadSbStatus();
     } catch {
       toast('Помилка з’єднання', 'error');
     } finally {
@@ -239,6 +250,60 @@ export default function SettingsPage() {
       toast('Помилка з’єднання', 'error');
     } finally {
       setSbAutoSyncToggling(null);
+    }
+  }
+
+  async function refreshSbBalances(userId: number) {
+    if (sbBalanceRefreshing) return;
+    setSbBalanceRefreshing(userId);
+    try {
+      const res = await fetch('/api/sparebank/refresh-balances', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { toast(data?.error || 'Помилка оновлення балансів', 'error'); return; }
+      loadSbStatus();
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setSbBalanceRefreshing(null);
+    }
+  }
+
+  async function toggleSbAccountSync(accountId: number, syncEnabled: boolean) {
+    if (sbAccountToggling) return;
+    setSbAccountToggling(accountId);
+    try {
+      const res = await fetch('/api/sparebank/account', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, syncEnabled }),
+      });
+      if (!res.ok) { toast('Не вдалося змінити налаштування', 'error'); return; }
+      loadSbStatus();
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setSbAccountToggling(null);
+    }
+  }
+
+  async function saveSbLabel(accountId: number) {
+    const label = sbLabelInput.trim();
+    if (!label || sbSavingLabel) return;
+    setSbSavingLabel(true);
+    try {
+      const res = await fetch('/api/sparebank/account', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, label }),
+      });
+      if (!res.ok) { toast('Не вдалося зберегти назву', 'error'); return; }
+      setSbEditingLabelId(null);
+      loadSbStatus();
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setSbSavingLabel(false);
     }
   }
 
@@ -792,34 +857,91 @@ export default function SettingsPage() {
                 )}
 
                 {sbConnected && sb && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 12, color: '#64748B' }}>SpareBank 1{sb.iban ? ` — ${sb.iban}` : ''}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      {sb.expired ? (
-                        <span style={{ fontSize: 12, color: '#F97316' }}>Доступ прострочено</span>
-                      ) : (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#4ADE80' }}>
-                          <CheckCircle size={13} /> Підключено
-                        </span>
-                      )}
-                      {sb.expired ? (
-                        <button
-                          className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
-                          disabled={sbConnecting === u.id} onClick={() => connectSb(u.id)}
-                        >
-                          {sbConnecting === u.id ? 'Перенаправлення…' : 'Перепідключити'}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 12, color: '#64748B' }}>SpareBank 1</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        {sb.expired ? (
+                          <span style={{ fontSize: 12, color: '#F97316' }}>Доступ прострочено</span>
+                        ) : (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#4ADE80' }}>
+                            <CheckCircle size={13} /> Підключено
+                          </span>
+                        )}
+                        {sb.expired ? (
+                          <button
+                            className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                            disabled={sbConnecting === u.id} onClick={() => connectSb(u.id)}
+                          >
+                            {sbConnecting === u.id ? 'Перенаправлення…' : 'Перепідключити'}
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                              disabled={sbBalanceRefreshing === u.id} onClick={() => refreshSbBalances(u.id)}
+                            >
+                              {sbBalanceRefreshing === u.id ? 'Оновлення…' : 'Оновити баланси'}
+                            </button>
+                            <button
+                              className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                              disabled={sbSyncing === u.id} onClick={() => syncSb(u.id)}
+                            >
+                              {sbSyncing === u.id ? 'Синхронізація…' : 'Синхронізувати'}
+                            </button>
+                          </>
+                        )}
+                        <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => disconnectSb(u.id, u.name)}>
+                          Відключити
                         </button>
-                      ) : (
-                        <button
-                          className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
-                          disabled={sbSyncing === u.id} onClick={() => syncSb(u.id)}
-                        >
-                          {sbSyncing === u.id ? 'Синхронізація…' : 'Синхронізувати'}
-                        </button>
-                      )}
-                      <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => disconnectSb(u.id, u.name)}>
-                        Відключити
-                      </button>
+                      </div>
+                    </div>
+
+                    {/* One consent can cover several real accounts under the
+                        same login (e.g. a checking account and a separately-
+                        named savings "pillow") — each gets its own row so the
+                        user can label it and pick whether ITS transactions
+                        feed the budget, independent of the others. */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                      {sb.accounts.map(a => (
+                        <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, fontSize: 12, background: 'rgba(100,116,139,0.08)', borderRadius: 8, padding: '6px 10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                            {sbEditingLabelId === a.id ? (
+                              <>
+                                <input
+                                  className="input-field" style={{ fontSize: 12, padding: '3px 6px', width: 120 }}
+                                  value={sbLabelInput} onChange={e => setSbLabelInput(e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') saveSbLabel(a.id); if (e.key === 'Escape') setSbEditingLabelId(null); }}
+                                  autoFocus
+                                />
+                                <button className="btn-ghost" style={{ padding: '2px 8px', fontSize: 11 }} disabled={sbSavingLabel} onClick={() => saveSbLabel(a.id)}>OK</button>
+                              </>
+                            ) : (
+                              <>
+                                <span style={{ fontWeight: 600, color: 'var(--c-text-sec)' }}>{a.label}</span>
+                                <button className="btn-ghost" style={{ padding: 2 }} title="Перейменувати"
+                                  onClick={() => { setSbEditingLabelId(a.id); setSbLabelInput(a.label); }}>
+                                  <Pencil size={11} />
+                                </button>
+                              </>
+                            )}
+                            {a.iban && <span style={{ color: '#94A3B8' }}>{a.iban}</span>}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ color: '#64748B' }}>
+                              {a.balanceAmount !== null ? `${new Intl.NumberFormat('nb-NO', { maximumFractionDigits: 0 }).format(a.balanceAmount)} ${a.balanceCurrency ?? ''}` : '—'}
+                            </span>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                              <input
+                                type="checkbox" checked={a.syncEnabled}
+                                disabled={sbAccountToggling === a.id}
+                                onChange={e => toggleSbAccountSync(a.id, e.target.checked)}
+                              />
+                              Синхронізувати
+                            </label>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}

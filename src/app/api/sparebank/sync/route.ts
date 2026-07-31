@@ -2,14 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isPositiveInt } from '@/lib/validate';
 import { EnableBankingError } from '@/lib/enableBanking';
-import { syncSparebankUser } from '@/lib/sparebankSync';
+import { syncSparebankAccount } from '@/lib/sparebankSync';
 import { requireHouseholdId } from '@/lib/household';
 
 // Manual (attended) sync — a real button click in a live browser. The actual
 // pagination/watermark/dedup algorithm lives in lib/sparebankSync.ts, shared
 // with api/cron/sparebank-sync's unattended path; this route's whole job is
-// sourcing a genuine PSU (the person clicking the button) and translating
-// the result into an HTTP response.
+// sourcing a genuine PSU (the person clicking the button) and running it for
+// every one of this user's syncEnabled accounts (a household member can own
+// several real accounts under one consent — see SparebankAccount's own
+// comment), aggregating the results into one response.
 export async function POST(req: NextRequest) {
   try {
     const householdId = requireHouseholdId(req);
@@ -20,10 +22,13 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { id: Number(userId) },
-      select: { id: true, householdId: true, sbSessionEnc: true, sbAccountUid: true, sbValidUntil: true, sbLastSyncedAt: true, sbSyncFloor: true },
+      select: {
+        id: true, householdId: true, sbSessionEnc: true, sbValidUntil: true,
+        sparebankAccounts: { where: { syncEnabled: true }, select: { id: true, userId: true, accountUid: true, lastSyncedAt: true, syncFloor: true } },
+      },
     });
     if (!user || user.householdId !== householdId) return badRequest('Користувача не знайдено');
-    if (!user.sbSessionEnc || !user.sbAccountUid) return badRequest('Не підключено');
+    if (!user.sbSessionEnc || user.sparebankAccounts.length === 0) return badRequest('Не підключено');
     if (user.sbValidUntil && user.sbValidUntil.getTime() < Date.now()) {
       return badRequest('Доступ до банку прострочено — перепідключіть SpareBank 1');
     }
@@ -38,27 +43,38 @@ export async function POST(req: NextRequest) {
     const psuIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
     const psuUserAgent = req.headers.get('user-agent') || undefined;
 
-    let result;
-    try {
-      result = await syncSparebankUser(
-        { id: user.id, sbAccountUid: user.sbAccountUid, sbLastSyncedAt: user.sbLastSyncedAt, sbSyncFloor: user.sbSyncFloor },
-        householdId,
-        { ipAddress: psuIp, userAgent: psuUserAgent },
-      );
-    } catch (e) {
-      if (e instanceof EnableBankingError) return NextResponse.json({ error: e.message }, { status: e.status === 429 ? 429 : 400 });
-      throw e;
+    let createdIds: number[] = [];
+    let skippedPending = 0, skippedExisting = 0, skippedError = 0, checked = 0;
+    // previousSyncedAt/accountId only make sense for a single account's undo
+    // — with multiple accounts synced in one click, "Скасувати" would need
+    // to name every account's own watermark, so it's reported per-account
+    // and the client only offers undo when exactly one account was synced.
+    const perAccount: Array<{ accountId: number; created: number; previousSyncedAt: string | null }> = [];
+
+    for (const account of user.sparebankAccounts) {
+      try {
+        const result = await syncSparebankAccount(account, householdId, { ipAddress: psuIp, userAgent: psuUserAgent });
+        createdIds = createdIds.concat(result.createdIds);
+        skippedPending += result.skippedPending;
+        skippedExisting += result.skippedExisting;
+        skippedError += result.skippedError;
+        checked += result.checked;
+        perAccount.push({ accountId: account.id, created: result.createdIds.length, previousSyncedAt: result.previousSyncedAt?.toISOString() ?? null });
+      } catch (e) {
+        if (e instanceof EnableBankingError) return NextResponse.json({ error: e.message }, { status: e.status === 429 ? 429 : 400 });
+        throw e;
+      }
     }
 
     return NextResponse.json({
       ok: true,
-      created: result.createdIds.length,
-      createdIds: result.createdIds,
-      previousSyncedAt: result.previousSyncedAt,
-      skippedPending: result.skippedPending,
-      skippedExisting: result.skippedExisting,
-      skippedError: result.skippedError,
-      checked: result.checked,
+      created: createdIds.length,
+      createdIds,
+      perAccount,
+      skippedPending,
+      skippedExisting,
+      skippedError,
+      checked,
     });
   } catch (e) {
     console.error('[sparebank/sync POST]', e);

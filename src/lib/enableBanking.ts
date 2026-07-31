@@ -138,6 +138,16 @@ export function exchangeCode(code: string): Promise<SessionResult> {
   return call('/sessions', { method: 'POST', body: JSON.stringify({ code }) });
 }
 
+// account_id.other.identification is the BBAN-style local account number —
+// confirmed live 2026-08-01 this is what SpareBank 1 actually populates on
+// creditor_account/debtor_account (iban is present on some legs, absent on
+// others), so transfer-matching in sparebankIngest.ts checks BOTH fields
+// against a user's known SparebankAccount rows, not just iban.
+export interface SbAccountId {
+  iban?: string | null;
+  other?: { identification?: string | null } | null;
+}
+
 export interface SbTransaction {
   transaction_id?: string;
   entry_reference?: string;
@@ -150,6 +160,8 @@ export interface SbTransaction {
   remittance_information?: string[];
   debtor?: { name?: string };
   creditor?: { name?: string };
+  debtor_account?: SbAccountId | null;
+  creditor_account?: SbAccountId | null;
 }
 
 export interface TransactionsPage {
@@ -184,18 +196,50 @@ export interface TransactionsPage {
 // into the small unattended quota bucket instead of pretending to be
 // attended; it's an intentional, honest choice, not a fallback for a missing
 // value.
-export function getTransactions(accountUid: string, psu: { ipAddress: string; userAgent?: string } | null, opts?: { dateFrom?: string; continuationKey?: string; transactionStatus?: 'BOOK' | 'PEND' }): Promise<TransactionsPage> {
-  const params = new URLSearchParams();
-  if (opts?.dateFrom) params.set('date_from', opts.dateFrom);
-  if (opts?.continuationKey) params.set('continuation_key', opts.continuationKey);
-  if (opts?.transactionStatus) params.set('transaction_status', opts.transactionStatus);
-  const qs = params.toString() ? `?${params.toString()}` : '';
+type Psu = { ipAddress: string; userAgent?: string } | null;
+
+function psuHeaders(psu: Psu): Record<string, string> {
   const headers: Record<string, string> = {};
   if (psu) {
     headers['psu-ip-address'] = psu.ipAddress;
     if (psu.userAgent) headers['psu-user-agent'] = psu.userAgent;
   }
-  return call(`/accounts/${accountUid}/transactions${qs}`, { headers });
+  return headers;
+}
+
+export function getTransactions(accountUid: string, psu: Psu, opts?: { dateFrom?: string; continuationKey?: string; transactionStatus?: 'BOOK' | 'PEND' }): Promise<TransactionsPage> {
+  const params = new URLSearchParams();
+  if (opts?.dateFrom) params.set('date_from', opts.dateFrom);
+  if (opts?.continuationKey) params.set('continuation_key', opts.continuationKey);
+  if (opts?.transactionStatus) params.set('transaction_status', opts.transactionStatus);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return call(`/accounts/${accountUid}/transactions${qs}`, { headers: psuHeaders(psu) });
+}
+
+export interface SbAccountDetails {
+  account_id?: SbAccountId;
+  name?: string;
+  details?: string; // the bank's own account nickname — confirmed live: "BRUKSKONTO", "Pillow"
+  product?: string;
+  currency?: string;
+}
+
+// Confirmed live 2026-08-01: SpareBank 1 returns 429 "PSU-IP-Address is
+// required" without a PSU header on this endpoint, unlike GET .../balances
+// below which works either way — always send it, sourced the same honest
+// way as getTransactions' (null for a job with no real end-user behind it).
+export function getAccountDetails(accountUid: string, psu: Psu): Promise<SbAccountDetails> {
+  return call(`/accounts/${accountUid}/details`, { headers: psuHeaders(psu) });
+}
+
+export interface SbBalance {
+  name?: string;
+  balance_amount: { amount: string; currency: string };
+  balance_type: string; // "CLBD" (closing booked) is what this app displays — the settled balance, not "expected" (XPCD, includes holds)
+}
+
+export function getBalances(accountUid: string, psu: Psu): Promise<{ balances: SbBalance[] }> {
+  return call(`/accounts/${accountUid}/balances`, { headers: psuHeaders(psu) });
 }
 
 // Explicitly closes the PSU's bank consent on disconnect, mirroring

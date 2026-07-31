@@ -18,10 +18,10 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { id: Number(userId) },
-      select: { householdId: true, sbSessionEnc: true, sbAccountUid: true },
+      select: { householdId: true, sbSessionEnc: true, sparebankAccounts: { where: { syncEnabled: true }, select: { id: true } } },
     });
     if (!user || user.householdId !== householdId) return badRequest('Користувача не знайдено');
-    if (enabled && (!user.sbSessionEnc || !user.sbAccountUid)) return badRequest('Спершу підключіть SpareBank 1');
+    if (enabled && (!user.sbSessionEnc || user.sparebankAccounts.length === 0)) return badRequest('Спершу підключіть SpareBank 1');
 
     // Reset the fail counter on every toggle — flipping it off-then-on is a
     // reasonable way for the user to acknowledge past failures and try

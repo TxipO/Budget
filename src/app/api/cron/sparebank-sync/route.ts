@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { safeEqual } from '@/lib/pin';
-import { syncSparebankUser, EnableBankingError } from '@/lib/sparebankSync';
+import { syncSparebankAccount, EnableBankingError } from '@/lib/sparebankSync';
 import { sendMessage } from '@/lib/telegramBot';
 
 // Unattended background sync, opt-in per user (User.sbAutoSync) — the cron
@@ -71,18 +71,18 @@ export async function GET(req: NextRequest) {
   }
 
   const users = await prisma.user.findMany({
-    where: { sbAutoSync: true, sbAccountUid: { not: null }, sbSessionEnc: { not: null } },
+    where: { sbAutoSync: true, sbSessionEnc: { not: null }, sparebankAccounts: { some: { syncEnabled: true } } },
     select: {
-      id: true, name: true, householdId: true, telegramId: true,
-      sbAccountUid: true, sbLastSyncedAt: true, sbSyncFloor: true, sbValidUntil: true,
+      id: true, name: true, householdId: true, telegramId: true, sbValidUntil: true,
       sbLastAutoSyncAt: true, sbSyncFailCount: true,
+      sparebankAccounts: { where: { syncEnabled: true }, select: { id: true, userId: true, accountUid: true, lastSyncedAt: true, syncFloor: true } },
     },
   });
 
   const results: Array<Record<string, unknown>> = [];
 
   for (const user of users) {
-    if (!user.householdId || !user.sbAccountUid) continue; // schema allows null; an opted-in row always has both set in practice
+    if (!user.householdId) continue; // schema allows null; an opted-in row always has one in practice
 
     if (user.sbLastAutoSyncAt && Date.now() - user.sbLastAutoSyncAt.getTime() < MIN_GAP_HOURS * 3600 * 1000) {
       results.push({ userId: user.id, skipped: 'too soon since last auto-sync' });
@@ -103,25 +103,35 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    try {
-      const result = await syncSparebankUser(
-        { id: user.id, sbAccountUid: user.sbAccountUid, sbLastSyncedAt: user.sbLastSyncedAt, sbSyncFloor: user.sbSyncFloor },
-        user.householdId,
-        null, // unattended — no real end-user behind a scheduled job
-      );
+    // One "too soon"/failure gate per USER, but every syncEnabled account
+    // under them gets synced in the same run — same reasoning as the manual
+    // sync route's per-account loop.
+    let userCreated = 0, userChecked = 0;
+    let userFailed = false, lastMessage = '';
+    for (const account of user.sparebankAccounts) {
+      try {
+        const result = await syncSparebankAccount(account, user.householdId, null); // unattended — no real end-user behind a scheduled job
+        userCreated += result.createdIds.length;
+        userChecked += result.checked;
+      } catch (e) {
+        userFailed = true;
+        lastMessage = e instanceof EnableBankingError ? e.message : 'невідома помилка';
+        console.error('[cron/sparebank-sync] sync failed for account', account.id, 'user', user.id, e);
+      }
+    }
+
+    if (!userFailed) {
       await prisma.user.update({ where: { id: user.id }, data: { sbLastAutoSyncAt: new Date(), sbSyncFailCount: 0 } });
-      results.push({ userId: user.id, created: result.createdIds.length, checked: result.checked });
-    } catch (e) {
+      results.push({ userId: user.id, created: userCreated, checked: userChecked });
+    } else {
       const newFailCount = user.sbSyncFailCount + 1;
       await prisma.user.update({ where: { id: user.id }, data: { sbLastAutoSyncAt: new Date(), sbSyncFailCount: newFailCount } });
-      const message = e instanceof EnableBankingError ? e.message : 'невідома помилка';
-      console.error('[cron/sparebank-sync] sync failed for user', user.id, e);
-      results.push({ userId: user.id, error: message });
+      results.push({ userId: user.id, error: lastMessage });
       // First failure pages immediately; after that, only every 3rd
       // consecutive one — a single-day blip shouldn't notify anyone, but a
       // sync that's been broken for days must not stay silently unnoticed.
       if (user.telegramId && (newFailCount === 1 || newFailCount % 3 === 0)) {
-        await sendMessage(Number(user.telegramId), `⚠️ Автосинхронізація SpareBank 1 для ${user.name} не вдалась (${newFailCount}-й раз поспіль): ${message}`);
+        await sendMessage(Number(user.telegramId), `⚠️ Автосинхронізація SpareBank 1 для ${user.name} не вдалась (${newFailCount}-й раз поспіль): ${lastMessage}`);
       }
     }
   }

@@ -82,37 +82,27 @@ model User {
   // the session is dead and the user must reconnect (there is no silent
   // refresh in the restricted-mode flow this app uses).
   sbSessionEnc  String?   @unique
-  sbAccountUid  String?
-  sbIban        String?
   sbValidUntil  DateTime?
-  // Watermark for incremental sync — set to now() at connect time (so the
-  // first sync only picks up transactions from the moment of connection
-  // forward, never a historical backfill) and advanced after every
-  // successful sync. Mirrors what Monobank gets for free from its webhook
-  // (only fires for new events going forward, with pull-sync as just a
-  // short reconciliation safety net) — without this, every sync click
-  // re-scanned a fixed 90-day window and recreated anything deleted since.
-  sbLastSyncedAt DateTime?
-  // Hard floor for the reconciliation-overlap window above — sync will never
-  // fetch a transaction dated on or before this day, no matter what
-  // sbLastSyncedAt/RECONCILIATION_OVERLAP_DAYS computes. Set explicitly by
-  // the user (via a one-off script, not app UI) after they've manually
-  // reconciled everything up through a given date — protects that already-
-  // settled history from being re-pulled by a later sync's overlap window,
-  // which otherwise re-touches the last few days on every single click and
-  // can resurrect a transaction the user deleted on purpose.
-  sbSyncFloor DateTime?
+  // One consent (sbSessionEnc) can cover MULTIPLE real accounts at the same
+  // bank — confirmed live 2026-08-01: Enable Banking returned 2 accounts for
+  // one SpareBank 1 consent (a checking account AND a separate savings
+  // "Pillow" account), but the original single-account fields below only
+  // ever captured accounts[0], so the second account's existence, balance,
+  // and transactions were completely invisible to the app. See
+  // SparebankAccount, one row per real account.
+  sparebankAccounts SparebankAccount[]
 
   // Unattended (cron-triggered) sync — opt-in, off by default. Automatically
   // reaching into someone's bank without a click each time is a consent
   // question, not just a convenience toggle, so this is never flipped true
-  // implicitly by connecting a bank. sbLastAutoSyncAt is separate from
-  // sbLastSyncedAt (which any sync, manual or auto, advances) specifically so
-  // the cron route can enforce its own minimum gap between runs — a retry or
-  // a double-fire (e.g. the two DST-candidate cron slots both matching in the
-  // same run) must never burn two calls from Enable Banking's tiny ~4/day
-  // unattended quota. sbSyncFailCount drives the "consent probably expired,
-  // notify the user" Telegram alert — reset on any successful auto-sync.
+  // implicitly by connecting a bank. sbLastAutoSyncAt is separate from each
+  // SparebankAccount's own lastSyncedAt (which any sync, manual or auto,
+  // advances) specifically so the cron route can enforce its own minimum gap
+  // between runs — a retry or a double-fire (e.g. the two DST-candidate cron
+  // slots both matching in the same run) must never burn two calls from
+  // Enable Banking's tiny ~4/day unattended quota. sbSyncFailCount drives the
+  // "consent probably expired, notify the user" Telegram alert — reset on
+  // any successful auto-sync.
   sbAutoSync       Boolean   @default(false)
   sbLastAutoSyncAt DateTime?
   sbSyncFailCount  Int       @default(0)
@@ -142,6 +132,43 @@ model User {
   // already has one since the phase-A backfill, so this doesn't loosen
   // anything for existing data.
   @@unique([householdId, name])
+}
+
+// One real bank account under a SpareBank 1 (Enable Banking) consent — a
+// household member can have several (checking + a named savings "pillow"
+// account, confirmed live). syncEnabled decides whether this specific
+// account's own transactions get pulled into the household's budget at all
+// — off by default for every account except the first one discovered at
+// connect time (mirrors the old single-account behavior exactly for anyone
+// with just one account), so turning on a second account's own sync is a
+// deliberate opt-in, not automatic. Even accounts with syncEnabled=false are
+// still useful: identification/iban lets sparebankIngest.ts recognize a
+// transfer TO or FROM this account inside another account's transaction feed
+// and mark it as a budget-neutral internal transfer instead of income/expense.
+model SparebankAccount {
+  id             Int       @id @default(autoincrement())
+  userId         Int
+  user           User      @relation(fields: [userId], references: [id])
+  accountUid     String    @unique // Enable Banking's own account uid
+  iban           String?
+  // BBAN-style local account number (Enable Banking's account_id.other.identification)
+  // — SpareBank 1 transactions carry this on creditor_account/debtor_account,
+  // NOT always the IBAN, so this is the more reliable transfer-matching key.
+  identification String?
+  // Defaults to whatever the bank itself calls the account (confirmed live:
+  // SpareBank 1 returns "BRUKSKONTO" / "Pillow" via GET /accounts/{uid}/details's
+  // `details` field) — a real, bank-assigned nickname beats a generic
+  // "Рахунок 2" guess. User-editable afterward.
+  label          String
+  syncEnabled    Boolean   @default(false)
+  lastSyncedAt   DateTime?
+  // Same purpose as the old User.sbSyncFloor — never let syncEnabled's own
+  // rolling overlap window cross below this date.
+  syncFloor      DateTime?
+  balanceAmount   Float?
+  balanceCurrency String?
+  balanceFetchedAt DateTime?
+  createdAt      DateTime  @default(now())
 }
 
 // MT Ф4: rate-limits magic-link email requests before any household/user
@@ -269,6 +296,18 @@ model Transaction {
   // already NOK, the app's own currency.
   sbTransactionId String?
   sbCounterparty  String? // debtor/creditor name, for future category-rule matching
+
+  // Set when the counterparty's own account identification/IBAN matches
+  // ANOTHER SparebankAccount belonging to the same user — a transfer between
+  // two accounts the same person owns (e.g. checking <-> a named "pillow"
+  // savings account) is not income, an expense, or new savings; the money
+  // didn't appear or disappear, it just moved. Every budget sum (stats.ts,
+  // analytics.ts) must skip isTransfer rows entirely, regardless of their
+  // category's type — see lib/sparebankIngest.ts's detection and
+  // lib/validate.ts's isBudgetRelevant(). Independent from
+  // savingsWithdrawal above, which still covers manually-entered cushion
+  // movements (cash/crypto) with no bank-side signal to detect them from.
+  isTransfer Boolean @default(false)
 
   @@index([date])
   // Guards against the recurring/apply race: concurrent requests applying the
