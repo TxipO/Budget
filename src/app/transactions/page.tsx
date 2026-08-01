@@ -335,7 +335,7 @@ export default function TransactionsPage() {
       <div className="card" style={{ overflow: 'hidden' }}>
         {/* Table header (desktop only — mobile rows are self-describing cards) */}
         <div className="hide-on-xs" style={{
-          display: 'grid', gridTemplateColumns: '100px 1fr 120px 90px 80px 72px',
+          display: 'grid', gridTemplateColumns: '100px 1fr 120px 90px 80px 72px', gap: 8,
           padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)',
           fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em',
         }}>
