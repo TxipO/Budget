@@ -30,6 +30,43 @@ export const MONO_CCY_NAMES: Record<number, string> = { 980: 'UAH', 578: 'NOK', 
 
 export type IngestResult = 'created' | 'skipped_hold' | 'skipped_duplicate' | 'skipped_malformed';
 
+const TRANSFER_CATEGORY_NAME = 'Переказ між рахунками';
+
+// Monobank statement items carry no counterparty account id (unlike
+// SpareBank's creditor_account/debtor_account — see sparebankIngest.ts's own
+// findTransferCounterpartAccountId comment on why that's the reliable key
+// there), only a free-text description. The only structural signal
+// available for "this household is moving money between its own two
+// connected Monobank accounts" is: the OTHER household member's own mono
+// account has a transaction of the exact opposite direction, the exact same
+// amount (both already converted to the household's own currency, so
+// directly comparable), within a few days of this one.
+// ponytail: exact-amount match, no cents-tolerance for cross-conversion
+// rounding drift between the two sides' fx snapshots — if a real pair is
+// ever missed because of that, it's user-correctable the same as any other
+// mono transaction; revisit with a tolerance only if that turns out to
+// happen in practice.
+const TRANSFER_MATCH_WINDOW_DAYS = 2;
+
+async function findMonoTransferMatch(householdId: number, userId: number, txType: 'income' | 'expense', amount: number, date: Date): Promise<number | null> {
+  const oppositeType = txType === 'income' ? 'expense' : 'income';
+  const windowStart = new Date(date.getTime() - TRANSFER_MATCH_WINDOW_DAYS * 24 * 3600 * 1000);
+  const windowEnd = new Date(date.getTime() + TRANSFER_MATCH_WINDOW_DAYS * 24 * 3600 * 1000);
+  const match = await prisma.transaction.findFirst({
+    where: {
+      householdId,
+      userId: { not: userId },
+      source: 'mono',
+      isTransfer: false,
+      amount,
+      date: { gte: windowStart, lte: windowEnd },
+      category: { type: oppositeType },
+    },
+    select: { id: true },
+  });
+  return match?.id ?? null;
+}
+
 // Single source of truth for turning one Monobank StatementItem into a
 // Transaction row — used by both the push webhook and the manual/backfill
 // sync route, so the two paths can never drift into different behavior for
@@ -78,16 +115,6 @@ export async function ingestStatementItem(userId: number, householdId: number, i
   }
   const amount = roundMoney(amountOriginal * fxRate);
 
-  const merchantKey = normalizeMerchantKey(item.description || '');
-  const categoryId = await resolveCategoryId(householdId, userId, txType, merchantKey, item.mcc);
-
-  // Only read when the resolved category turns out to be type "savings" —
-  // see Transaction.savingsWithdrawal's own schema comment and the matching
-  // note in sparebankIngest.ts. A transfer OUT of a connected account
-  // (amount < 0, "expense"-shaped) into a savings pot is a deposit; money
-  // coming back IN (amount >= 0, "income"-shaped) is a withdrawal.
-  const savingsWithdrawal = txType === 'income';
-
   // Truncate to UTC midnight of the calendar day — matches this app's
   // existing convention (manual/import rows land on UTC midnight,
   // recurring-generated rows on UTC noon). item.time is an unambiguous UTC
@@ -95,6 +122,31 @@ export async function ingestStatementItem(userId: number, householdId: number, i
   // correct no matter what timezone this server process happens to run in.
   const raw = new Date(item.time * 1000);
   const date = new Date(Date.UTC(raw.getUTCFullYear(), raw.getUTCMonth(), raw.getUTCDate()));
+
+  // Is this the household moving money between Паша's and Женя's own
+  // connected Monobank accounts? See findMonoTransferMatch's own comment.
+  const matchedTransferId = await findMonoTransferMatch(householdId, userId, txType, amount, date);
+  const isTransfer = matchedTransferId !== null;
+
+  const merchantKey = normalizeMerchantKey(item.description || '');
+  const categoryId = isTransfer
+    ? (await prisma.category.upsert({
+        where: { householdId_name_type: { householdId, name: TRANSFER_CATEGORY_NAME, type: 'savings' } },
+        update: {},
+        create: { householdId, name: TRANSFER_CATEGORY_NAME, type: 'savings', color: '#64748B', icon: 'wallet' },
+        select: { id: true },
+      })).id
+    : await resolveCategoryId(householdId, userId, txType, merchantKey, item.mcc);
+
+  // Only read when the resolved category turns out to be type "savings" —
+  // see Transaction.savingsWithdrawal's own schema comment and the matching
+  // note in sparebankIngest.ts. A transfer OUT of a connected account
+  // (amount < 0, "expense"-shaped) into a savings pot is a deposit; money
+  // coming back IN (amount >= 0, "income"-shaped) is a withdrawal. Applies
+  // the same whether the row landed in the dedicated transfer category or an
+  // ordinary category — isTransfer (not this) is what actually excludes a
+  // row from budget math, see isBudgetRelevant's own comment.
+  const savingsWithdrawal = txType === 'income';
 
   // Ф5: the same real-world payment counted twice from two independent
   // writers. A mono transaction landing in a category+month that already
@@ -129,6 +181,7 @@ export async function ingestStatementItem(userId: number, householdId: number, i
         monoCurrency: MONO_CCY_NAMES[item.currencyCode] ?? String(item.currencyCode),
         fxRate,
         savingsWithdrawal,
+        isTransfer,
       },
     });
   } catch (e: any) {
@@ -146,6 +199,17 @@ export async function ingestStatementItem(userId: number, householdId: number, i
     // accurate partial-success counts).
     if (e?.code === 'P2002') return 'skipped_duplicate';
     throw e;
+  }
+
+  // The matched OTHER half of this transfer was recorded earlier under
+  // whatever category it originally guessed (it had no way to know about
+  // this side yet) — retroactively reclassify it now too, or only the
+  // later-arriving side would ever get excluded from budget totals.
+  if (isTransfer && matchedTransferId) {
+    await prisma.transaction.update({
+      where: { id: matchedTransferId },
+      data: { categoryId, isTransfer: true },
+    });
   }
 
   return 'created';
