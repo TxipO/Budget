@@ -297,16 +297,31 @@ model Transaction {
   sbTransactionId String?
   sbCounterparty  String? // debtor/creditor name, for future category-rule matching
 
-  // Set when the counterparty's own account identification/IBAN matches
-  // ANOTHER SparebankAccount belonging to the same user — a transfer between
-  // two accounts the same person owns (e.g. checking <-> a named "pillow"
-  // savings account) is not income, an expense, or new savings; the money
-  // didn't appear or disappear, it just moved. Every budget sum (stats.ts,
-  // analytics.ts) must skip isTransfer rows entirely, regardless of their
-  // category's type — see lib/sparebankIngest.ts's detection and
-  // lib/validate.ts's isBudgetRelevant(). Independent from
-  // savingsWithdrawal above, which still covers manually-entered cushion
-  // movements (cash/crypto) with no bank-side signal to detect them from.
+  // "Doesn't count toward any budget total" — two distinct real-world cases,
+  // both structural, neither a code-level guess:
+  // 1. A transfer between two accounts the SAME PERSON owns (SpareBank1's
+  //    checking <-> "pillow" savings, or Monobank between household
+  //    members' own connected accounts) — the money didn't appear or
+  //    disappear, it just moved. Detected automatically: lib/sparebankIngest.ts
+  //    matches the counterparty's account id/IBAN against the user's other
+  //    known SparebankAccount rows; lib/monoIngest.ts's findMonoTransferMatch
+  //    matches by exact amount + opposite direction on the OTHER household
+  //    member's own connected mono account (Monobank exposes no account id
+  //    to match on directly, unlike SpareBank).
+  // 2. A real expense/income that's already accounted for through a
+  //    DIFFERENT channel entirely (e.g. a work trip cost reimbursed
+  //    separately) — filed under whatever category is honest for what
+  //    actually happened (so it still reads correctly in the transaction
+  //    list), NOT the transfer category; only this flag, not the category,
+  //    is what pulls it out of the totals. Currently hand-set per row (found
+  //    2026-08-01), no automatic detection — there's no structural signal
+  //    for "already counted elsewhere" the way there is for a same-person
+  //    account match.
+  // Every budget sum (stats.ts, analytics.ts) must skip isTransfer rows
+  // entirely regardless of category — see lib/validate.ts's
+  // isBudgetRelevant(). Independent from savingsWithdrawal above, which
+  // still covers manually-entered cushion movements (cash/crypto) with no
+  // bank-side signal to detect them from.
   isTransfer Boolean @default(false)
 
   @@index([date])
