@@ -469,15 +469,18 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <div style={{ height: 6, borderRadius: 4, background: 'var(--c-border-mid)', overflow: 'hidden' }}>
+                    {/* transform: scaleX(), not width — animating width
+                        forces layout recalculation on every frame (detector
+                        finding, 2026-08-02); scaleX is compositor-only. */}
                     <div style={{
-                      height: '100%', borderRadius: 4,
-                      width: `${pct}%`,
+                      height: '100%', width: '100%', borderRadius: 4,
+                      transform: `scaleX(${pct / 100})`, transformOrigin: 'left',
                       background: over
                         ? 'linear-gradient(90deg, #EF4444, #F97316)'
                         : pct > 80
                         ? 'linear-gradient(90deg, #EAB308, #F97316)'
                         : `linear-gradient(90deg, ${cat.color}, ${cat.color}99)`,
-                      transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)',
+                      transition: 'transform 0.6s cubic-bezier(0.4,0,0.2,1)',
                     }} />
                   </div>
                   <div style={{ fontSize: 11, color: over ? '#FCA5A5' : pct > 80 ? '#FCD34D' : '#4ADE80', marginTop: 4, fontWeight: 600 }}>
