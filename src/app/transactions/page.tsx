@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
-import { Plus, Search, Trash2, Pencil, ChevronLeft, ChevronRight, Download, RefreshCw, Globe, AlertTriangle, Landmark } from 'lucide-react';
+import { Plus, Search, Trash2, Pencil, ChevronLeft, ChevronRight, Download, RefreshCw, Globe, AlertTriangle, Landmark, EyeOff } from 'lucide-react';
 import { MONTH_NAMES, TYPE_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
@@ -12,8 +12,9 @@ interface Tx {
   recurringTemplateId: number | null;
   possibleDuplicateOf: number | null;
   savingsWithdrawal: boolean;
+  isTransfer: boolean;
   category: { id: number; name: string; type: string; color: string; icon: string };
-  user: { name: string } | null;
+  user: { id: number; name: string } | null;
 }
 
 const PAGE_SIZE = 25;
@@ -184,11 +185,17 @@ export default function TransactionsPage() {
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const totals = filtered.reduce(
+  // Matches the server's isBudgetRelevant() + savingsAmount() exactly (see
+  // lib/validate.ts) — a transfer/pre-accounted-elsewhere row must never
+  // count here either, or these tiles would disagree with the dashboard's
+  // numbers for the same period. Not imported from lib/validate.ts directly:
+  // that module also imports next/server (route-handler-only APIs), not
+  // something a 'use client' bundle should pull in.
+  const totals = filtered.filter(tx => !tx.isTransfer).reduce(
     (acc, tx) => {
       if (tx.category.type === 'income')   acc.income   += tx.amount;
       if (tx.category.type === 'expense')  acc.expenses += tx.amount;
-      if (tx.category.type === 'savings')  acc.savings  += tx.amount;
+      if (tx.category.type === 'savings')  acc.savings  += tx.savingsWithdrawal ? -tx.amount : tx.amount;
       return acc;
     },
     { income: 0, expenses: 0, savings: 0 }
@@ -364,7 +371,11 @@ export default function TransactionsPage() {
           // schema comment).
           const isSavingsWithdrawal = tx.category.type === 'savings' && tx.savingsWithdrawal;
           const amountStr = `${tx.category.type === 'income' || isSavingsWithdrawal ? '+' : '-'}${formatMoney(tx.amount)}`;
-          const amountColor = tx.category.type === 'income' || isSavingsWithdrawal ? '#4ADE80'
+          // Excluded from every total — dim the amount so the row reads as
+          // "present but not counted" instead of a normal income/expense/
+          // savings figure (see Transaction.isTransfer's schema comment).
+          const amountColor = tx.isTransfer ? '#64748B'
+                             : tx.category.type === 'income' || isSavingsWithdrawal ? '#4ADE80'
                              : tx.category.type === 'expense' ? '#FCA5A5' : '#FCD34D';
           return (
           <div key={tx.id} className="table-row">
@@ -389,6 +400,7 @@ export default function TransactionsPage() {
                     {tx.recurringTemplateId && <span title="Recurring" style={{ display: 'flex' }}><RefreshCw size={11} color="#F97316" /></span>}
                     {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є шаблонна/імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex' }}><AlertTriangle size={11} color="#FBBF24" /></span>}
                     {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex' }}><Landmark size={11} color="#38BDF8" /></span>}
+                    {tx.isTransfer && <span title="Не рахується в загальному балансі" style={{ display: 'flex' }}><EyeOff size={11} color="#64748B" /></span>}
                   </div>
                   {tx.details && (
                     <div style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -435,6 +447,7 @@ export default function TransactionsPage() {
                   {tx.recurringTemplateId && <span title="Recurring" style={{ display: 'flex', flexShrink: 0 }}><RefreshCw size={10} color="#F97316" /></span>}
                   {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є шаблонна/імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex', flexShrink: 0 }}><AlertTriangle size={10} color="#FBBF24" /></span>}
                   {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex', flexShrink: 0 }}><Landmark size={10} color="#38BDF8" /></span>}
+                  {tx.isTransfer && <span title="Не рахується в загальному балансі" style={{ display: 'flex', flexShrink: 0 }}><EyeOff size={10} color="#64748B" /></span>}
                 </div>
                 <div style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {dateStr}{tx.details && ` · ${tx.details}`}{tx.user && ` · ${tx.user.name}`}
@@ -507,6 +520,8 @@ export default function TransactionsPage() {
             amount: String(editing.amount),
             details: editing.details,
             savingsWithdrawal: editing.savingsWithdrawal,
+            isTransfer: editing.isTransfer,
+            userId: editing.user ? String(editing.user.id) : '',
           } : undefined}
         />
       )}

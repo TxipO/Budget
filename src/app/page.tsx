@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, Landmark } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, Landmark, EyeOff } from 'lucide-react';
 import { MONTH_NAMES, TYPE_COLORS, type Period, PERIOD_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
@@ -22,6 +22,7 @@ interface Stats {
   recent: {
     id: number; date: string; amount: number; details: string; source: string;
     savingsWithdrawal: boolean;
+    isTransfer: boolean;
     category: { id: number; name: string; type: string; color: string; icon: string };
     user: { id: number; name: string } | null;
   }[];
@@ -607,6 +608,7 @@ export default function Dashboard() {
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', display: 'flex', alignItems: 'center', gap: 5 }}>
                 {tx.category.name}
                 {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex' }}><Landmark size={11} color="#38BDF8" /></span>}
+                {tx.isTransfer && <span title="Не рахується в загальному балансі" style={{ display: 'flex' }}><EyeOff size={11} color="#64748B" /></span>}
               </div>
               <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
                 {new Date(tx.date).toLocaleDateString('uk-UA')}
@@ -616,7 +618,8 @@ export default function Dashboard() {
             </div>
             <span style={{
               fontSize: 15, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-              color: tx.category.type === 'income' || (tx.category.type === 'savings' && tx.savingsWithdrawal) ? '#4ADE80'
+              color: tx.isTransfer ? '#64748B'
+                   : tx.category.type === 'income' || (tx.category.type === 'savings' && tx.savingsWithdrawal) ? '#4ADE80'
                    : tx.category.type === 'expense' ? '#FCA5A5' : '#FCD34D',
             }}>
               {tx.category.type === 'income' || (tx.category.type === 'savings' && tx.savingsWithdrawal) ? '+' : '-'}{formatMoney(tx.amount)}
@@ -663,6 +666,7 @@ export default function Dashboard() {
             details: editing.details,
             userId: editing.user ? String(editing.user.id) : '',
             savingsWithdrawal: editing.savingsWithdrawal,
+            isTransfer: editing.isTransfer,
           } : undefined}
         />
       )}

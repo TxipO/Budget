@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { X, Save, Plus } from 'lucide-react';
+import { X, Save, Plus, EyeOff } from 'lucide-react';
 import { TYPE_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import { toast } from '@/lib/toast';
@@ -28,6 +28,10 @@ interface TxForm {
   // existed. true ("Зняття") is money coming back out of the pot — increases
   // available balance instead of double-subtracting it.
   savingsWithdrawal: boolean;
+  // Manual "не рахувати в загальний баланс" toggle — same field the
+  // automatic transfer/pre-accounted-elsewhere detection already sets (see
+  // Transaction.isTransfer's schema comment), just settable by hand here.
+  isTransfer: boolean;
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -35,7 +39,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 export default function TransactionForm({ onClose, onSaved, initial, editId }: Props) {
   const [form, setForm] = useState<TxForm>({
     date: today(), type: 'expense', categoryId: '', amount: '',
-    details: '', userId: '', savingsWithdrawal: false, ...initial,
+    details: '', userId: '', savingsWithdrawal: false, isTransfer: false, ...initial,
   });
   const [cats, setCats] = useState<Category[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -321,6 +325,32 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
               </select>
             </div>
           )}
+
+          {/* Manual exclude-from-totals toggle — same Transaction.isTransfer
+              field the automatic transfer/pre-accounted-elsewhere detection
+              already sets (see its schema comment), just user-settable here
+              for whatever case doesn't fit either automatic rule. */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, isTransfer: !f.isTransfer }))}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                padding: '10px 4px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                fontSize: 13, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.15s',
+                background: form.isTransfer ? 'rgba(100,116,139,0.25)' : 'rgba(255,255,255,0.04)',
+                color: form.isTransfer ? 'var(--c-text-sec)' : '#64748B',
+              }}
+            >
+              <EyeOff size={15} />
+              Не рахувати в загальний баланс
+            </button>
+            {form.isTransfer && (
+              <p style={{ fontSize: 11, color: '#64748B', marginTop: 6, textAlign: 'center' }}>
+                Транзакція лишиться у списку, але не увійде в жодну суму — дохід, витрати, збереження, накопичений залишок.
+              </p>
+            )}
+          </div>
         </form>
 
         <div style={{ padding: '20px 28px 28px', flexShrink: 0 }}>

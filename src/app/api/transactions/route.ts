@@ -57,12 +57,13 @@ export async function POST(req: NextRequest) {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
-    const { date, categoryId, amount, details, userId, savingsWithdrawal } = body;
+    const { date, categoryId, amount, details, userId, savingsWithdrawal, isTransfer } = body;
 
     if (!isValidDate(date))                  return badRequest('Невалідна дата');
     if (!isPositiveInt(Number(categoryId)))  return badRequest('Невалідна категорія');
     if (!isPositiveNumber(Number(amount)))   return badRequest('Сума має бути більше 0');
     if (savingsWithdrawal !== undefined && typeof savingsWithdrawal !== 'boolean') return badRequest('Невалідне значення напрямку');
+    if (isTransfer !== undefined && typeof isTransfer !== 'boolean') return badRequest('Невалідне значення виключення з балансу');
 
     // Without this, a request could reference another household's category
     // (or user) by id — the created row itself would still only be visible
@@ -96,6 +97,11 @@ export async function POST(req: NextRequest) {
         // (see Transaction.savingsWithdrawal's schema comment) — harmless
         // to always store whatever the client sent (default false).
         savingsWithdrawal: savingsWithdrawal === true,
+        // Manual "не рахувати в загальний баланс" toggle — same field every
+        // automatic transfer/pre-accounted-elsewhere detection already sets
+        // (see Transaction.isTransfer's schema comment), now also settable
+        // by hand from the transaction form.
+        isTransfer: isTransfer === true,
       },
       include: { category: true, user: { select: { id: true, name: true } } },
     });

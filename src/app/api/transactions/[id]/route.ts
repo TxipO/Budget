@@ -16,6 +16,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     if (!isPositiveInt(Number(body.categoryId)))   return badRequest('Невалідна категорія');
     if (!isPositiveNumber(Number(body.amount)))    return badRequest('Сума має бути більше 0');
     if (body.savingsWithdrawal !== undefined && typeof body.savingsWithdrawal !== 'boolean') return badRequest('Невалідне значення напрямку');
+    if (body.isTransfer !== undefined && typeof body.isTransfer !== 'boolean') return badRequest('Невалідне значення виключення з балансу');
 
     const newCategoryId = parseInt(body.categoryId);
 
@@ -52,6 +53,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         details:    body.details || '',
         userId:     body.userId ? parseInt(body.userId) : null,
         savingsWithdrawal: body.savingsWithdrawal === true,
+        // Manual "не рахувати в загальний баланс" toggle — see the create
+        // route's matching comment and Transaction.isTransfer's schema
+        // comment. Editable both ways: turning it back off un-hides a row
+        // that was flagged by mistake, no separate "undo" flow needed.
+        isTransfer: body.isTransfer === true,
       },
       include: { category: true, user: { select: { id: true, name: true } } },
     });
