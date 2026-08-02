@@ -50,6 +50,18 @@ export async function GET(req: NextRequest) {
     prevStart  = new Date(Date.UTC(year, month - 2, 1));
     prevEnd    = new Date(Date.UTC(year, month - 1, 1));
     trendMonths = 6;
+
+    // Viewing the still-in-progress current month against a FULL previous
+    // month always reads as a huge swing early on (2 days of data vs 30) —
+    // not a real signal, and exactly the wrong kind of alarming on a
+    // dashboard meant to reassure. Clip the previous month's comparison
+    // window to the same day-of-month so the delta is apples-to-apples.
+    // Past, fully-elapsed months are unaffected.
+    if (year === now.getUTCFullYear() && month === now.getUTCMonth() + 1) {
+      const daysInPrevMonth = new Date(Date.UTC(year, month - 1, 0)).getUTCDate();
+      const cutoffDay = Math.min(now.getUTCDate(), daysInPrevMonth);
+      prevEnd = new Date(Date.UTC(year, month - 2, cutoffDay + 1));
+    }
   } else if (period === 'quarter') {
     rangeEnd   = new Date(Date.UTC(year, month, 1));
     rangeStart = new Date(Date.UTC(year, month - 3, 1));
