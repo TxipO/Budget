@@ -1,6 +1,7 @@
 'use client';
 import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
+import { TrendingUp, TrendingDown, PiggyBank, Wallet } from 'lucide-react';
 import { MONTH_SHORT } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import { toast } from '@/lib/toast';
@@ -49,7 +50,7 @@ export default function AnalyticsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Аналітика</h1>
-          <p style={{ color: '#475569', fontSize: 14 }}>Річна статистика</p>
+          <p style={{ color: 'var(--c-text-sub)', fontSize: 14 }}>Річна статистика</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {[2025, 2026, 2027].map(y => (
@@ -61,16 +62,22 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* Year totals */}
+      {/* Year totals — same stat-card shape as Головна: label + icon tile
+          on top, value below. Was text-only here, breaking the pattern. */}
       <div className="grid-4" style={{ marginBottom: 28 }}>
         {[
-          { label: 'Всього дохід', value: totalIncome, color: '#22C55E' },
-          { label: 'Всього витрати', value: totalExpenses, color: '#EF4444' },
-          { label: 'Всього збереження', value: totalSavings, color: '#F59E0B' },
-          { label: 'Чистий залишок', value: totalBalance, color: totalBalance >= 0 ? '#FB923C' : '#EF4444' },
+          { label: 'Всього дохід',      value: totalIncome,   color: '#22C55E', icon: TrendingUp,   bg: 'rgba(34,197,94,0.08)'  },
+          { label: 'Всього витрати',    value: totalExpenses, color: '#EF4444', icon: TrendingDown, bg: 'rgba(239,68,68,0.08)'  },
+          { label: 'Всього збереження', value: totalSavings,  color: '#F59E0B', icon: PiggyBank,    bg: 'rgba(245,158,11,0.08)' },
+          { label: 'Чистий залишок',    value: totalBalance,  color: totalBalance >= 0 ? '#FB923C' : '#EF4444', icon: Wallet, bg: 'rgba(249,115,22,0.08)' },
         ].map(c => (
           <div key={c.label} className="stat-card">
-            <div style={{ fontSize: 12, color: '#64748B', marginBottom: 12, fontWeight: 600 }}>{c.label}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+              <span style={{ fontSize: 13, color: 'var(--c-text-muted)', fontWeight: 600 }}>{c.label}</span>
+              <div style={{ background: c.bg, borderRadius: 9, padding: 8 }}>
+                <c.icon size={16} color={c.color} />
+              </div>
+            </div>
             <div style={{ fontSize: 22, fontWeight: 800, color: c.color, fontVariantNumeric: 'tabular-nums' }}>
               {formatMoney(c.value)}
             </div>
@@ -116,7 +123,7 @@ export default function AnalyticsPage() {
               border: `1px solid ${d.balance >= 0 ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
               borderRadius: 10, padding: '12px 8px', textAlign: 'center',
             }}>
-              <div style={{ fontSize: 11, color: '#64748B', marginBottom: 6 }}>{d.month}</div>
+              <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginBottom: 6 }}>{d.month}</div>
               <div style={{ fontSize: 13, fontWeight: 700, color: d.balance >= 0 ? '#4ADE80' : '#FCA5A5', fontVariantNumeric: 'tabular-nums' }}>
                 {d.balance !== 0 ? `${d.balance >= 0 ? '+' : ''}${Math.round(d.balance / 1000)}к` : '—'}
               </div>
