@@ -67,8 +67,12 @@ export default function BalanceTrend({ data }: { data: TrendPoint[] }) {
             tickFormatter={v => `${(v / 1000).toFixed(0)}к`}
           />
           <Tooltip content={<CustomTooltip />} />
+          {/* Витрати gets a dashed stroke, not just a different hue — the two
+              lines cross and run parallel often enough that red/green alone
+              (the most common color-blindness pair) isn't a reliable way to
+              tell them apart at a glance. */}
           <Area type="monotone" dataKey="income"   name="Дохід"   stroke="#22C55E" fill="url(#gIncome)"  strokeWidth={2} />
-          <Area type="monotone" dataKey="expenses" name="Витрати" stroke="#EF4444" fill="url(#gExpense)" strokeWidth={2} />
+          <Area type="monotone" dataKey="expenses" name="Витрати" stroke="#EF4444" fill="url(#gExpense)" strokeWidth={2} strokeDasharray="5 3" />
         </AreaChart>
       </ResponsiveContainer>
     </div>
