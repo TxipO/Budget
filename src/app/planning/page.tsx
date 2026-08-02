@@ -2,7 +2,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { MessageSquare } from 'lucide-react';
 import { MONTH_SHORT, TYPE_LABELS } from '@/lib/utils';
-import { useCurrency } from '@/lib/useCurrency';
 import { toast } from '@/lib/toast';
 
 interface Category { id: number; name: string; type: string; color: string }
@@ -10,7 +9,6 @@ interface Plan { categoryId: number; month: number; plannedAmount: number; notes
 interface Actual { categoryId: number; month: number; actual: number }
 
 export default function PlanningPage() {
-  const { formatMoney } = useCurrency();
   const [year,     setYear]     = useState(2026);
   const [cats,     setCats]     = useState<Category[]>([]);
   const [plans,    setPlans]    = useState<Plan[]>([]);
@@ -325,7 +323,11 @@ export default function PlanningPage() {
                     </td>
                   ))}
                   <td style={{ padding: '10px 8px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: typeColor, fontVariantNumeric: 'tabular-nums' }}>
-                    {yearTotalActual > 0 ? formatMoney(yearTotalActual) : '—'}
+                    {/* "к" shorthand, not formatMoney — every other cell in
+                        this column (including each category row above) uses
+                        the same abbreviated format; the full currency string
+                        here was the one inconsistent cell in the table. */}
+                    {yearTotalActual > 0 ? Math.round(yearTotalActual / 1000) + 'к' : '—'}
                   </td>
                 </tr>,
               ];
