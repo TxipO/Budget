@@ -93,6 +93,10 @@ export default function Dashboard() {
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
   const [syncSelected, setSyncSelected] = useState<Record<string, boolean>>({});
   const [syncing, setSyncing] = useState(false);
+  // Only visible feedback once the dropdown auto-closes at sync start
+  // (critique 2026-08-02, P2): per-account progress while syncing, then a
+  // "last synced" timestamp that stays put until the next run.
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
 
   // Pending Monobank holds — never recorded as a Transaction (see
   // monoIngest.ts, they can still be declined/cancelled), but a purchase
@@ -136,10 +140,12 @@ export default function Dashboard() {
     if (toSync.length === 0 || syncing) return;
     setSyncing(true);
     setSyncMenuOpen(false);
+    setSyncStatus(`Синхронізація 0/${toSync.length}…`);
     let monoTotalCreated = 0;
     let anyCreated = false;
     const errors: string[] = [];
-    for (const c of toSync) {
+    for (let i = 0; i < toSync.length; i++) {
+      const c = toSync[i];
       try {
         const endpoint = c.bank === 'mono' ? '/api/monobank/sync' : '/api/sparebank/sync';
         const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: c.userId }) });
@@ -168,15 +174,17 @@ export default function Dashboard() {
                 toast('Помилка з’єднання', 'error');
               }
             },
-          }, 5000);
+          }, 10000);
         }
       } catch {
         errors.push(`${c.name} (${c.bankLabel}): помилка з'єднання`);
       }
+      setSyncStatus(`Синхронізація ${i + 1}/${toSync.length}…`);
     }
     setSyncing(false);
+    setSyncStatus(`Останній синк: ${new Date().toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}`);
     if (monoTotalCreated > 0) toast(`Monobank: додано ${monoTotalCreated}`);
-    if (errors.length > 0) toast(errors.join('; '), 'error');
+    errors.forEach(e => toast(e, 'error'));
     if (!anyCreated && errors.length === 0) toast('Нових транзакцій немає');
     loadStats();
   }
@@ -280,6 +288,14 @@ export default function Dashboard() {
                   >
                     {syncing ? 'Синхронізація…' : 'Синхронізувати'}
                   </button>
+                </div>
+              )}
+              {!syncMenuOpen && syncStatus && (
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, marginTop: 4,
+                  fontSize: 11, color: 'var(--c-text-muted)', whiteSpace: 'nowrap',
+                }}>
+                  {syncStatus}
                 </div>
               )}
             </div>
