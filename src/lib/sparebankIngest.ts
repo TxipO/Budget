@@ -7,18 +7,30 @@ import { numericForCurrency } from '@/lib/currencies';
 
 const TRANSFER_CATEGORY_NAME = 'Переказ між рахунками';
 
-// True when the counterparty side of this transaction (whichever of
-// creditor_account/debtor_account is NOT the account being synced) matches
-// another SparebankAccount belonging to the SAME user — i.e. this specific
-// money movement is between two accounts the same person owns (confirmed
-// live 2026-08-01: SpareBank 1 populates account_id.other.identification,
-// a BBAN-style local number, more reliably than iban on these fields).
-// Matching by account number, not by counterparty NAME, is deliberate — a
-// name-based rule (what an earlier version of this feature effectively did
-// via the learned-category-rule mechanism) is exactly the kind of
+// True ONLY when the counterparty account is ALSO syncEnabled — i.e. this
+// transfer will independently produce its OWN row on the other side too, so
+// excluding both from every total prevents a genuine double count. When the
+// counterpart is a known-but-not-synced account (e.g. a "pillow" savings
+// account that only ever has ITS transactions pulled here, on the checking
+// side), there is exactly ONE row for this real-world movement, not a pair —
+// that row must stay a normal savingsWithdrawal-signed transaction under
+// whatever category it represents (e.g. "Фінансова подушка"), the same way
+// it worked before this account-matching existed, or the category's own
+// tracked total silently stops decreasing when money actually leaves it.
+// Found live 2026-08-02: the two real "подушка -> основний" transfers
+// (only "Основний" ever synced) got wrongly excluded entirely by this
+// function initially matching on account id alone, breaking exactly the
+// withdrawal-tracking behavior the user asked for at the start of this
+// whole feature.
+//
+// Matching by account number, not by counterparty NAME, is still deliberate
+// — a name-based rule (what an earlier version of this feature effectively
+// did via the learned-category-rule mechanism) is exactly the kind of
 // merchant/person-specific hardcoding this project's own convention warns
 // against; an account number is a real, structural fact that works for any
-// user without hardcoding anything about who they are.
+// user without hardcoding anything about who they are. Confirmed live
+// 2026-08-01: SpareBank 1 populates account_id.other.identification, a
+// BBAN-style local number, more reliably than iban on these fields.
 async function findTransferCounterpartAccountId(userId: number, counterpart: SbAccountId | null | undefined): Promise<number | null> {
   if (!counterpart) return null;
   const identification = counterpart.other?.identification;
@@ -27,6 +39,7 @@ async function findTransferCounterpartAccountId(userId: number, counterpart: SbA
   const match = await prisma.sparebankAccount.findFirst({
     where: {
       userId,
+      syncEnabled: true,
       OR: [
         ...(identification ? [{ identification }] : []),
         ...(iban ? [{ iban }] : []),
