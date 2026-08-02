@@ -295,7 +295,7 @@ export default function TransactionsPage() {
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 280 }}>
           <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
           <input
             className="input-field"
@@ -336,7 +336,12 @@ export default function TransactionsPage() {
           ))}
         </div>
         {users.length > 0 && (
-          <div style={{ display: 'flex', gap: 6 }}>
+          <>
+            {/* Separates the type filter's "Всі" from this group's own
+                "Всі" — two identical labels sitting flush against each
+                other read as one ambiguous control without it. */}
+            <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--c-border-mid)' }} />
+            <div style={{ display: 'flex', gap: 6 }}>
             {[['', 'Всі'], ...users.map(u => [String(u.id), u.name])].map(([val, label]) => (
               <button
                 key={val}
@@ -352,7 +357,8 @@ export default function TransactionsPage() {
                 {label}
               </button>
             ))}
-          </div>
+            </div>
+          </>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '0 4px' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--c-text-sec)', cursor: 'pointer' }}>
@@ -454,7 +460,11 @@ export default function TransactionsPage() {
                 </div>
               </div>
 
-              <span className={`badge badge-${tx.category.type}`}>
+              {/* justifySelf: start — .badge is inline-flex so it's meant
+                  to hug its content, but as a direct CSS Grid child it
+                  otherwise stretches to fill the full 120px column
+                  (Grid's justify-items: stretch default). */}
+              <span className={`badge badge-${tx.category.type}`} style={{ justifySelf: 'start' }}>
                 {TYPE_LABELS[tx.category.type]}
               </span>
 
