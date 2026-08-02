@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, Landmark, EyeOff } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, Landmark, EyeOff, PieChart, LineChart } from 'lucide-react';
 import { MONTH_NAMES, TYPE_COLORS, CATEGORY_PALETTE, type Period, PERIOD_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
@@ -511,15 +511,17 @@ export default function Dashboard() {
       {sections.charts && (
         <div className="grid-2" style={{ marginBottom: 24 }}>
           <div className="card" style={{ padding: 24 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 20 }}>
-              Витрати по категоріях
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+              <PieChart size={16} color="#FB923C" />
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Витрати по категоріях</h3>
+            </div>
             {stats && <ExpenseDonut data={stats.byCategory} total={stats.expenses} />}
           </div>
           <div className="card" style={{ padding: 24 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 20 }}>
-              Дохід та витрати
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+              <LineChart size={16} color="#FB923C" />
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Дохід та витрати</h3>
+            </div>
             {stats && <BalanceTrend data={stats.trend} />}
           </div>
         </div>
