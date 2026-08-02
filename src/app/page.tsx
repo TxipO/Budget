@@ -77,7 +77,10 @@ export default function Dashboard() {
   const [editing, setEditing] = useState<Stats['recent'][0] | null>(null);
   const [showRecurring, setShowRecurring] = useState(false);
   const [pendingRecurring, setPendingRecurring] = useState(0);
-  const [userSectionOpen, setUserSectionOpen] = useState(true);
+  // Collapsed by default — one of 6+ simultaneous dashboard blocks (critique
+  // 2026-08-02, P1); still one click away, nothing lost, just not competing
+  // with the stat cards and recent list for attention on first paint.
+  const [userSectionOpen, setUserSectionOpen] = useState(false);
   const [sections] = useDashboardPrefs();
   const [pending, setPending] = useState<{ id: string; description: string; amount: number; currency: string }[]>([]);
 
@@ -398,28 +401,30 @@ export default function Dashboard() {
                   {stats!.prev && (
                     <DeltaBadge current={val} prev={stats!.prev![c.key]} invertGood={c.invertGood} />
                   )}
+                  {/* Cumulative (all-time) balance rides along as a quiet
+                      second line on the one card it's related to, instead of
+                      its own full-width banner competing with it for "the"
+                      hero number — see critique 2026-08-02, P1. */}
+                  {c.key === 'balance' && sections.banners && stats && (
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--c-border)',
+                      fontSize: 11, color: 'var(--c-text-muted)',
+                    }}>
+                      <span>З початку</span>
+                      <span style={{
+                        fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+                        color: stats.cumBalance >= 0 ? 'var(--c-text-sec)' : '#FCA5A5',
+                      }}>
+                        {formatMoneySign(stats.cumBalance)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })
         }
       </div>
-
-      {/* Cumulative balance banner */}
-      {sections.banners && stats && (
-        <div style={{ marginBottom: 24 }}>
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(249,115,22,0.15), rgba(245,158,11,0.1))',
-            border: '1px solid rgba(249,115,22,0.2)', borderRadius: 16,
-            padding: '14px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          }}>
-            <span style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>Накопичений залишок (з початку)</span>
-            <span style={{ fontSize: 20, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
-              color: stats.cumBalance >= 0 ? '#FB923C' : '#EF4444' }}>
-              {formatMoneySign(stats.cumBalance)}
-            </span>
-          </div>
-        </div>
-      )}
 
       {/* Budget progress bars (month view only, when plans exist) */}
       {sections.budget && stats && period === 'month' && categoriesWithPlan.length > 0 && (
