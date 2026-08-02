@@ -1,0 +1,339 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-02T00:00:00.000Z",
+  "title": "Design System: Бюджет",
+  "extensions": {
+    "colorMeta": {
+      "sunset-orange": {
+        "role": "primary",
+        "displayName": "Sunset Orange",
+        "canonical": "#F97316",
+        "tonalRamp": ["#431407", "#7C2D12", "#9A3412", "#C2410C", "#EA580C", "#F97316", "#FB923C", "#FED7AA"]
+      },
+      "sunset-orange-deep": {
+        "role": "primary",
+        "displayName": "Sunset Orange Deep",
+        "canonical": "#EA580C",
+        "tonalRamp": ["#431407", "#7C2D12", "#9A3412", "#C2410C", "#EA580C", "#F97316", "#FB923C", "#FED7AA"]
+      },
+      "sunset-orange-light": {
+        "role": "primary",
+        "displayName": "Sunset Orange Light",
+        "canonical": "#FB923C",
+        "tonalRamp": ["#431407", "#7C2D12", "#9A3412", "#C2410C", "#EA580C", "#F97316", "#FB923C", "#FED7AA"]
+      },
+      "amber": {
+        "role": "primary",
+        "displayName": "Amber",
+        "canonical": "#F59E0B",
+        "tonalRamp": ["#451A03", "#78350F", "#92400E", "#B45309", "#D97706", "#F59E0B", "#FCD34D", "#FEF3C7"]
+      },
+      "amber-light": {
+        "role": "primary",
+        "displayName": "Amber Light",
+        "canonical": "#FCD34D",
+        "tonalRamp": ["#451A03", "#78350F", "#92400E", "#B45309", "#D97706", "#F59E0B", "#FCD34D", "#FEF3C7"]
+      },
+      "income-green": {
+        "role": "tertiary",
+        "displayName": "Income Green",
+        "canonical": "#22C55E",
+        "tonalRamp": ["#052E16", "#14532D", "#166534", "#15803D", "#16A34A", "#22C55E", "#4ADE80", "#BBF7D0"]
+      },
+      "income-green-light": {
+        "role": "tertiary",
+        "displayName": "Income Green Light",
+        "canonical": "#4ADE80",
+        "tonalRamp": ["#052E16", "#14532D", "#166534", "#15803D", "#16A34A", "#22C55E", "#4ADE80", "#BBF7D0"]
+      },
+      "expense-red": {
+        "role": "tertiary",
+        "displayName": "Expense Red",
+        "canonical": "#EF4444",
+        "tonalRamp": ["#450A0A", "#7F1D1D", "#991B1B", "#B91C1C", "#DC2626", "#EF4444", "#FCA5A5", "#FEE2E2"]
+      },
+      "expense-red-light": {
+        "role": "tertiary",
+        "displayName": "Expense Red Light",
+        "canonical": "#FCA5A5",
+        "tonalRamp": ["#450A0A", "#7F1D1D", "#991B1B", "#B91C1C", "#DC2626", "#EF4444", "#FCA5A5", "#FEE2E2"]
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "Void",
+        "canonical": "#0A0A0F",
+        "tonalRamp": ["#0A0A0F", "#12121A", "#1A1A25", "#2A2A3A", "#475569", "#64748B", "#CBD5E1", "#F1F5F9"]
+      },
+      "elevated": {
+        "role": "neutral",
+        "displayName": "Elevated Surface",
+        "canonical": "#12121A",
+        "tonalRamp": ["#0A0A0F", "#12121A", "#1A1A25", "#2A2A3A", "#475569", "#64748B", "#CBD5E1", "#F1F5F9"]
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Raised Surface",
+        "canonical": "#1A1A25",
+        "tonalRamp": ["#0A0A0F", "#12121A", "#1A1A25", "#2A2A3A", "#475569", "#64748B", "#CBD5E1", "#F1F5F9"]
+      },
+      "sidebar": {
+        "role": "neutral",
+        "displayName": "Sidebar Chrome",
+        "canonical": "#0D0D14",
+        "tonalRamp": ["#0A0A0F", "#0D0D14", "#12121A", "#1A1A25", "#2A2A3A", "#475569", "#64748B", "#CBD5E1"]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Primary Text",
+        "canonical": "#F1F5F9",
+        "tonalRamp": ["#0F172A", "#1E293B", "#334155", "#475569", "#64748B", "#94A3B8", "#CBD5E1", "#F1F5F9"]
+      },
+      "text-secondary": {
+        "role": "neutral",
+        "displayName": "Secondary Text",
+        "canonical": "#CBD5E1",
+        "tonalRamp": ["#0F172A", "#1E293B", "#334155", "#475569", "#64748B", "#94A3B8", "#CBD5E1", "#F1F5F9"]
+      },
+      "text-faint": {
+        "role": "neutral",
+        "displayName": "Faint Text",
+        "canonical": "#94A3B8",
+        "tonalRamp": ["#0F172A", "#1E293B", "#334155", "#475569", "#64748B", "#94A3B8", "#CBD5E1", "#F1F5F9"]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Muted Text",
+        "canonical": "#64748B",
+        "tonalRamp": ["#0F172A", "#1E293B", "#334155", "#475569", "#64748B", "#94A3B8", "#CBD5E1", "#F1F5F9"]
+      },
+      "text-subtle": {
+        "role": "neutral",
+        "displayName": "Subtle Text",
+        "canonical": "#475569",
+        "tonalRamp": ["#0F172A", "#1E293B", "#334155", "#475569", "#64748B", "#94A3B8", "#CBD5E1", "#F1F5F9"]
+      },
+      "bg-light": {
+        "role": "neutral",
+        "displayName": "Light Page",
+        "canonical": "#F0F4F8",
+        "tonalRamp": ["#0F172A", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0", "#F0F4F8", "#FFFFFF"]
+      },
+      "elevated-light": {
+        "role": "neutral",
+        "displayName": "Light Card",
+        "canonical": "#FFFFFF",
+        "tonalRamp": ["#0F172A", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0", "#F7F9FC", "#FFFFFF"]
+      },
+      "raised-light": {
+        "role": "neutral",
+        "displayName": "Light Raised",
+        "canonical": "#F7F9FC",
+        "tonalRamp": ["#0F172A", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0", "#F7F9FC", "#FFFFFF"]
+      },
+      "text-light": {
+        "role": "neutral",
+        "displayName": "Light Theme Text",
+        "canonical": "#0F172A",
+        "tonalRamp": ["#0F172A", "#1E293B", "#334155", "#475569", "#64748B", "#94A3B8", "#CBD5E1", "#F1F5F9"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Головна сума екрана — баланс періоду, підсумок stat-картки. Табличні цифри." },
+      "headline": { "displayName": "Headline", "purpose": "Заголовок сторінки, назва бренда, заголовок модалки." },
+      "body": { "displayName": "Body", "purpose": "Рядки транзакцій, поля вводу, навігація." },
+      "numeric": { "displayName": "Numeric", "purpose": "Суми в списках і легендах: вага Title плюс tabular-nums, щоб цифри стояли в колонку без моноширинного шрифту." },
+      "label": { "displayName": "Label", "purpose": "Підписи секцій і лейбли полів; єдине місце верхнього регістру з letter-spacing." },
+      "micro": { "displayName": "Micro", "purpose": "Мобільна навігація, бейджі, дельта-відсотки, легенди та осі графіків." }
+    },
+    "borders": [
+      { "name": "border", "value": "rgba(255,255,255,0.06)", "purpose": "Край поверхні за замовчуванням у темній темі (світла: rgba(0,0,0,0.07))." },
+      { "name": "border-mid", "value": "rgba(255,255,255,0.08)", "purpose": "Вкладені та підняті поверхні (світла: rgba(0,0,0,0.09))." },
+      { "name": "border-hi", "value": "rgba(255,255,255,0.1)", "purpose": "Поля вводу, тултіпи графіків, hover-стан карток (світла: rgba(0,0,0,0.12))." }
+    ],
+    "tints": [
+      { "name": "zone-wash", "value": "5%", "purpose": "Заливка цілої зони чи режиму — панель «додати шаблон» на rgba(249,115,22,0.05)." },
+      { "name": "state-tint", "value": "12–20%", "purpose": "Стан елемента: активний пункт, вибраний сегмент, тост. Завжди в парі зі світлішим варіантом того ж кольору для тексту." },
+      { "name": "data-tint", "value": "${color}20", "purpose": "Плитка іконки категорії, де колір приходить із бази даних (~12% того ж кольору)." }
+    ],
+    "shadows": [
+      { "name": "paper-lift", "value": "0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)", "purpose": "Картки у СВІТЛІЙ темі, де 1px бордер на білому не читається. У темній темі не застосовується." },
+      { "name": "floating-notice", "value": "0 4px 20px rgba(0,0,0,0.4)", "purpose": "Тости — єдина справді відірвана від потоку поверхня; в обох темах." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "0.15s", "purpose": "Hover/focus на кнопках, полях, пунктах навігації." },
+      { "name": "press", "value": "0.1s", "purpose": "Active-стиснення primary-кнопки (scale 0.98)." },
+      { "name": "surface", "value": "0.2s", "purpose": "Перемикання теми, зміна фону поверхонь, підйом stat-картки." },
+      { "name": "fade-in", "value": "fadeIn 0.25s ease both", "purpose": "Поява вмісту та тостів: opacity 0→1 із translateY(6px)→0." },
+      { "name": "pulse", "value": "pulse 1.5s infinite", "purpose": "Skeleton-стан завантаження: opacity 1 ↔ 0.45." },
+      { "name": "spin", "value": "spin 1s linear infinite", "purpose": "Індикатор синхронізації з банком." },
+      { "name": "toast-life", "value": "3200ms", "purpose": "Час життя тоста до автозникнення." }
+    ],
+    "breakpoints": [
+      { "name": "mobile", "value": "768px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Єдина суцільно-залита кнопка системи — одна головна дія на екран.",
+      "html": "<button class=\"ds-btn-primary\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M5 12h14M12 5v14\"/></svg>Додати</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 10px; background: #F97316; color: #fff; font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: background 0.15s, transform 0.1s; } .ds-btn-primary:hover { background: #EA580C; } .ds-btn-primary:focus-visible { outline: 2px solid #FB923C; outline-offset: 2px; } .ds-btn-primary:active { transform: scale(0.98); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Другорядна дія: прозорий фон, тонкий бордер, приглушений текст. Увімкнений стан бере оранжеву пару.",
+      "html": "<div style=\"display:flex;gap:8px\"><button class=\"ds-btn-ghost\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3\"/></svg>Експорт</button><button class=\"ds-btn-ghost ds-btn-ghost-on\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M5 12h14M12 5v14\"/></svg>Додати</button></div>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 8px; background: transparent; color: var(--c-text-muted, #64748B); font-family: Inter, system-ui, sans-serif; font-size: 13px; font-weight: 500; border: 1px solid var(--c-border-mid, rgba(255,255,255,0.08)); cursor: pointer; transition: all 0.15s; } .ds-btn-ghost:hover { background: var(--c-hover, rgba(255,255,255,0.05)); color: var(--c-text-sec, #CBD5E1); } .ds-btn-ghost:focus-visible { outline: 2px solid #F97316; outline-offset: 2px; } .ds-btn-ghost-on { background: rgba(249,115,22,0.15); color: #FB923C; border-color: transparent; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Поле вводу з UPPERCASE-лейблом; фокус змінює рівно одну властивість — колір бордера.",
+      "html": "<div class=\"ds-field\"><label class=\"ds-field-label\">Деталі</label><input class=\"ds-input-field\" type=\"text\" placeholder=\"Напр. Продукти\" /></div>",
+      "css": ".ds-field { font-family: Inter, system-ui, sans-serif; } .ds-field-label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--c-text-muted, #64748B); margin-bottom: 5px; } .ds-input-field { width: 100%; background: var(--c-raised, #1A1A25); border: 1px solid var(--c-border-hi, rgba(255,255,255,0.1)); border-radius: 10px; padding: 10px 14px; font-family: inherit; font-size: 14px; color: var(--c-text, #F1F5F9); outline: none; transition: border-color 0.15s, background 0.2s; } .ds-input-field::placeholder { color: var(--c-text-sub, #475569); } .ds-input-field:focus { border-color: #F97316; }"
+    },
+    {
+      "name": "Stat Card",
+      "kind": "card",
+      "refersTo": "stat-card",
+      "description": "Плитка головного показника — єдиний градієнт системи поза логотипом; hover піднімає на 1px.",
+      "html": "<div class=\"ds-stat-card\"><div class=\"ds-stat-label\">Витрати</div><div class=\"ds-stat-value\">12 480 kr</div></div>",
+      "css": ".ds-stat-card { background: linear-gradient(135deg, var(--c-elevated, #12121A) 0%, var(--c-raised, #1A1A25) 100%); border: 1px solid var(--c-border-mid, rgba(255,255,255,0.08)); border-radius: 20px; padding: 24px; font-family: Inter, system-ui, sans-serif; transition: border-color 0.2s, transform 0.2s, background 0.2s; } .ds-stat-card:hover { border-color: var(--c-border-hi, rgba(255,255,255,0.1)); transform: translateY(-1px); } .ds-stat-label { font-size: 13px; font-weight: 500; color: var(--c-text-muted, #64748B); margin-bottom: 10px; } .ds-stat-value { font-size: 28px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; color: var(--c-text, #F1F5F9); }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Базовий контейнер: плоска поверхня, глибина через 1px бордер.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-title\">Останні транзакції</div><div class=\"ds-card-body\">Продукти — 340 kr</div></div>",
+      "css": ".ds-card { background: var(--c-elevated, #12121A); border: 1px solid var(--c-border, rgba(255,255,255,0.06)); border-radius: 16px; padding: 20px; font-family: Inter, system-ui, sans-serif; } .ds-card-title { font-size: 14px; font-weight: 600; color: var(--c-text, #F1F5F9); margin-bottom: 12px; } .ds-card-body { font-size: 14px; color: var(--c-text-sec, #CBD5E1); }"
+    },
+    {
+      "name": "Nav Link",
+      "kind": "nav",
+      "refersTo": "nav-link",
+      "description": "Пункт навігації; активний стан — оранжева тінтована підкладка плюс світлий оранжевий текст.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-link ds-nav-link-active\" href=\"#\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"9\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"5\"/><rect x=\"14\" y=\"12\" width=\"7\" height=\"9\"/><rect x=\"3\" y=\"16\" width=\"7\" height=\"5\"/></svg>Головна</a><a class=\"ds-nav-link\" href=\"#\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M8 3 4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4\"/></svg>Транзакції</a></nav>",
+      "css": ".ds-nav { display: flex; flex-direction: column; gap: 2px; } .ds-nav-link { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 10px; font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 500; color: var(--c-text-muted, #64748B); transition: all 0.15s; text-decoration: none; cursor: pointer; white-space: nowrap; } .ds-nav-link:hover { background: var(--c-hover, rgba(255,255,255,0.05)); color: var(--c-text-sec, #CBD5E1); } .ds-nav-link-active { background: rgba(249,115,22,0.15); color: #FB923C; }"
+    },
+    {
+      "name": "Semantic Badge",
+      "kind": "chip",
+      "refersTo": "badge-income",
+      "description": "Трійка фінансових бейджів — підкладка 15% плюс світлий текст того ж кольору.",
+      "html": "<div class=\"ds-badge-row\"><span class=\"ds-badge ds-badge-income\">Дохід</span><span class=\"ds-badge ds-badge-expense\">Витрата</span><span class=\"ds-badge ds-badge-savings\">Заощадження</span></div>",
+      "css": ".ds-badge-row { display: flex; gap: 8px; } .ds-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px; font-family: Inter, system-ui, sans-serif; font-size: 12px; font-weight: 600; } .ds-badge-income { background: rgba(34,197,94,0.15); color: #4ADE80; } .ds-badge-expense { background: rgba(239,68,68,0.15); color: #FCA5A5; } .ds-badge-savings { background: rgba(245,158,11,0.15); color: #FCD34D; }"
+    },
+    {
+      "name": "Segmented Toggle",
+      "kind": "custom",
+      "refersTo": "button-ghost",
+      "description": "Вибір типу транзакції: рівні сегменти, вибраний бере тінтовану пару свого семантичного кольору.",
+      "html": "<div class=\"ds-segmented\"><button class=\"ds-seg ds-seg-income-on\">Дохід</button><button class=\"ds-seg\">Витрата</button><button class=\"ds-seg\">Заощадження</button></div>",
+      "css": ".ds-segmented { display: flex; gap: 6px; } .ds-seg { flex: 1; padding: 8px 4px; border-radius: 8px; border: none; cursor: pointer; font-family: Inter, system-ui, sans-serif; font-size: 13px; font-weight: 600; transition: all 0.15s; background: rgba(255,255,255,0.04); color: #64748B; } .ds-seg:hover { background: rgba(255,255,255,0.07); } .ds-seg:focus-visible { outline: 2px solid #F97316; outline-offset: 2px; } .ds-seg-income-on { background: rgba(34,197,94,0.2); color: #4ADE80; }"
+    },
+    {
+      "name": "Category Icon Tile",
+      "kind": "custom",
+      "refersTo": "category-tile",
+      "description": "Іконка категорії на плитці 36px: фон — той самий колір категорії на ~12% (data-tint), іконка — повним кольором.",
+      "html": "<div class=\"ds-cat-row\"><div class=\"ds-cat-tile\" style=\"background:#22C55E20\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#22C55E\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M3 6h18l-2 13H5L3 6zM8 6V4a4 4 0 0 1 8 0v2\"/></svg></div><div class=\"ds-cat-tile\" style=\"background:#A78BFA20\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#A78BFA\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/></svg></div><div class=\"ds-cat-tile\" style=\"background:#F9731620\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#F97316\" stroke-width=\"2\" stroke-linecap=\"round\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v10M9 10h6M9 14h6\"/></svg></div></div>",
+      "css": ".ds-cat-row { display: flex; gap: 10px; } .ds-cat-tile { width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }"
+    },
+    {
+      "name": "Chart Chrome",
+      "kind": "custom",
+      "refersTo": "chart-tooltip",
+      "description": "Власний хром графіків: тултіп на --c-raised плюс рядок легенди з маркером, назвою, табличною сумою та відсотковою пігулкою.",
+      "html": "<div class=\"ds-chart-chrome\"><div class=\"ds-tooltip\"><p class=\"ds-tooltip-title\">Березень</p><div class=\"ds-tooltip-row\"><span style=\"color:#22C55E\">Дохід</span><span class=\"ds-tooltip-val\">48 200 kr</span></div><div class=\"ds-tooltip-row\"><span style=\"color:#EF4444\">Витрати</span><span class=\"ds-tooltip-val\">31 940 kr</span></div></div><div class=\"ds-legend\"><div class=\"ds-legend-row\"><span class=\"ds-legend-swatch\" style=\"background:#EF4444\"></span><span class=\"ds-legend-name\">Продукти</span><span class=\"ds-legend-amount\">8 340 kr</span><span class=\"ds-legend-pct\">26%</span></div><div class=\"ds-legend-row\"><span class=\"ds-legend-swatch\" style=\"background:#06B6D4\"></span><span class=\"ds-legend-name\">Транспорт</span><span class=\"ds-legend-amount\">2 110 kr</span><span class=\"ds-legend-pct\">7%</span></div></div></div>",
+      "css": ".ds-chart-chrome { display: flex; flex-direction: column; gap: 16px; font-family: Inter, system-ui, sans-serif; } .ds-tooltip { align-self: flex-start; background: var(--c-raised, #1A1A25); border: 1px solid var(--c-border-hi, rgba(255,255,255,0.1)); border-radius: 10px; padding: 10px 14px; font-size: 13px; min-width: 160px; } .ds-tooltip-title { color: #94A3B8; font-weight: 600; margin: 0 0 8px; } .ds-tooltip-row { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 4px; } .ds-tooltip-val { color: var(--c-text, #F1F5F9); font-weight: 500; font-variant-numeric: tabular-nums; } .ds-legend { display: flex; flex-direction: column; gap: 5px; } .ds-legend-row { display: flex; align-items: center; gap: 8px; min-width: 0; } .ds-legend-swatch { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; } .ds-legend-name { flex: 1; font-size: 12px; color: var(--c-text-sec, #CBD5E1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-legend-amount { font-size: 12px; color: #64748B; font-variant-numeric: tabular-nums; flex-shrink: 0; } .ds-legend-pct { font-size: 11px; font-weight: 700; flex-shrink: 0; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,0.06); color: #94A3B8; min-width: 34px; text-align: center; }"
+    },
+    {
+      "name": "Toast",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Єдина справді плаваюча поверхня: тінь, blur і кольорова пара за типом повідомлення.",
+      "html": "<div class=\"ds-toast ds-toast-info\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 16v-4M12 8h.01\"/></svg><span>Синхронізовано 4 транзакції</span><button class=\"ds-toast-action\">Скасувати</button></div>",
+      "css": ".ds-toast { display: inline-flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; font-family: Inter, system-ui, sans-serif; font-size: 13px; font-weight: 500; max-width: 320px; backdrop-filter: blur(8px); box-shadow: 0 4px 20px rgba(0,0,0,0.4); } .ds-toast-info { background: rgba(249,115,22,0.12); border: 1px solid rgba(249,115,22,0.3); color: #FB923C; } .ds-toast-action { background: none; border: 1px solid rgba(249,115,22,0.3); cursor: pointer; color: inherit; padding: 2px 8px; border-radius: 6px; font-family: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; } .ds-toast-action:hover { background: rgba(249,115,22,0.12); }"
+    },
+    {
+      "name": "Modal Header",
+      "kind": "custom",
+      "refersTo": "modal-panel",
+      "description": "Шапка модалки: оранжева іконка-маркер, заголовок 16/700, дії справа та ненав'язливий X.",
+      "html": "<div class=\"ds-modal\"><div class=\"ds-modal-head\"><div class=\"ds-modal-title\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#F97316\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M21 12a9 9 0 1 1-3-6.7L21 8\"/><path d=\"M21 3v5h-5\"/></svg><span>Шаблони на цей місяць</span></div><button class=\"ds-modal-close\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M18 6 6 18M6 6l12 12\"/></svg></button></div><div class=\"ds-modal-wash\">Панель режиму «додати» — 5% оранжева заливка</div></div>",
+      "css": ".ds-modal { background: var(--c-raised, #1A1A25); border: 1px solid var(--c-border, rgba(255,255,255,0.06)); border-radius: 16px; max-width: 500px; overflow: hidden; font-family: Inter, system-ui, sans-serif; } .ds-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px 16px; border-bottom: 1px solid var(--c-border, rgba(255,255,255,0.06)); } .ds-modal-title { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; color: var(--c-text, #F1F5F9); } .ds-modal-close { background: none; border: none; cursor: pointer; color: var(--c-text-muted, #64748B); padding: 4px; display: flex; } .ds-modal-close:hover { color: var(--c-text-sec, #CBD5E1); } .ds-modal-wash { padding: 16px 24px; background: rgba(249,115,22,0.05); border-bottom: 1px solid var(--c-border, rgba(255,255,255,0.06)); font-size: 13px; color: var(--c-text-sec, #CBD5E1); }"
+    },
+    {
+      "name": "Brand Mark",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Логотип: плитка 34px з єдиним градієнтом бренда та білою іконкою гаманця.",
+      "html": "<div class=\"ds-brand\"><div class=\"ds-brand-tile\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#fff\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-3a2 2 0 0 1 0-4h4\"/><path d=\"M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4\"/></svg></div><span class=\"ds-brand-name\">Бюджет</span></div>",
+      "css": ".ds-brand { display: flex; align-items: center; gap: 10px; font-family: Inter, system-ui, sans-serif; } .ds-brand-tile { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, #F97316, #F59E0B); display: flex; align-items: center; justify-content: center; } .ds-brand-name { font-weight: 700; font-size: 16px; color: var(--c-text, #F1F5F9); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Домашнє вогнище",
+    "overview": "Це темна за замовчуванням поверхня, у якій один теплий оранжево-амбровий колір грає роль спільного вогнища родини. Фон — near-black із холодним синім підтоном (#0A0A0F), поверхні піднімаються ледь помітними сходинками (#12121A → #1A1A25), і в цій прохолодній темряві єдине джерело тепла — Sunset Orange. Він означає рівно дві речі: «тут щось активне» (поточна сторінка, фокус на полі) і «оце головна дія». Кімната навколо вогнища навмисно тьмяна — саме тому маленька тепла пляма читається миттєво.\n\nХарактер компонентів — тихий і точний. Кнопка не підстрибує, картка не відкидає тінь, поле вводу на фокусі змінює рівно одну властивість — колір бордера. Кожен елемент реагує м'яко, але однозначно: це прилад на панелі керування, а не інтерфейс, що просить уваги. Щільність теж прикладна, не маркетингова — це інструмент, у який заходять на дві хвилини ввечері перевірити, куди пішли гроші. Інформація йде щільними рядами, картки притиснуті одна до одної в сітці, типографіка тримається однієї гарнітури (Inter) і працює вагою й розміром, а не контрастом шрифтів.\n\nВажку роботу зчитування виконує не бренд, а семантика: зелений/червоний/амбер для доходу/витрати/заощадження. Оскільки колір тут — це значення, декоративного кольору система собі не дозволяє взагалі. Єдина по-справжньому експресивна річ — амбієнтне поле частинок за вмістом: повільні оранжеві точки й орби, що з'єднуються тонкими лініями сузір'їв і розбігаються від курсора. Воно ніколи не змагається з даними (opacity 0.9, zIndex 0, pointer-events: none), але саме воно перетворює темний прямокутник на кімнату з ватрою.",
+    "keyCharacteristics": [
+      "Темна тема — база, світла — повноцінне дзеркало через один атрибут data-theme",
+      "Один акцентний колір (Sunset Orange), використаний рідко й тільки за призначенням",
+      "Семантична трійця income/expense/savings несе основне навантаження зчитування",
+      "Плоскі поверхні: глибина через 1px бордер і тонові сходинки, не через тінь",
+      "Одна гарнітура (Inter) + табличні цифри замість моноширинного шрифту",
+      "Щедрі радіуси (4–20px), що ростуть разом із важливістю блока",
+      "Тихі, точні реакції: один піксель підйому, одна змінена властивість",
+      "Амбієнтне поле частинок як фірмовий фон"
+    ],
+    "rules": [
+      { "name": "The One Fire Rule", "body": "Sunset Orange займає ≤5% площі будь-якого екрана. Він означає рівно дві речі: «ти тут» (активна навігація, фокус) і «головна дія» (єдина primary-кнопка на екрані). Друга оранжева кнопка на екрані — помилка, а не наголос.", "section": "colors" },
+      { "name": "The Semantic-Only Color Rule", "body": "Зелений, червоний і амбер ніколи не використовуються декоративно. Якщо елемент зелений — він про дохід. Немає «зеленої кнопки успіху», є «сума доходу».", "section": "colors" },
+      { "name": "The Three-Tier Tint Rule", "body": "Кольоровий фон завжди прозорий і має рівно три сходинки за призначенням: 5% — фонова заливка цілої зони чи режиму; 12–20% — стан елемента, обов'язково в парі зі світлішим варіантом того ж кольору для тексту; ${color}20 (~12%) — плитка іконки категорії, де колір приходить із даних. Суцільна насичена заливка з білим текстом існує рівно в одному місці — primary-кнопка.", "section": "colors" },
+      { "name": "The Weight-Not-Face Rule", "body": "Ієрархія будується вагою й розміром у межах Inter. Друга гарнітура не додається — ні для заголовків, ні для чисел.", "section": "typography" },
+      { "name": "The Tabular Numbers Rule", "body": "Будь-яка сума в колонці, легенді чи списку набирається font-variant-numeric: tabular-nums. Це заміна моноширинного шрифту: цифри вирівнюються, гарнітура лишається одна.", "section": "typography" },
+      { "name": "The Uppercase-Once Rule", "body": "Верхній регістр із letter-spacing зарезервований за 11px-підписами секцій і лейблами полів. Кнопки, заголовки й навігація — завжди звичайний регістр.", "section": "typography" },
+      { "name": "The One Breakpoint Rule", "body": "Є рівно один брейкпойнт — 768px. Якщо розкладка потребує проміжного стану, спочатку спрощується розкладка, а не додається брейкпойнт.", "section": "layout" },
+      { "name": "The Swap-Don't-Squeeze Rule", "body": "На мобільному складні рядки й розкладки підміняються окремою мобільною розміткою, а не масштабуються вниз.", "section": "layout" },
+      { "name": "The Reserved Height Rule", "body": "Блок, що чекає даних, тримає свою фінальну висоту з першого кадру: графіки мають фіксовану висоту (220 / 260 / 280px) і в порожньому стані, skeleton повторює силует stat-картки. Контент ніколи не стрибає після завантаження.", "section": "layout" },
+      { "name": "The Border-First Rule", "body": "Глибина — це бордер і тон фону. Тінь додається лише тоді, коли бордер фізично не читається (світла тема) або елемент справді відірваний від потоку (тост).", "section": "elevation" },
+      { "name": "The One-Pixel Lift Rule", "body": "Реакція поверхні на hover — це translateY(-1px) плюс перехід бордера на наступний ступінь прозорості (0.08 → 0.1). Не масштаб, не тінь, не зміна кольору.", "section": "elevation" },
+      { "name": "The Radius-Follows-Weight Rule", "body": "Радіус пропорційний вазі елемента в ієрархії. Дрібний елемент із великим радіусом виглядає як помилка масштабу, а не як м'якість.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do використовувати Sunset Orange (#F97316) тільки для активного стану, фокуса й єдиної головної дії на екрані (The One Fire Rule).",
+      "Do брати колір із семантичної трійці лише за змістом: зелений = дохід, червоний = витрата, амбер = заощадження (The Semantic-Only Color Rule).",
+      "Do тримати кольоровий фон на одній із трьох сходинок прозорості: 5% — зона/режим, 12–20% — стан елемента, ${color}20 — дані-колір (The Three-Tier Tint Rule).",
+      "Do набирати будь-яку суму в колонці чи легенді табличними цифрами (The Tabular Numbers Rule).",
+      "Do передавати глибину бордером rgba(255,255,255,0.06–0.1) і тоновою сходинкою фону; тінь — лише у світлій темі та для тостів (The Border-First Rule).",
+      "Do тримати всю типографіку в Inter і будувати ієрархію вагою 400/500/600/700 (The Weight-Not-Face Rule).",
+      "Do масштабувати радіус разом із вагою блока: 4 → 6 → 8 → 10 → 12 → 16 → 20px (The Radius-Follows-Weight Rule).",
+      "Do резервувати фінальну висоту блока до приходу даних — фіксована висота графіка, skeleton у формі результату (The Reserved Height Rule).",
+      "Do називати наступну дію в порожньому стані, а не лише констатувати порожнечу.",
+      "Do підміняти складні розкладки окремою мобільною розміткою на 768px, а не стискати десктопну (The Swap-Don't-Squeeze Rule).",
+      "Do задавати висоту модалки у % від фіксованого оверлея, а не у vh — на мобільному Chrome vh більший за видиму область.",
+      "Do стилізувати весь хром графіків самостійно: власний тултіп на --c-raised, осі без ліній, підписи #475569.",
+      "Do брендувати нативні контролі мінімальним втручанням (accent-color) замість власних компонентів чекбокса чи радіо.",
+      "Do зберігати повний паритет темної та світлої тем: будь-яка нова поверхня описується через токени --c-*, а не через хардкоджений хекс нейтралі."
+    ],
+    "donts": [
+      "Don't ставити дві primary-кнопки на один екран.",
+      "Don't використовувати зелений, червоний чи амбер декоративно — поза фінансовою семантикою.",
+      "Don't додавати тіні в темній темі: на #0A0A0F вони не читаються й лише розмивають край.",
+      "Don't вводити другу гарнітуру, зокрема моноширинну для чисел — для цього є tabular-nums.",
+      "Don't додавати нові брейкпойнти — є рівно один, 768px.",
+      "Don't розширювати бренд-палітру 12-кольоровою категорійною палітрою: вона існує лише для розрізнення категорій.",
+      "Don't реагувати на hover масштабом або тінню — тільки translateY(-1px) і наступний ступінь прозорості бордера.",
+      "Don't лишати дефолтні тултіпи, легенди чи осі Recharts — вони приносять власну світлу тему й чужий радіус.",
+      "Don't ставити коло там, де система вживає заокруглений квадрат: коло зарезервоване за донатом, частинками й маркером категорії в списку.",
+      "Don't замінювати поле частинок власним декоративним фоном на нових повноекранних поверхнях.",
+      "Don't хардкодити нейтральні кольори повз токени --c-*: це миттєво ламає світлу тему.",
+      "Don't показувати спіннер там, де підходить skeleton у формі майбутнього вмісту."
+    ]
+  }
+}
