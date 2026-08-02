@@ -44,7 +44,21 @@ function pctChange(current: number, prev: number): number | null {
 
 function DeltaBadge({ current, prev, invertGood = false }: { current: number; prev: number; invertGood?: boolean }) {
   const pct = pctChange(current, prev);
-  if (pct === null || Math.abs(pct) < 1) return null;
+  if (pct === null) return null;
+  // A near-zero change rendered nothing at all here before — reading as
+  // "no data" rather than "stable", the opposite of reassuring for someone
+  // specifically checking that nothing's wrong (critique 2026-08-02, Riley).
+  if (Math.abs(pct) < 1) {
+    return (
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: 2,
+        fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20,
+        background: 'var(--c-hover)', color: 'var(--c-text-muted)',
+      }}>
+        Стабільно
+      </span>
+    );
+  }
   const up = pct > 0;
   const good = invertGood ? !up : up;
   return (
@@ -328,7 +342,7 @@ export default function Dashboard() {
           >
             <Download size={15} /> <span className="hide-on-xs">Експорт</span>
           </a>
-          <button className="btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>
+          <button className="btn-primary" onClick={() => { setEditing(null); setShowForm(true); }} title="Додати (Alt+N)">
             <Plus size={16} /> Додати
           </button>
         </div>
@@ -516,6 +530,7 @@ export default function Dashboard() {
         <div className="card" style={{ marginBottom: 24, overflow: 'hidden' }}>
           <button
             onClick={() => setUserSectionOpen(v => !v)}
+            aria-expanded={userSectionOpen}
             style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 8,
               padding: 24, background: 'none', border: 'none', cursor: 'pointer',
