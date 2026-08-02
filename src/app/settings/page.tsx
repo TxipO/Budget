@@ -592,7 +592,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div style={{ maxWidth: 700 }}>
+    <div style={{ maxWidth: 900 }}>
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Налаштування</h1>
         <p style={{ color: '#475569', fontSize: 14 }}>Категорії та імпорт даних</p>
