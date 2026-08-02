@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import { Plus, Search, Trash2, Pencil, ChevronLeft, ChevronRight, Download, RefreshCw, Globe, AlertTriangle, Landmark, EyeOff } from 'lucide-react';
-import { MONTH_NAMES, TYPE_LABELS } from '@/lib/utils';
+import { MONTH_NAMES, TYPE_LABELS, BANK_SYNC_COLOR } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
 import CategoryIcon from '@/components/CategoryIcon';
@@ -443,7 +443,7 @@ export default function TransactionsPage() {
                     {tx.category.name}
                     {tx.recurringTemplateId && <span title="Recurring" style={{ display: 'flex' }}><RefreshCw size={11} color="#F97316" /></span>}
                     {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є шаблонна/імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex' }}><AlertTriangle size={11} color="#FBBF24" /></span>}
-                    {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex' }}><Landmark size={11} color="#38BDF8" /></span>}
+                    {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex' }}><Landmark size={11} color={BANK_SYNC_COLOR} /></span>}
                     {tx.isTransfer && <span title="Не рахується в загальному балансі" style={{ display: 'flex' }}><EyeOff size={11} color="#64748B" /></span>}
                   </div>
                   {tx.details && (
@@ -490,7 +490,7 @@ export default function TransactionsPage() {
                   {tx.category.name}
                   {tx.recurringTemplateId && <span title="Recurring" style={{ display: 'flex', flexShrink: 0 }}><RefreshCw size={10} color="#F97316" /></span>}
                   {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є шаблонна/імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex', flexShrink: 0 }}><AlertTriangle size={10} color="#FBBF24" /></span>}
-                  {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex', flexShrink: 0 }}><Landmark size={10} color="#38BDF8" /></span>}
+                  {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex', flexShrink: 0 }}><Landmark size={10} color={BANK_SYNC_COLOR} /></span>}
                   {tx.isTransfer && <span title="Не рахується в загальному балансі" style={{ display: 'flex', flexShrink: 0 }}><EyeOff size={10} color="#64748B" /></span>}
                 </div>
                 <div style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

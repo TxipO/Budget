@@ -135,6 +135,12 @@
         "displayName": "Light Theme Text",
         "canonical": "#0F172A",
         "tonalRamp": ["#0F172A", "#1E293B", "#334155", "#475569", "#64748B", "#94A3B8", "#CBD5E1", "#F1F5F9"]
+      },
+      "bank-sync-indicator": {
+        "role": "tertiary",
+        "displayName": "Bank Sync Indicator (Sky Blue)",
+        "canonical": "#38BDF8",
+        "tonalRamp": ["#0C4A6E", "#075985", "#0369A1", "#0284C7", "#0EA5E9", "#38BDF8", "#7DD3FC", "#E0F2FE"]
       }
     },
     "typographyMeta": {

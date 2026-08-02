@@ -38,6 +38,11 @@ export const CATEGORY_PALETTE = [
   '#3B82F6', '#8B5CF6',
 ];
 
+// Provenance marker, not a category color: the small Landmark icon next to a
+// transaction that was auto-imported from a bank. One documented constant
+// instead of the same literal repeated at every call site.
+export const BANK_SYNC_COLOR = '#38BDF8';
+
 export type Period = 'month' | 'quarter' | '6m' | 'year' | 'all';
 
 export const PERIOD_LABELS: Record<Period, string> = {
