@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, Landmark, EyeOff } from 'lucide-react';
-import { MONTH_NAMES, TYPE_COLORS, type Period, PERIOD_LABELS } from '@/lib/utils';
+import { MONTH_NAMES, TYPE_COLORS, CATEGORY_PALETTE, type Period, PERIOD_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
 import RecurringModal from '@/components/RecurringModal';
@@ -31,7 +31,11 @@ interface Stats {
 }
 
 const PERIODS: Period[] = ['month', 'quarter', '6m', 'year', 'all'];
-const USER_COLORS = ['#F97316', '#3B82F6', '#A855F7', '#14B8A6'];
+// Household member avatar colors — drawn from the documented category
+// palette instead of a bespoke set, and picked to skip the shades this page
+// already uses semantically (red/green/orange/amber = expense/income/brand/
+// savings): blue, purple, teal, pink.
+const USER_COLORS = [CATEGORY_PALETTE[10], CATEGORY_PALETTE[11], CATEGORY_PALETTE[7], CATEGORY_PALETTE[6]];
 
 function pctChange(current: number, prev: number): number | null {
   if (prev === 0) return null;
@@ -386,7 +390,7 @@ export default function Dashboard() {
               return (
                 <div key={c.label} className="stat-card">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                    <span style={{ fontSize: 13, color: '#64748B', fontWeight: 600 }}>{c.label}</span>
+                    <span style={{ fontSize: 13, color: 'var(--c-text-muted)', fontWeight: 600 }}>{c.label}</span>
                     <div style={{ background: c.bg, borderRadius: 9, padding: 8 }}>
                       <c.icon size={16} color={cardColor} />
                     </div>
@@ -444,7 +448,7 @@ export default function Dashboard() {
                       <CategoryIcon name={cat.icon} color={cat.color} size={14} />
                       <span style={{ fontSize: 13, color: 'var(--c-text-sec)', fontWeight: 500 }}>{cat.name}</span>
                     </div>
-                    <span style={{ fontSize: 12, color: over ? '#FCA5A5' : '#64748B', fontVariantNumeric: 'tabular-nums' }}>
+                    <span style={{ fontSize: 12, color: over ? '#FCA5A5' : 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatMoney(cat.amount)} / {formatMoney(cat.planned)}
                     </span>
                   </div>
@@ -508,6 +512,10 @@ export default function Dashboard() {
           {userSectionOpen && (
             <div style={{ padding: '0 24px 24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
               {stats.byUser.map((u, i) => {
+                // Literal, not var(--c-text-muted): this value feeds a
+                // `${uColor}22` hex-alpha concat below, which a CSS var
+                // reference can't do — safe to hardcode here specifically
+                // because --c-text-muted is #64748B in both themes.
                 const uColor = u.name === 'Спільні' ? '#64748B' : USER_COLORS[i % USER_COLORS.length];
                 const flow = u.income + u.expenses + u.savings;
                 const incPct = flow > 0 ? (u.income   / flow) * 100 : 0;
@@ -562,7 +570,7 @@ export default function Dashboard() {
           <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4 }}>
             Очікують підтвердження
           </h3>
-          <p style={{ fontSize: 12, color: '#64748B', marginBottom: 16 }}>
+          <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginBottom: 16 }}>
             Банк ще не підтвердив ці покупки — не входять у підсумки, з'являться автоматично після підтвердження.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -587,7 +595,7 @@ export default function Dashboard() {
           Останні транзакції
         </h3>
         {stats?.recent.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#475569', padding: '32px 0', fontSize: 14 }}>
+          <div style={{ textAlign: 'center', color: 'var(--c-text-sub)', padding: '32px 0', fontSize: 14 }}>
             Немає транзакцій за цей період
           </div>
         )}
@@ -613,9 +621,9 @@ export default function Dashboard() {
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', display: 'flex', alignItems: 'center', gap: 5 }}>
                 {tx.category.name}
                 {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex' }}><Landmark size={11} color="#38BDF8" /></span>}
-                {tx.isTransfer && <span title="Не рахується в загальному балансі" style={{ display: 'flex' }}><EyeOff size={11} color="#64748B" /></span>}
+                {tx.isTransfer && <span title="Не рахується в загальному балансі" style={{ display: 'flex' }}><EyeOff size={11} color="var(--c-text-muted)" /></span>}
               </div>
-              <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: 'var(--c-text-sub)', marginTop: 2 }}>
                 {new Date(tx.date).toLocaleDateString('uk-UA')}
                 {tx.details && tx.details !== '[імпорт]' && ` · ${tx.details}`}
                 {tx.user && ` · ${tx.user.name}`}
@@ -623,7 +631,7 @@ export default function Dashboard() {
             </div>
             <span style={{
               fontSize: 15, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-              color: tx.isTransfer ? '#64748B'
+              color: tx.isTransfer ? 'var(--c-text-muted)'
                    : tx.category.type === 'income' || (tx.category.type === 'savings' && tx.savingsWithdrawal) ? '#4ADE80'
                    : tx.category.type === 'expense' ? '#FCA5A5' : '#FCD34D',
             }}>
