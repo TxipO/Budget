@@ -25,9 +25,16 @@ export default function TransactionsPage() {
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [typeFilter, setTypeFilter] = useState('');
+  const [userFilter, setUserFilter] = useState('');
+  // Two independent checkboxes, not a single toggle — lets "тільки банк" and
+  // "тільки вручну" both be expressed (uncheck the other one), not just
+  // "auto-imported or everything". Default both on = no filtering.
+  const [showBank, setShowBank] = useState(true);
+  const [showManual, setShowManual] = useState(true);
   const [search, setSearch] = useState('');
   const [globalSearch, setGlobalSearch] = useState(false);
   const [txs, setTxs] = useState<Tx[]>([]);
+  const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Tx | null>(null);
   const [showExport, setShowExport] = useState(false);
@@ -47,7 +54,11 @@ export default function TransactionsPage() {
 
   useEffect(() => { load(); }, [year, month, typeFilter, globalSearch]);
 
-  useEffect(() => { setPage(1); }, [year, month, typeFilter, search, globalSearch]);
+  useEffect(() => {
+    fetch('/api/users').then(r => r.ok ? r.json() : Promise.reject()).then(setUsers).catch(() => {});
+  }, []);
+
+  useEffect(() => { setPage(1); }, [year, month, typeFilter, userFilter, showBank, showManual, search, globalSearch]);
 
   // Cleanup pending delete timers on unmount
   useEffect(() => {
@@ -175,12 +186,16 @@ export default function TransactionsPage() {
     }
   }
 
-  const filtered = txs.filter(tx =>
-    !search ||
-    tx.category.name.toLowerCase().includes(search.toLowerCase()) ||
-    (tx.details ?? '').toLowerCase().includes(search.toLowerCase()) ||
-    String(tx.amount).includes(search.replace(/\s/g, ''))
-  );
+  const filtered = txs.filter(tx => {
+    const matchesSearch = !search ||
+      tx.category.name.toLowerCase().includes(search.toLowerCase()) ||
+      (tx.details ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(tx.amount).includes(search.replace(/\s/g, ''));
+    const matchesUser = !userFilter || tx.user?.id === Number(userFilter);
+    const isBankSourced = tx.source === 'mono' || tx.source === 'sparebank';
+    const matchesSource = isBankSourced ? showBank : showManual;
+    return matchesSearch && matchesUser && matchesSource;
+  });
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -319,6 +334,35 @@ export default function TransactionsPage() {
               {label}
             </button>
           ))}
+        </div>
+        {users.length > 0 && (
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[['', 'Всі'], ...users.map(u => [String(u.id), u.name])].map(([val, label]) => (
+              <button
+                key={val}
+                onClick={() => setUserFilter(val)}
+                className="btn-ghost"
+                style={{
+                  background: userFilter === val ? 'rgba(249,115,22,0.2)' : undefined,
+                  color: userFilter === val ? '#FB923C' : undefined,
+                  borderColor: userFilter === val ? 'rgba(249,115,22,0.3)' : undefined,
+                  fontSize: 13,
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '0 4px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--c-text-sec)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={showBank} onChange={e => setShowBank(e.target.checked)} />
+            Банк
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--c-text-sec)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={showManual} onChange={e => setShowManual(e.target.checked)} />
+            Вручну
+          </label>
         </div>
       </div>
 
