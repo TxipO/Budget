@@ -50,7 +50,7 @@ export default function LockPage() {
       <form onSubmit={submit} style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18,
         background: 'var(--c-sidebar)', border: '1px solid var(--c-border)',
-        borderRadius: 20, padding: '40px 36px', width: 320,
+        borderRadius: 20, padding: '40px 36px', width: 320, maxWidth: '100%',
       }}>
         <div style={{
           width: 52, height: 52, borderRadius: 16,

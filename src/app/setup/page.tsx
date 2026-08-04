@@ -33,7 +33,7 @@ export default function SetupPage() {
   const cardStyle: React.CSSProperties = {
     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18,
     background: 'var(--c-sidebar)', border: '1px solid var(--c-border)',
-    borderRadius: 20, padding: '40px 36px', width: 340,
+    borderRadius: 20, padding: '40px 36px', width: 340, maxWidth: '100%',
   };
 
   return (
