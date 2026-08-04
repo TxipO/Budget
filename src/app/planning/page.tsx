@@ -235,7 +235,7 @@ export default function PlanningPage() {
                                     onClick={commitEdit}
                                     style={{
                                       flex: 1, padding: '5px 0', borderRadius: 6, border: 'none',
-                                      background: '#F97316', color: 'white', fontSize: 12, fontWeight: 600,
+                                      background: 'var(--c-accent-fill)', color: 'white', fontSize: 12, fontWeight: 600,
                                       cursor: 'pointer', fontFamily: 'inherit',
                                     }}
                                   >Зберегти</button>
@@ -278,7 +278,7 @@ export default function PlanningPage() {
                                 </span>
                               )}
                               {!hasData && (
-                                <span style={{ fontSize: 10, color: '#2D3748' }}>—</span>
+                                <span style={{ fontSize: 10, color: 'var(--c-text-sub)' }}>—</span>
                               )}
                               {notes && (
                                 <MessageSquare
@@ -318,7 +318,7 @@ export default function PlanningPage() {
                           {Math.round(tot.actual / 1000)}к
                         </span>
                       ) : (
-                        <span style={{ fontSize: 11, color: '#2D3748' }}>—</span>
+                        <span style={{ fontSize: 11, color: 'var(--c-text-sub)' }}>—</span>
                       )}
                     </td>
                   ))}

@@ -479,6 +479,8 @@ export default function TransactionsPage() {
                   className="btn-ghost"
                   style={{ padding: '5px 7px', border: 'none' }}
                   onClick={() => { setEditing(tx); setShowForm(true); }}
+                  title="Редагувати"
+                  aria-label="Редагувати"
                 >
                   <Pencil size={13} />
                 </button>
@@ -486,6 +488,8 @@ export default function TransactionsPage() {
                   className="btn-ghost"
                   style={{ padding: '5px 7px', border: 'none', color: '#EF4444' }}
                   onClick={() => del(tx.id)}
+                  title="Видалити"
+                  aria-label="Видалити"
                 >
                   <Trash2 size={13} />
                 </button>
@@ -514,15 +518,19 @@ export default function TransactionsPage() {
                 <div style={{ display: 'flex', gap: 2 }}>
                   <button
                     className="btn-ghost"
-                    style={{ padding: '4px 6px', border: 'none' }}
+                    style={{ padding: '9px', border: 'none' }}
                     onClick={() => { setEditing(tx); setShowForm(true); }}
+                    title="Редагувати"
+                    aria-label="Редагувати"
                   >
                     <Pencil size={12} />
                   </button>
                   <button
                     className="btn-ghost"
-                    style={{ padding: '4px 6px', border: 'none', color: '#EF4444' }}
+                    style={{ padding: '9px', border: 'none', color: '#EF4444' }}
                     onClick={() => del(tx.id)}
+                    title="Видалити"
+                    aria-label="Видалити"
                   >
                     <Trash2 size={12} />
                   </button>

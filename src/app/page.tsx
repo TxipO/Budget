@@ -324,7 +324,7 @@ export default function Dashboard() {
             {pendingRecurring > 0 && (
               <span style={{
                 position: 'absolute', top: -6, right: -6,
-                background: '#F97316', color: 'white', fontSize: 10, fontWeight: 800,
+                background: 'var(--c-accent-fill)', color: 'white', fontSize: 10, fontWeight: 800,
                 borderRadius: '50%', width: 16, height: 16,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>{pendingRecurring}</span>
@@ -361,7 +361,7 @@ export default function Dashboard() {
               style={{
                 padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
                 fontSize: 13, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.2s',
-                background: period === p ? '#F97316' : 'transparent',
+                background: period === p ? 'var(--c-accent-fill)' : 'transparent',
                 color:      period === p ? 'white' : 'var(--c-text-muted)',
               }}
             >

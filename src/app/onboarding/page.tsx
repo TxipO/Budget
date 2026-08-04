@@ -134,7 +134,7 @@ export default function OnboardingPage() {
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg, #0A0A0F)', padding: 16 }}>
       <div style={cardStyle}>
         <div>
-          <div style={{ fontSize: 12, color: '#F97316', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{stepLabel}</div>
+          <div style={{ fontSize: 12, color: 'var(--c-accent-text)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{stepLabel}</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text)', marginTop: 4 }}>
             {step === 'users' && 'Налаштуємо ваш акаунт'}
             {step === 'categories' && 'Оберіть категорії'}

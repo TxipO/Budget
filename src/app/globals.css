@@ -13,11 +13,29 @@
   --c-border-hi:   rgba(255,255,255,0.1);
   --c-text:        #F1F5F9;
   --c-text-sec:    #CBD5E1;
-  --c-text-muted:  #64748B;
-  --c-text-sub:    #475569;
+  /* muted/sub raised one slate step each (audit 2026-08-02): the old
+     values were 2.3–4.2:1 on real surfaces here, below WCAG AA's 4.5:1
+     for body text. Same Tailwind slate scale the rest of the palette
+     already uses, just lighter steps — muted now clears 4.5:1 on every
+     surface; sub (~3.6–4.2:1) is deliberately still the most restrained
+     tier per DESIGN.md, real placeholder/axis text, not decorative. */
+  --c-text-muted:  #94A3B8;
+  --c-text-sub:    #64748B;
   --c-hover:       rgba(255,255,255,0.05);
   --c-scrollbar:   #12121A;
   --c-scrollthumb: #2A2A3A;
+  /* Solid-fill-with-white-text variant of Sunset Orange — #F97316 itself
+     only reaches 2.8:1 with white (fails WCAG AA); this ramp step reaches
+     5.18:1. Stays theme-invariant like the rest of the accent family.
+     #F97316 keeps every other role (borders, icons, focus rings, tints). */
+  --c-accent-fill:       #C2410C;
+  --c-accent-fill-hover: #9A3412;
+  /* Accent used as running text/links (not a fill) — #F97316 itself only
+     reaches 2.5:1 on the light theme's bright surfaces, so this is
+     theme-aware unlike --c-accent-fill: dark keeps the base accent
+     (already 6.6–7:1 there), light drops to the same darker ramp step
+     the fill uses (4.7–5.2:1). */
+  --c-accent-text: #F97316;
 }
 
 [data-theme="light"] {
@@ -30,11 +48,12 @@
   --c-border-hi:   rgba(0,0,0,0.12);
   --c-text:        #0F172A;
   --c-text-sec:    #334155;
-  --c-text-muted:  #64748B;
-  --c-text-sub:    #94A3B8;
+  --c-text-muted:  #475569;
+  --c-text-sub:    #64748B;
   --c-hover:       rgba(0,0,0,0.04);
   --c-scrollbar:   #E2E8F0;
   --c-scrollthumb: #CBD5E1;
+  --c-accent-text: #C2410C;
 }
 
 @keyframes pulse {
@@ -155,7 +174,7 @@ input[type="number"]::-webkit-outer-spin-button {
   gap: 8px;
   padding: 10px 20px;
   border-radius: 10px;
-  background: #F97316;
+  background: var(--c-accent-fill);
   color: white;
   font-size: 14px;
   font-weight: 600;
@@ -163,7 +182,7 @@ input[type="number"]::-webkit-outer-spin-button {
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
 }
-.btn-primary:hover { background: #EA580C; }
+.btn-primary:hover { background: var(--c-accent-fill-hover); }
 .btn-primary:active { transform: scale(0.98); }
 
 .btn-ghost {

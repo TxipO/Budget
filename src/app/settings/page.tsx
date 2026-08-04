@@ -725,10 +725,14 @@ export default function SettingsPage() {
                 }}
                 aria-label={`${dashSections[key] ? 'Сховати' : 'Показати'}: ${PREF_LABELS[key]}`}
               >
+                {/* transform, not left — animating left triggers a layout
+                    reflow every frame; scaleX/translateX are compositor-only
+                    (audit 2026-08-02, same class as the budget-bar fix). */}
                 <span style={{
-                  position: 'absolute', top: 3, left: dashSections[key] ? 21 : 3,
+                  position: 'absolute', top: 3, left: 3,
                   width: 16, height: 16, borderRadius: '50%', background: 'white',
-                  transition: 'left 0.15s',
+                  transform: dashSections[key] ? 'translateX(18px)' : 'translateX(0)',
+                  transition: 'transform 0.15s',
                 }} />
               </button>
             </label>
@@ -793,11 +797,11 @@ export default function SettingsPage() {
           away and just shows that connection's status/sync/disconnect. */}
       <div className="card" style={{ padding: 24, marginBottom: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Landmark size={16} color="#000000" /> Банківське підключення
+          <Landmark size={16} color="#F97316" /> Банківське підключення
         </h2>
-        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>
+        <p style={{ fontSize: 13, color: 'var(--c-text-muted)', marginBottom: 16 }}>
           Monobank — токен зі свого кабінету на{' '}
-          <a href="https://api.monobank.ua/" target="_blank" rel="noopener noreferrer" style={{ color: '#F97316' }}>
+          <a href="https://api.monobank.ua/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c-accent-text)' }}>
             api.monobank.ua
           </a>
           . SpareBank 1 Sogn og Fjordane — підключення веде на сторінку входу банку (BankID), токен не потрібен.
@@ -862,7 +866,7 @@ export default function SettingsPage() {
                       <span style={{ fontSize: 12, color: '#64748B' }}>SpareBank 1</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         {sb.expired ? (
-                          <span style={{ fontSize: 12, color: '#F97316' }}>Доступ прострочено</span>
+                          <span style={{ fontSize: 12, color: 'var(--c-accent-text)' }}>Доступ прострочено</span>
                         ) : (
                           <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#4ADE80' }}>
                             <CheckCircle size={13} /> Підключено
@@ -958,7 +962,7 @@ export default function SettingsPage() {
                       Автосинхронізація (раз на добу, опівночі за Осло)
                     </label>
                     {sb.autoSync && (
-                      <span style={{ fontSize: 11, color: sb.autoSyncFailCount > 0 ? '#F97316' : '#64748B' }}>
+                      <span style={{ fontSize: 11, color: sb.autoSyncFailCount > 0 ? 'var(--c-accent-text)' : 'var(--c-text-muted)' }}>
                         {sb.autoSyncFailCount > 0
                           ? `Не вдалось ${sb.autoSyncFailCount} раз(и) поспіль`
                           : sb.lastAutoSyncAt
@@ -1003,7 +1007,7 @@ export default function SettingsPage() {
                         </div>
                         <span style={{ fontSize: 11, color: '#64748B' }}>
                           Токен видається у{' '}
-                          <a href="https://api.monobank.ua/" target="_blank" rel="noopener noreferrer" style={{ color: '#F97316' }}>
+                          <a href="https://api.monobank.ua/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c-accent-text)' }}>
                             особистому кабінеті на api.monobank.ua
                           </a>
                         </span>
