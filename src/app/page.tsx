@@ -172,14 +172,20 @@ export default function Dashboard() {
           anyCreated = true;
           // Same undo mechanism as Settings' syncSb — sync already committed
           // the rows, so "Скасувати" is a real reversal call, not just
-          // clearing a pending timer.
-          toast(`${c.name} (SpareBank 1): додано ${data.created}`, 'info', {
+          // clearing a pending timer. undo-sync rewinds ONE account's
+          // watermark and so needs that account's own id + previous
+          // watermark, which only exist per-entry in `perAccount` — there is
+          // no top-level previousSyncedAt since a user can own several
+          // syncEnabled accounts. Offered only when exactly one account
+          // actually synced, matching Settings' identical guard.
+          const single = data.perAccount?.length === 1 ? data.perAccount[0] : null;
+          toast(`${c.name} (SpareBank 1): додано ${data.created}`, 'info', single ? {
             label: 'Скасувати',
             onClick: async () => {
               try {
                 const undoRes = await fetch('/api/sparebank/undo-sync', {
                   method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ userId: c.userId, transactionIds: data.createdIds, previousSyncedAt: data.previousSyncedAt }),
+                  body: JSON.stringify({ userId: c.userId, accountId: single.accountId, transactionIds: data.createdIds, previousSyncedAt: single.previousSyncedAt }),
                 });
                 if (!undoRes.ok) { toast('Не вдалося скасувати', 'error'); return; }
                 toast('Скасовано', 'info');
@@ -188,7 +194,7 @@ export default function Dashboard() {
                 toast('Помилка з’єднання', 'error');
               }
             },
-          }, 10000);
+          } : undefined, 10000);
         }
       } catch {
         errors.push(`${c.name} (${c.bankLabel}): помилка з'єднання`);
