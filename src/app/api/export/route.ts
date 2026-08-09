@@ -5,6 +5,7 @@ import JSZip from 'jszip';
 import path from 'path';
 import { readFile } from 'fs/promises';
 import { requireHouseholdId } from '@/lib/household';
+import { isBudgetRelevant, savingsAmount } from '@/lib/validate';
 
 const TYPE_UA: Record<string, string> = {
   income:  'Дохід',
@@ -68,15 +69,25 @@ export async function GET(req: NextRequest) {
   }
 
   // actuals[catId][year][month] = total
+  // Must match the app's own totals exactly (stats.ts/analytics.ts): skip
+  // isTransfer rows entirely (a self-transfer or a manually-excluded row
+  // never happened as far as any total is concerned — see
+  // isBudgetRelevant's own comment), and sign a savings row by
+  // savingsWithdrawal (a withdrawal REDUCES the category, doesn't add to
+  // it — see savingsAmount's own comment). Found live 2026-08-02: this loop
+  // summed raw tx.amount unconditionally, so the exported Планування sheet
+  // disagreed with the app for both cases.
   const actuals: Record<number, Record<number, Record<number, number>>> = {};
   for (const tx of allTxs) {
+    if (!isBudgetRelevant(tx)) continue;
     const d = new Date(tx.date);
     const y = d.getUTCFullYear();
     const m = d.getUTCMonth() + 1;
     const c = tx.categoryId;
+    const signedAmount = tx.category.type === 'savings' ? savingsAmount(tx) : tx.amount;
     actuals[c] ??= {};
     actuals[c][y] ??= {};
-    actuals[c][y][m] = (actuals[c][y][m] ?? 0) + tx.amount;
+    actuals[c][y][m] = (actuals[c][y][m] ?? 0) + signedAmount;
   }
 
   function getActual(catId: number, year: number, month: number): number {
@@ -90,6 +101,9 @@ export async function GET(req: NextRequest) {
   // Source of truth for Планування comments = real transactions with details
   const txDetails: Record<string, string[]> = {};
   for (const tx of allTxs) {
+    // Same exclusion as actuals above — a comment line for a row that
+    // isn't in the total it's attached to would be its own confusion.
+    if (!isBudgetRelevant(tx)) continue;
     const det = (tx.details ?? '').trim();
     if (!det || det === '[імпорт]') continue;
     const d = new Date(tx.date);
