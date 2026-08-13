@@ -52,6 +52,85 @@ async function findTransferCounterpartAccountId(userId: number, counterpart: SbA
 
 const MIRROR_WINDOW_DAYS = 3; // generous — matches RECONCILIATION_OVERLAP_DAYS-ish tolerance for late settlement
 
+// entry_reference ("<date>-<sequence-within-day>") is NOT stable over time,
+// beyond the already-known cross-account collision risk (see
+// Transaction.sbTransactionId's own schema comment). Confirmed live
+// 2026-08-13: when a same-day transaction settles LATE (posts to the feed
+// after an earlier sync already ran), the bank's own sequence numbering
+// shifts everything after it — a reference that meant one real transaction
+// at sync time can mean a COMPLETELY DIFFERENT one on a later re-fetch. This
+// produces two distinct failures, both observed the same week: (a) a new
+// real transaction's reference collides with an OLDER, already-recorded,
+// DIFFERENT transaction's stale reference — the dedup check wrongly treats
+// it as already-seen and silently drops it (a real "Sygnir AS" utility
+// payment vanished this way); (b) the SAME real transaction gets reassigned
+// a NEW reference on a later fetch — no existing row matches it, so it gets
+// recorded a second time (the checking<->pillow transfer duplicate, and a
+// separate income duplicate, both found the same week). Both handled below
+// by treating CONTENT (amount + date, and for the no-reference-match case
+// also counterparty) as a secondary signal alongside the raw reference,
+// not as a replacement for it — the reference is still the fast, precise
+// path for the overwhelming majority of normal syncs where nothing shifted.
+const CONTENT_DEDUP_MIN_AGE_MS = 5 * 60 * 1000;
+
+// Resolves what this item's dedup situation actually is, given both the raw
+// entry_reference AND the transaction's own content (amount comes from the
+// caller already converted to the household's currency, matching what's
+// actually stored). Returns either a decision to skip, or the storage key
+// to actually write the row under (usually just dedupKey verbatim; only
+// different in the stale-collision recovery case below, where reusing the
+// literal colliding reference would violate the @@unique constraint).
+async function resolveDedup(userId: number, dedupKey: string, amount: number, date: Date, counterparty: string): Promise<{ skip: true } | { skip: false; storageKey: string }> {
+  // Scoped by userId, not a bare lookup on sbTransactionId alone — see the
+  // field's own schema comment: entry_reference is only unique WITHIN one
+  // account's own daily sequence, not bank-wide, so two different users'
+  // first transaction of the same day can share the same raw value.
+  const existingByRef = await prisma.transaction.findFirst({
+    where: { userId, sbTransactionId: dedupKey },
+    select: { id: true, amount: true, date: true },
+  });
+  if (existingByRef) {
+    const sameContent = Math.abs(existingByRef.amount - amount) < 0.01 && existingByRef.date.getTime() === date.getTime();
+    if (sameContent) return { skip: true };
+    // The row occupying this reference is a DIFFERENT real transaction (the
+    // Sygnir case) — this item is genuinely new. A distinguishing suffix
+    // avoids the unique-constraint collision the raw reference would hit;
+    // deterministic per (reference, amount) pair, so a later re-sync of
+    // this exact item (same reference still meaning this same content at
+    // that point) still dedups correctly against ITSELF next time.
+    console.warn('[sparebankIngest] entry_reference collision with different content, recovering as new row', { dedupKey, existingId: existingByRef.id, amount });
+    return { skip: false, storageKey: `${dedupKey}::${amount}` };
+  }
+
+  // No reference match. Could be a genuinely new transaction, OR this exact
+  // transaction already recorded earlier under a reference that has since
+  // drifted away (the transfer-duplicate case). Requiring amount + date +
+  // counterparty ALL matching (not just amount + date) guards against two
+  // real distinct same-day purchases of the same price coincidentally
+  // colliding. Excludes rows created within the last few minutes — two
+  // identical purchases arriving in the SAME sync call (e.g. two coffees,
+  // same price, same day, same shop) must not shadow each other; genuine
+  // reference drift only ever shows up ACROSS separate sync runs in every
+  // case observed so far.
+  const possibleDrift = await prisma.transaction.findFirst({
+    where: {
+      userId,
+      source: 'sparebank',
+      amount,
+      date,
+      sbCounterparty: counterparty || null,
+      createdAt: { lt: new Date(Date.now() - CONTENT_DEDUP_MIN_AGE_MS) },
+    },
+    select: { id: true },
+  });
+  if (possibleDrift) {
+    console.warn('[sparebankIngest] no reference match but content matches an older row — treating as drifted duplicate', { dedupKey, existingId: possibleDrift.id, amount });
+    return { skip: true };
+  }
+
+  return { skip: false, storageKey: dedupKey };
+}
+
 // Once BOTH accounts of a same-person transfer are syncEnabled, EACH side's
 // own sync independently resolves the SAME real movement to the SAME
 // savings category (via the learned rule below) — so without this check,
@@ -119,13 +198,6 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // honor; this is the actual guarantee.
   if (item.status && item.status !== 'BOOK') return { status: 'skipped_pending' };
 
-  // Scoped by userId, not a bare lookup on sbTransactionId alone — see the
-  // field's own schema comment: entry_reference is only unique WITHIN one
-  // account's own daily sequence, not bank-wide, so two different users'
-  // first transaction of the same day can share the same raw value.
-  const existing = await prisma.transaction.findFirst({ where: { userId, sbTransactionId: dedupKey } });
-  if (existing) return { status: 'skipped_duplicate' };
-
   const rawAmount = Number(item.transaction_amount?.amount);
   if (!Number.isFinite(rawAmount)) return { status: 'skipped_malformed' };
   const txType: 'expense' | 'income' = item.credit_debit_indicator === 'CRDT' ? 'income' : 'expense';
@@ -156,6 +228,10 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   if (!dateStr) return { status: 'skipped_malformed' };
   const date = new Date(`${dateStr}T00:00:00Z`);
   if (isNaN(date.getTime())) return { status: 'skipped_malformed' };
+
+  const dedup = await resolveDedup(userId, dedupKey, amount, date, counterparty);
+  if (dedup.skip) return { status: 'skipped_duplicate' };
+  const storageKey = dedup.storageKey;
 
   // Purely a DISPLAY signal (see the transactions-list sign/color logic that
   // reads it) — whether money is flowing INTO this account (CRDT, shown "+")
@@ -262,7 +338,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
         userId,
         source: 'sparebank',
         possibleDuplicateOf: possibleDup?.id ?? null,
-        sbTransactionId: dedupKey,
+        sbTransactionId: storageKey,
         sbCounterparty: counterparty || null,
         savingsWithdrawal,
         isTransfer,
