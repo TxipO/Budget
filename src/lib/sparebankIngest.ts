@@ -221,8 +221,17 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // creditor received an expense, the debtor sent an income.
   const counterparty = (txType === 'expense' ? item.creditor?.name : item.debtor?.name) ?? '';
   const remittance = (item.remittance_information ?? []).join(' ').trim();
-  const details = remittance || counterparty || '';
-  const merchantKey = (remittance || counterparty || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  // remittance_information is usually the useful human text ("Kiwi 123
+  // Bergen") when creditor/debtor.name is empty (direct debits, standing
+  // orders). But for KID/OCR-referenced bill payments it can be nothing but
+  // a bare account/reference number ("2824300100055") while the real payee
+  // name only lives in counterparty — confirmed live 2026-08-13 (a Sygnir AS
+  // electricity bill recorded its account number as the description and
+  // fell through category-guessing to "Незрозуміло"). A pure digit/
+  // punctuation string is never a description, so counterparty wins then.
+  const remittanceIsReference = remittance !== '' && !/[a-z]/i.test(remittance);
+  const details = (remittanceIsReference ? '' : remittance) || counterparty || remittance || '';
+  const merchantKey = ((remittanceIsReference ? '' : remittance) || counterparty || remittance || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
   const dateStr = item.booking_date || item.value_date || item.transaction_date;
   if (!dateStr) return { status: 'skipped_malformed' };
