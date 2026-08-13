@@ -84,7 +84,7 @@ export async function syncSparebankAccount(
       // conversion throw, or any other single-item failure, mustn't hide
       // every OTHER transaction in the page behind it.
       try {
-        const outcome = await ingestTransaction(account.userId, householdId, item);
+        const outcome = await ingestTransaction(account.userId, householdId, item, account.id);
         if (outcome.status === 'created' && outcome.id) createdIds.push(outcome.id);
         else if (outcome.status === 'skipped_pending') skippedPending++;
         else if (outcome.status === 'skipped_duplicate') skippedExisting++;

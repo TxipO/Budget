@@ -50,6 +50,43 @@ async function findTransferCounterpartAccountId(userId: number, counterpart: SbA
   return match?.id ?? null;
 }
 
+const MIRROR_WINDOW_DAYS = 3; // generous — matches RECONCILIATION_OVERLAP_DAYS-ish tolerance for late settlement
+
+// Once BOTH accounts of a same-person transfer are syncEnabled, EACH side's
+// own sync independently resolves the SAME real movement to the SAME
+// savings category (via the learned rule below) — so without this check,
+// a single real 3464 kr checking->pillow transfer would tally as 3464+3464
+// in "Фінансова подушка". Only the SECOND leg to actually get recorded
+// should end up excluded; the first stands as the real entry. Matches by
+// amount + SAME direction within a window — same, not opposite, because the
+// caller already normalizes savingsWithdrawal to the pool's own perspective
+// before calling this (see ingestTransaction's selfIsPoolSide flip), so
+// both legs of one real transfer share the identical corrected sign by the
+// time either reaches here. Transaction has no column recording which
+// physical SparebankAccount a row came from (see the model's own comment),
+// so amount+date+category+sign is the best available signal — this is the
+// same heuristic shape already proven empirically clean for Monobank's
+// inter-person transfers (0 false positives across 104 real transactions,
+// see project_monobank_integration memory), just scoped to one user's own
+// accounts instead of two different users.
+async function findSavingsTransferMirror(userId: number, categoryId: number, amount: number, date: Date, isWithdrawal: boolean): Promise<number | null> {
+  const windowStart = new Date(date.getTime() - MIRROR_WINDOW_DAYS * 24 * 3600 * 1000);
+  const windowEnd = new Date(date.getTime() + MIRROR_WINDOW_DAYS * 24 * 3600 * 1000);
+  const match = await prisma.transaction.findFirst({
+    where: {
+      userId,
+      source: 'sparebank',
+      categoryId,
+      isTransfer: false,
+      amount,
+      savingsWithdrawal: isWithdrawal,
+      date: { gte: windowStart, lte: windowEnd },
+    },
+    select: { id: true },
+  });
+  return match?.id ?? null;
+}
+
 export type IngestResult = 'created' | 'skipped_pending' | 'skipped_duplicate' | 'skipped_malformed';
 export interface IngestOutcome { status: IngestResult; id?: number }
 
@@ -61,7 +98,7 @@ export interface IngestOutcome { status: IngestResult; id?: number }
 // undo — sync commits immediately (unlike the single-transaction delete's
 // delay-then-write pattern), so undoing it needs a real reversal call
 // naming exactly the rows this specific sync created.
-export async function ingestTransaction(userId: number, householdId: number, item: SbTransaction): Promise<IngestOutcome> {
+export async function ingestTransaction(userId: number, householdId: number, item: SbTransaction, selfAccountId: number): Promise<IngestOutcome> {
   // entry_reference first, NOT transaction_id — confirmed live 2026-07-22 by
   // fetching the same real transaction twice a few seconds apart:
   // transaction_id is an opaque per-request encrypted blob that's DIFFERENT
@@ -120,31 +157,84 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   const date = new Date(`${dateStr}T00:00:00Z`);
   if (isNaN(date.getTime())) return { status: 'skipped_malformed' };
 
+  // Purely a DISPLAY signal (see the transactions-list sign/color logic that
+  // reads it) — whether money is flowing INTO this account (CRDT, shown "+")
+  // or OUT of it (DBIT, shown "-"). Computed before the transfer branch below
+  // since findSavingsTransferMirror needs to know which direction to look
+  // for the opposite leg. isTransfer (not this) is what actually excludes a
+  // row from budget math.
+  //
+  // Correct ONLY from the perspective of a non-pool account: CRDT arriving
+  // at checking (sourced from the pool) IS a withdrawal. But when the
+  // account CURRENTLY being synced is itself the pool (e.g. syncing
+  // "Подушка"'s own feed), the exact same formula is backwards — CRDT
+  // arriving AT the pool is a DEPOSIT, not a withdrawal. Flipped below,
+  // once we know whether this row is even landing in a savings-mapped
+  // transfer category, for the account that isn't the reference side.
+  let savingsWithdrawal = txType === 'income';
+
   // Is the OTHER side of this transaction one of this same user's own known
   // accounts? DBIT's counterparty is who received it (creditor_account);
   // CRDT's is who sent it (debtor_account) — the account being synced is
   // never its own counterparty, so no need to exclude it explicitly.
   const counterpartAccount = txType === 'expense' ? item.creditor_account : item.debtor_account;
   const transferAccountId = await findTransferCounterpartAccountId(userId, counterpartAccount);
-  const isTransfer = transferAccountId !== null;
 
-  const categoryId = isTransfer
-    ? (await prisma.category.upsert({
+  let isTransfer: boolean;
+  let categoryId: number;
+
+  if (transferAccountId !== null) {
+    // Known movement between this user's own accounts. If a correction has
+    // already taught the category-guess chain that this exact counterparty
+    // (merchantKey — typically the account holder's own name on a
+    // self-transfer) belongs to a savings category, the transfer itself IS
+    // the real, meaningful event: money moving into or out of a tracked
+    // pool like "Фінансова подушка". Blanket-excluding it (the previous
+    // behavior) silently understated real savings activity — found live
+    // 2026-08-13 on a genuine "Основний -> Подушка" deposit. Bypasses
+    // guessCategoryId's normal expense/income-only tiers (which structurally
+    // can't return a savings category — see that function's own comment)
+    // and reads the learned rule directly.
+    const rule = await prisma.monoCategoryRule.findUnique({
+      where: { userId_merchantKey: { userId, merchantKey } },
+      select: { categoryId: true, category: { select: { isActive: true, type: true } } },
+    });
+    if (rule?.category.isActive && rule.category.type === 'savings') {
+      // ponytail: SparebankAccount ids have no explicit "which one is the
+      // tracked pool" marker (that's the deferred Ф2 — an explicit
+      // account<->category mapping + Settings UI). Lower id = the
+      // reference/checking side, higher id = the pool side, is an ordinal
+      // proxy, not a real signal — correct today because Основний (id 1)
+      // was created before Подушка (id 2), but not guaranteed for a
+      // household whose accounts get connected in the opposite order.
+      // Revisit with the explicit mapping if that ever produces a
+      // backwards-signed row.
+      const selfIsPoolSide = selfAccountId > transferAccountId;
+      if (selfIsPoolSide) savingsWithdrawal = !savingsWithdrawal;
+      const mirrorId = await findSavingsTransferMirror(userId, rule.categoryId, amount, date, savingsWithdrawal);
+      categoryId = rule.categoryId;
+      // Only the SECOND leg to actually sync gets excluded — see
+      // findSavingsTransferMirror's own comment on why blindly excluding
+      // BOTH sides would drop a real deposit/withdrawal from the total.
+      isTransfer = mirrorId !== null;
+    } else {
+      // No learned rule pointing this counterparty at a savings category —
+      // still a same-person account movement, but we don't know which
+      // tracked pool (if any) it should reduce/increase, so file it
+      // separately rather than guessing. A manual correction here teaches
+      // the rule above for next time, same as any other category fix.
+      isTransfer = true;
+      categoryId = (await prisma.category.upsert({
         where: { householdId_name_type: { householdId, name: TRANSFER_CATEGORY_NAME, type: 'savings' } },
         update: {},
         create: { householdId, name: TRANSFER_CATEGORY_NAME, type: 'savings', color: '#64748B', icon: 'wallet' },
         select: { id: true },
-      })).id
-    : await guessCategoryId(householdId, userId, txType, merchantKey, undefined);
-
-  // Purely a DISPLAY signal now (see the transactions-list sign/color logic
-  // that reads it) — whether money is flowing INTO this account (CRDT,
-  // shown "+") or OUT of it (DBIT, shown "-"). Applies the same whether the
-  // row landed in the dedicated transfer category or an ordinary savings
-  // category (e.g. a manually-entered cash/crypto cushion movement) — see
-  // Transaction.savingsWithdrawal's own schema comment. isTransfer (not
-  // this) is what actually excludes a row from budget math.
-  const savingsWithdrawal = txType === 'income';
+      })).id;
+    }
+  } else {
+    isTransfer = false;
+    categoryId = await guessCategoryId(householdId, userId, txType, merchantKey, undefined);
+  }
 
   // Same double-count guard as Ф5 (Monobank) — a sparebank transaction
   // landing in a category+month that already has a recurring/import row is a
