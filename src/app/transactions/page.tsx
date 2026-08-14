@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
-import { Plus, Search, Trash2, Pencil, ChevronLeft, ChevronRight, Download, RefreshCw, Globe, AlertTriangle, Landmark, EyeOff } from 'lucide-react';
+import { Plus, Search, Trash2, Pencil, ChevronLeft, ChevronRight, Download, RefreshCw, Globe, AlertTriangle, Landmark } from 'lucide-react';
 import { MONTH_NAMES, TYPE_LABELS, BANK_SYNC_COLOR } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
@@ -194,7 +194,14 @@ export default function TransactionsPage() {
     const matchesUser = !userFilter || tx.user?.id === Number(userFilter);
     const isBankSourced = tx.source === 'mono' || tx.source === 'sparebank';
     const matchesSource = isBankSourced ? showBank : showManual;
-    return matchesSearch && matchesUser && matchesSource;
+    // isTransfer rows (a self-transfer's redundant mirror leg, or a manually
+    // excluded row) are real DB rows but never represent budget activity —
+    // showing them next to their counted counterpart just reads as an
+    // unexplained duplicate. Excluded from the list entirely, not just from
+    // totals; still fully visible via a category edit or a direct DB query
+    // if ever needed. Found confusing live 2026-08-14: two rows for one real
+    // checking<->pillow transfer, distinguished only by a small icon.
+    return matchesSearch && matchesUser && matchesSource && !tx.isTransfer;
   });
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
@@ -205,7 +212,9 @@ export default function TransactionsPage() {
   // count here either, or these tiles would disagree with the dashboard's
   // numbers for the same period. Not imported from lib/validate.ts directly:
   // that module also imports next/server (route-handler-only APIs), not
-  // something a 'use client' bundle should pull in.
+  // something a 'use client' bundle should pull in. `filtered` already
+  // excludes isTransfer rows, but keeping this explicit guards against that
+  // upstream filter ever changing without this total being re-checked.
   const totals = filtered.filter(tx => !tx.isTransfer).reduce(
     (acc, tx) => {
       if (tx.category.type === 'income')   acc.income   += tx.amount;
@@ -421,11 +430,9 @@ export default function TransactionsPage() {
           // schema comment).
           const isSavingsWithdrawal = tx.category.type === 'savings' && tx.savingsWithdrawal;
           const amountStr = `${tx.category.type === 'income' || isSavingsWithdrawal ? '+' : '-'}${formatMoney(tx.amount)}`;
-          // Excluded from every total — dim the amount so the row reads as
-          // "present but not counted" instead of a normal income/expense/
-          // savings figure (see Transaction.isTransfer's schema comment).
-          const amountColor = tx.isTransfer ? '#64748B'
-                             : tx.category.type === 'income' || isSavingsWithdrawal ? '#4ADE80'
+          // isTransfer rows never reach here — filtered out above — so no
+          // dimmed "excluded" color branch is needed.
+          const amountColor = tx.category.type === 'income' || isSavingsWithdrawal ? '#4ADE80'
                              : tx.category.type === 'expense' ? '#FCA5A5' : '#FCD34D';
           return (
           <div key={tx.id} className="table-row">
@@ -450,7 +457,6 @@ export default function TransactionsPage() {
                     {tx.recurringTemplateId && <span title="Recurring" style={{ display: 'flex' }}><RefreshCw size={11} color="#F97316" /></span>}
                     {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є шаблонна/імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex' }}><AlertTriangle size={11} color="#FBBF24" /></span>}
                     {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex' }}><Landmark size={11} color={BANK_SYNC_COLOR} /></span>}
-                    {tx.isTransfer && <span title="Не рахується в загальному балансі" style={{ display: 'flex' }}><EyeOff size={11} color="#64748B" /></span>}
                   </div>
                   {tx.details && (
                     <div style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -505,7 +511,6 @@ export default function TransactionsPage() {
                   {tx.recurringTemplateId && <span title="Recurring" style={{ display: 'flex', flexShrink: 0 }}><RefreshCw size={10} color="#F97316" /></span>}
                   {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є шаблонна/імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex', flexShrink: 0 }}><AlertTriangle size={10} color="#FBBF24" /></span>}
                   {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex', flexShrink: 0 }}><Landmark size={10} color={BANK_SYNC_COLOR} /></span>}
-                  {tx.isTransfer && <span title="Не рахується в загальному балансі" style={{ display: 'flex', flexShrink: 0 }}><EyeOff size={10} color="#64748B" /></span>}
                 </div>
                 <div style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {dateStr}{tx.details && ` · ${tx.details}`}{tx.user && ` · ${tx.user.name}`}

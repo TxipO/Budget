@@ -176,7 +176,12 @@ export async function GET(req: NextRequest) {
   // order it happens to find them, not the order they were actually added.
   // createdAt breaks the tie with the real insertion order.
   const recent = await prisma.transaction.findMany({
-    where: { householdId, date: { gte: rangeStart, lt: rangeEnd } },
+    // isTransfer excluded — a redundant transfer-mirror leg (see
+    // Transaction.isTransfer's schema comment) isn't budget activity, and
+    // showing it here reads as an unexplained duplicate of its counted
+    // counterpart. Filtered at the query itself, not just hidden in the UI,
+    // so it can't also silently push a real transaction out of the top 8.
+    where: { householdId, date: { gte: rangeStart, lt: rangeEnd }, isTransfer: false },
     include: { category: true, user: { select: { id: true, name: true } } },
     orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     take: 8,

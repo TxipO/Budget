@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, Landmark, EyeOff, PieChart, LineChart } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, Landmark, PieChart, LineChart } from 'lucide-react';
 import { MONTH_NAMES, TYPE_COLORS, CATEGORY_PALETTE, BANK_SYNC_COLOR, type Period, PERIOD_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
@@ -663,7 +663,6 @@ export default function Dashboard() {
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', display: 'flex', alignItems: 'center', gap: 5 }}>
                 {tx.category.name}
                 {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex' }}><Landmark size={11} color={BANK_SYNC_COLOR} /></span>}
-                {tx.isTransfer && <span title="Не рахується в загальному балансі" style={{ display: 'flex' }}><EyeOff size={11} color="var(--c-text-muted)" /></span>}
               </div>
               <div style={{ fontSize: 12, color: 'var(--c-text-sub)', marginTop: 2 }}>
                 {new Date(tx.date).toLocaleDateString('uk-UA')}
@@ -673,8 +672,7 @@ export default function Dashboard() {
             </div>
             <span style={{
               fontSize: 15, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-              color: tx.isTransfer ? 'var(--c-text-muted)'
-                   : tx.category.type === 'income' || (tx.category.type === 'savings' && tx.savingsWithdrawal) ? '#4ADE80'
+              color: tx.category.type === 'income' || (tx.category.type === 'savings' && tx.savingsWithdrawal) ? '#4ADE80'
                    : tx.category.type === 'expense' ? '#FCA5A5' : '#FCD34D',
             }}>
               {tx.category.type === 'income' || (tx.category.type === 'savings' && tx.savingsWithdrawal) ? '+' : '-'}{formatMoney(tx.amount)}
