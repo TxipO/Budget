@@ -75,6 +75,10 @@ export async function syncSparebankAccount(
   let skippedError = 0;
   let checked = 0;
   let continuationKey: string | undefined;
+  // Fresh per sync call, shared across every page — see
+  // buildSbContentKeyBase's own comment in sparebankIngest.ts for why the
+  // ordinal-suffix dedup needs one shared counter for the whole fetch.
+  const occurrenceCounts = new Map<string, number>();
 
   for (let pageNum = 0; pageNum < MAX_PAGES; pageNum++) {
     const page = await getTransactions(account.accountUid, psu, { dateFrom, continuationKey, transactionStatus: 'BOOK' });
@@ -84,7 +88,7 @@ export async function syncSparebankAccount(
       // conversion throw, or any other single-item failure, mustn't hide
       // every OTHER transaction in the page behind it.
       try {
-        const outcome = await ingestTransaction(account.userId, householdId, item, account.id);
+        const outcome = await ingestTransaction(account.userId, householdId, item, account.id, occurrenceCounts);
         if (outcome.status === 'created' && outcome.id) createdIds.push(outcome.id);
         else if (outcome.status === 'skipped_pending') skippedPending++;
         else if (outcome.status === 'skipped_duplicate') skippedExisting++;

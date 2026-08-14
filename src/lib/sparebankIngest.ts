@@ -52,83 +52,56 @@ async function findTransferCounterpartAccountId(userId: number, counterpart: SbA
 
 const MIRROR_WINDOW_DAYS = 3; // generous — matches RECONCILIATION_OVERLAP_DAYS-ish tolerance for late settlement
 
-// entry_reference ("<date>-<sequence-within-day>") is NOT stable over time,
-// beyond the already-known cross-account collision risk (see
-// Transaction.sbTransactionId's own schema comment). Confirmed live
-// 2026-08-13: when a same-day transaction settles LATE (posts to the feed
-// after an earlier sync already ran), the bank's own sequence numbering
-// shifts everything after it — a reference that meant one real transaction
-// at sync time can mean a COMPLETELY DIFFERENT one on a later re-fetch. This
-// produces two distinct failures, both observed the same week: (a) a new
-// real transaction's reference collides with an OLDER, already-recorded,
-// DIFFERENT transaction's stale reference — the dedup check wrongly treats
-// it as already-seen and silently drops it (a real "Sygnir AS" utility
-// payment vanished this way); (b) the SAME real transaction gets reassigned
-// a NEW reference on a later fetch — no existing row matches it, so it gets
-// recorded a second time (the checking<->pillow transfer duplicate, and a
-// separate income duplicate, both found the same week). Both handled below
-// by treating CONTENT (amount + date, and for the no-reference-match case
-// also counterparty) as a secondary signal alongside the raw reference,
-// not as a replacement for it — the reference is still the fast, precise
-// path for the overwhelming majority of normal syncs where nothing shifted.
-const CONTENT_DEDUP_MIN_AGE_MS = 5 * 60 * 1000;
-
-// Resolves what this item's dedup situation actually is, given both the raw
-// entry_reference AND the transaction's own content (amount comes from the
-// caller already converted to the household's currency, matching what's
-// actually stored). Returns either a decision to skip, or the storage key
-// to actually write the row under (usually just dedupKey verbatim; only
-// different in the stale-collision recovery case below, where reusing the
-// literal colliding reference would violate the @@unique constraint).
-async function resolveDedup(userId: number, dedupKey: string, amount: number, date: Date, counterparty: string): Promise<{ skip: true } | { skip: false; storageKey: string }> {
-  // Scoped by userId, not a bare lookup on sbTransactionId alone — see the
-  // field's own schema comment: entry_reference is only unique WITHIN one
-  // account's own daily sequence, not bank-wide, so two different users'
-  // first transaction of the same day can share the same raw value.
-  const existingByRef = await prisma.transaction.findFirst({
-    where: { userId, sbTransactionId: dedupKey },
-    select: { id: true, amount: true, date: true },
-  });
-  if (existingByRef) {
-    const sameContent = Math.abs(existingByRef.amount - amount) < 0.01 && existingByRef.date.getTime() === date.getTime();
-    if (sameContent) return { skip: true };
-    // The row occupying this reference is a DIFFERENT real transaction (the
-    // Sygnir case) — this item is genuinely new. A distinguishing suffix
-    // avoids the unique-constraint collision the raw reference would hit;
-    // deterministic per (reference, amount) pair, so a later re-sync of
-    // this exact item (same reference still meaning this same content at
-    // that point) still dedups correctly against ITSELF next time.
-    console.warn('[sparebankIngest] entry_reference collision with different content, recovering as new row', { dedupKey, existingId: existingByRef.id, amount });
-    return { skip: false, storageKey: `${dedupKey}::${amount}` };
-  }
-
-  // No reference match. Could be a genuinely new transaction, OR this exact
-  // transaction already recorded earlier under a reference that has since
-  // drifted away (the transfer-duplicate case). Requiring amount + date +
-  // counterparty ALL matching (not just amount + date) guards against two
-  // real distinct same-day purchases of the same price coincidentally
-  // colliding. Excludes rows created within the last few minutes — two
-  // identical purchases arriving in the SAME sync call (e.g. two coffees,
-  // same price, same day, same shop) must not shadow each other; genuine
-  // reference drift only ever shows up ACROSS separate sync runs in every
-  // case observed so far.
-  const possibleDrift = await prisma.transaction.findFirst({
-    where: {
-      userId,
-      source: 'sparebank',
-      amount,
-      date,
-      sbCounterparty: counterparty || null,
-      createdAt: { lt: new Date(Date.now() - CONTENT_DEDUP_MIN_AGE_MS) },
-    },
-    select: { id: true },
-  });
-  if (possibleDrift) {
-    console.warn('[sparebankIngest] no reference match but content matches an older row — treating as drifted duplicate', { dedupKey, existingId: possibleDrift.id, amount });
-    return { skip: true };
-  }
-
-  return { skip: false, storageKey: dedupKey };
+// entry_reference ("<date>-<sequence-within-day>") is NOT used for dedup at
+// all anymore. FIXED 2026-08-14, superseding the 2026-08-13 "recover as a
+// new row on reference collision" patch — that patch made things WORSE, not
+// better. It assumed the bank only shifts the TAIL of a day's numbering when
+// a late item settles. Confirmed live 2026-08-14 that's wrong: SpareBank
+// 1/Enable Banking reshuffles the ENTIRE day's ordering on every re-fetch,
+// with no stable relationship between an old reference and a new one. Under
+// the 2026-08-13 patch, every item in a reshuffled day looked like "a
+// reference collision with different content" — so every single sync
+// recreated every transaction from that day under a fresh distinguishing
+// key. One 22:51 sync produced 4 new duplicate rows this way.
+//
+// The set of real transactions for a given (account, day) IS stable across
+// re-fetches even though their reported order isn't — so the key is built
+// from content instead: account + date + direction + amount. Deliberately
+// EXCLUDES remittance_information/creditor name, despite that being the
+// obvious extra disambiguating signal — confirmed live 2026-08-14 that text
+// isn't stable either. The exact same real "NORSK REISELIVSMUSEUM" purchase
+// carried a long card-authorization description
+// ("*0506 12.08 NOK 49.50 NORSK REISELIVSMUSEUM Kurs: 1.0000") at ingest
+// time and a short, simplified one ("NORSK REISELIVSMUSEUM") on a later
+// re-fetch — the bank enriches/cleans up the text after settlement. Putting
+// that in the key would have reproduced the exact same multiplying-dedup
+// bug this fix exists to kill, just on a slower fuse. amount+date+direction
+// is the only combination confirmed stable across every re-fetch observed
+// so far.
+//
+// Two genuinely distinct transactions that happen to share that exact
+// signature (e.g. two identical same-day purchases) get an ordinal suffix,
+// assigned by counting how many times the signature has already been seen
+// EARLIER IN THIS SAME FETCH (occurrenceCounts, a fresh Map per
+// syncSparebankAccount call). The Nth occurrence of a signature within one
+// fetch always claims storage slot #N — whether this is the first sync to
+// ever see it (slot doesn't exist yet, create) or the tenth reconciliation
+// re-fetch of the same already-stored transaction (slot already exists,
+// skip). Correctness doesn't depend on which physical item maps to which
+// slot when two share a signature — they're indistinguishable by amount/
+// date/direction anyway, so at worst a same-amount-same-day pair could swap
+// which row holds which merchant text after a reshuffle, a harmless
+// cosmetic edge case next to the alternative (ongoing duplication). This
+// only works because ingestTransaction is always called sequentially within
+// one sync (see sparebankSync.ts's plain for-of loop, never Promise.all) —
+// two same-signature items in one fetch claim consecutive slots without
+// racing each other.
+//
+// Exported so the one-off backfill script that re-keyed the 24 pre-existing
+// rows to this scheme could reuse the exact same formula instead of
+// duplicating it and risking drift between the two.
+export function buildSbContentKeyBase(accountId: number, dateStr: string, direction: string, amount: number): string {
+  return `sb${accountId}|${dateStr}|${direction}|${amount.toFixed(2)}`;
 }
 
 // Once BOTH accounts of a same-person transfer are syncEnabled, EACH side's
@@ -177,19 +150,13 @@ export interface IngestOutcome { status: IngestResult; id?: number }
 // undo — sync commits immediately (unlike the single-transaction delete's
 // delay-then-write pattern), so undoing it needs a real reversal call
 // naming exactly the rows this specific sync created.
-export async function ingestTransaction(userId: number, householdId: number, item: SbTransaction, selfAccountId: number): Promise<IngestOutcome> {
-  // entry_reference first, NOT transaction_id — confirmed live 2026-07-22 by
-  // fetching the same real transaction twice a few seconds apart:
-  // transaction_id is an opaque per-request encrypted blob that's DIFFERENT
-  // on every call ("ZW5jISF..." — decodes to "enc!!..."), while
-  // entry_reference ("2026-07-21-0", date + same-day sequence number) was
-  // identical both times. Using transaction_id as the dedup key meant
-  // *every* sync recreated everything in its date range, since the "unique"
-  // id was never actually the same twice — this is exactly the "a
-  // valid-looking wrong value is more dangerous than a crash" trap: the
-  // field named transaction_id looked like the obviously-correct choice.
-  const dedupKey = item.entry_reference || item.transaction_id;
-  if (!dedupKey) return { status: 'skipped_malformed' };
+//
+// occurrenceCounts is a Map the caller creates fresh once per
+// syncSparebankAccount call (see that function) and threads through every
+// item in that sync — see buildSbContentKeyBase's own comment for why a
+// shared, sync-scoped counter is what makes the ordinal-suffix dedup
+// correct instead of just plausible.
+export async function ingestTransaction(userId: number, householdId: number, item: SbTransaction, selfAccountId: number, occurrenceCounts: Map<string, number>): Promise<IngestOutcome> {
 
   // Same "provisional vs final" rule as Monobank's hold check (deep-review
   // category 9) — a booking that hasn't cleared can still be reversed or
@@ -238,9 +205,13 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   const date = new Date(`${dateStr}T00:00:00Z`);
   if (isNaN(date.getTime())) return { status: 'skipped_malformed' };
 
-  const dedup = await resolveDedup(userId, dedupKey, amount, date, counterparty);
-  if (dedup.skip) return { status: 'skipped_duplicate' };
-  const storageKey = dedup.storageKey;
+  const keyBase = buildSbContentKeyBase(selfAccountId, dateStr, item.credit_debit_indicator, amountOriginal);
+  const occurrence = (occurrenceCounts.get(keyBase) ?? 0) + 1;
+  occurrenceCounts.set(keyBase, occurrence);
+  const storageKey = `${keyBase}#${occurrence}`;
+
+  const existing = await prisma.transaction.findFirst({ where: { userId, sbTransactionId: storageKey }, select: { id: true } });
+  if (existing) return { status: 'skipped_duplicate' };
 
   // Purely a DISPLAY signal (see the transactions-list sign/color logic that
   // reads it) — whether money is flowing INTO this account (CRDT, shown "+")
