@@ -79,7 +79,16 @@ export default function Sidebar() {
   return (
     <aside style={{
       width: 220,
-      minHeight: '100vh',
+      // `height`, not `minHeight` — the sidebar sits in a flex row next to
+      // main content that's often much taller than the viewport (a long
+      // dashboard), and align-items:stretch (.sidebar-wrap's default) was
+      // stretching this aside to match THAT height. `position: sticky` only
+      // keeps the TOP of a box pinned while scrolling — it doesn't stop the
+      // box itself from being taller than the viewport, so the theme/user/
+      // logout controls (pushed to the bottom via nav's flex:1) ended up
+      // scrolled far below the fold on any long page. Capping height at the
+      // viewport keeps the whole sidebar, controls included, always in view.
+      height: '100vh',
       background: 'var(--c-sidebar)',
       borderRight: '1px solid var(--c-border)',
       display: 'flex',

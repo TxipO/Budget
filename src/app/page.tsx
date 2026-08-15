@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, Landmark, PieChart, LineChart } from 'lucide-react';
-import { MONTH_NAMES, TYPE_COLORS, CATEGORY_PALETTE, BANK_SYNC_COLOR, type Period, PERIOD_LABELS } from '@/lib/utils';
+import { MONTH_NAMES, MONTH_SHORT, TYPE_COLORS, CATEGORY_PALETTE, BANK_SYNC_COLOR, type Period, PERIOD_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
 import RecurringModal from '@/components/RecurringModal';
@@ -105,6 +105,7 @@ export default function Dashboard() {
   interface BankConnection { key: string; userId: number; name: string; bank: 'mono' | 'sparebank'; bankLabel: string }
   const [bankConnections, setBankConnections] = useState<BankConnection[]>([]);
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
+  const [quarterMenuOpen, setQuarterMenuOpen] = useState(false);
   const [syncSelected, setSyncSelected] = useState<Record<string, boolean>>({});
   const [syncing, setSyncing] = useState(false);
   // Only visible feedback once the dropdown auto-closes at sync start
@@ -376,7 +377,7 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {period !== 'year' && period !== 'all' && (
+        {(period === 'month' || period === '6m') && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 2,
             background: 'var(--c-elevated)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 4,
@@ -390,6 +391,71 @@ export default function Dashboard() {
             <button onClick={nextMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }}>
               <ChevronRight size={16} />
             </button>
+          </div>
+        )}
+
+        {/* Quarter is a fixed calendar quarter (Січ-Бер / Кві-Чер / Лип-Вер
+            / Жов-Гру), not "3 months back from wherever the month stepper
+            happens to be" — a dropdown picking the quarter directly is both
+            clearer and matches the label ("N квартал") the header already
+            shows. Reuses the exact same rangeStart/rangeEnd math api/stats
+            already has for period==='quarter' (rolling 3 months ending at
+            `month`): picking quarter N just sets month=N*3, which only ever
+            lands on a calendar-quarter-ending month, so no backend change
+            was needed here. */}
+        {period === 'quarter' && (
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setQuarterMenuOpen(o => !o)}
+              className="btn-ghost"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: 'var(--c-elevated)', border: '1px solid var(--c-border)', borderRadius: 12,
+                padding: '9px 14px', fontSize: 13, fontWeight: 600, color: 'var(--c-text-sec)',
+              }}
+            >
+              {Math.ceil(month / 3)} квартал · {year}
+              <ChevronDown size={14} />
+            </button>
+            {quarterMenuOpen && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 20,
+                background: 'var(--c-raised)', border: '1px solid var(--c-border-hi)', borderRadius: 10,
+                padding: 10, minWidth: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+              }}>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                  {[year - 1, year, year + 1].map(y => (
+                    <button
+                      key={y}
+                      onClick={() => setYear(y)}
+                      className="btn-ghost"
+                      style={{
+                        flex: 1, padding: '5px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                        background: year === y ? 'var(--c-accent-fill)' : 'transparent',
+                        color: year === y ? 'white' : 'var(--c-text-muted)',
+                      }}
+                    >
+                      {y}
+                    </button>
+                  ))}
+                </div>
+                {[1, 2, 3, 4].map(q => (
+                  <button
+                    key={q}
+                    onClick={() => { setMonth(q * 3); setQuarterMenuOpen(false); }}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px',
+                      borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                      fontSize: 13, fontWeight: 600,
+                      background: Math.ceil(month / 3) === q ? 'var(--c-accent-fill)' : 'transparent',
+                      color: Math.ceil(month / 3) === q ? 'white' : 'var(--c-text-sec)',
+                    }}
+                  >
+                    {q} квартал · {MONTH_SHORT[q * 3 - 3]}–{MONTH_SHORT[q * 3 - 1]}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
