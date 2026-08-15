@@ -7,6 +7,26 @@ import { numericForCurrency } from '@/lib/currencies';
 
 const TRANSFER_CATEGORY_NAME = 'Переказ між рахунками';
 
+// SpareBank 1's own remittance_information format for (some) card
+// transactions embeds transaction-specific data directly in the text:
+// "*<card-last-4> <DD.MM> <CCY> <amount> <merchant name> Kurs: <rate>".
+// Confirmed live 2026-08-14/15 with "NORSK REISELIVSMUSEUM": the SAME real
+// merchant sends a plain short description ("NORSK REISELIVSMUSEUM") for
+// some transactions and this card-authorization envelope for others — and
+// since the envelope embeds THIS purchase's own amount+date, every card
+// purchase at that merchant produces a UNIQUE string. Left un-stripped,
+// that string becomes both `details` (noisy) and `merchantKey` (broken) —
+// a merchantKey that's different every time can never match a previously
+// learned MonoCategoryRule, so the user had to re-teach the identical
+// correction twice in two days before this was caught. Stripped down to
+// just the merchant name (the same stable text the SAME merchant sends in
+// its other, non-card-format remittance style) before it becomes either.
+const CARD_AUTH_ENVELOPE = /^\*\d+\s+\d{2}\.\d{2}\s+[A-Z]{3}\s+[\d.,]+\s+(.+?)\s+Kurs:\s*[\d.,]+$/i;
+function stripCardAuthEnvelope(text: string): string {
+  const match = text.match(CARD_AUTH_ENVELOPE);
+  return match ? match[1].trim() : text;
+}
+
 // True ONLY when the counterparty account is ALSO syncEnabled — i.e. this
 // transfer will independently produce its OWN row on the other side too, so
 // excluding both from every total prevents a genuine double count. When the
@@ -187,7 +207,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // The counterparty is whoever's on the OTHER side of the money: the
   // creditor received an expense, the debtor sent an income.
   const counterparty = (txType === 'expense' ? item.creditor?.name : item.debtor?.name) ?? '';
-  const remittance = (item.remittance_information ?? []).join(' ').trim();
+  const remittance = stripCardAuthEnvelope((item.remittance_information ?? []).join(' ').trim());
   // remittance_information is usually the useful human text ("Kiwi 123
   // Bergen") when creditor/debtor.name is empty (direct debits, standing
   // orders). But for KID/OCR-referenced bill payments it can be nothing but
