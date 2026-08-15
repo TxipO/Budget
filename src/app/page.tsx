@@ -430,7 +430,12 @@ export default function Dashboard() {
                       onClick={() => setYear(y)}
                       className="btn-ghost"
                       style={{
-                        flex: 1, padding: '5px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                        // .btn-ghost is inline-flex with no justify-content, so
+                        // its content sits at flex-start; with the horizontal
+                        // padding zeroed out here the year label ended up flush
+                        // against the left edge of each flex:1 button.
+                        flex: 1, justifyContent: 'center',
+                        padding: '5px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
                         background: year === y ? 'var(--c-accent-fill)' : 'transparent',
                         color: year === y ? 'white' : 'var(--c-text-muted)',
                       }}
