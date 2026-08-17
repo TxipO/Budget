@@ -89,11 +89,28 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
   const llmGuess = await guessCategoryByLLM(merchantKey, categories.map(c => c.name));
   if (llmGuess && idByName.has(llmGuess)) return idByName.get(llmGuess)!;
 
-  // 5. Safe fallback — a bucket that always exists for the type.
+  // 5. Self-named category — for unclear INCOME only, if the household has
+  // a category literally named after the account that actually received
+  // the money (e.g. "Женя"/"Паша", each person's own personal-income
+  // bucket), prefer that over the generic fallback below. Replaces a
+  // hardcoded keyword rule that used to blanket-file every Monobank "Від:
+  // X" transfer under a fixed name regardless of whose account it landed
+  // on — correct back when only one household member had Monobank
+  // connected, silently wrong the moment a second one did (confirmed live
+  // 2026-08-17: three of Женя's own incoming transfers filed under
+  // "Паша", including a recurring self top-up from her Norwegian card).
+  // Attributing unclear income to whoever actually received it is the
+  // principled version of what that rule was trying to do.
+  if (txType === 'income') {
+    const owner = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+    if (owner?.name && idByName.has(owner.name)) return idByName.get(owner.name)!;
+  }
+
+  // 6. Safe fallback — a bucket that always exists for the type.
   const fallbackName = txType === 'expense' ? 'Незрозуміло' : 'Додаткове';
   if (idByName.has(fallbackName)) return idByName.get(fallbackName)!;
 
-  // 6. Absolute last resort — any active category of the right type, so a
+  // 7. Absolute last resort — any active category of the right type, so a
   // write never crashes even if the expected fallback category was renamed
   // or deleted.
   if (categories[0]) return categories[0].id;

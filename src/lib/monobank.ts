@@ -188,14 +188,6 @@ export function guessCategoryByMcc(mcc: number | undefined): string | null {
 // below (укр/рос/eng) exist for that caller and are safe for Monobank too,
 // since they're not realistic merchant-name substrings.
 const KEYWORD_CATEGORY: [RegExp, string][] = [
-  // Monobank's own format for an incoming P2P transfer is always "Від: <ім'я
-  // відправника>" — deliberately matched on this prefix, not any particular
-  // sender's name, since the sender varies month to month (different people
-  // sending money, not a recurring counterparty). Filed under Паша because
-  // this is specifically the household's Monobank-connected account; if
-  // Женя's card is ever connected too, this would need to stop being a
-  // blanket rule.
-  [/^від: /i, 'Паша'],
   // apotek/legekontor/tannlege added 2026-07-22 — real Norwegian merchant
   // names from SpareBank 1's first sync (BALESTRAND LEGEKONTOR, SUNNFJORD
   // APOTE..., TANNLEGANE CLEM...), the Enable Banking integration's own
