@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPendingRegistration } from '@/lib/telegramAuth';
-import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
+import { issueAuthCookies } from '@/lib/session';
 import { badRequest, isPositiveInt } from '@/lib/validate';
 import { hashPin, safeEqual, currentPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse, hasPinConfigured, isPinHousehold, PIN_HOUSEHOLD_ID } from '@/lib/pin';
 
@@ -148,13 +148,7 @@ export async function POST(req: NextRequest) {
 
     const hasPin = await hasPinConfigured(user.householdId);
     const res = NextResponse.json({ ok: true, onboarded, user: { id: user.id, name: user.name } });
-    res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.householdId), String(user.id), hasPin), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: SESSION_MAX_AGE_S,
-    });
+    issueAuthCookies(res, authSecret, { householdId: String(user.householdId), userId: String(user.id), hasPin });
     return res;
   } catch (e) {
     console.error('[auth/telegram/register POST]', e);

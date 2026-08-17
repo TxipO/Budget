@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPendingEmailRegistration } from '@/lib/magicLink';
-import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
+import { issueAuthCookies } from '@/lib/session';
 import { badRequest } from '@/lib/validate';
 import { hasPinConfigured } from '@/lib/pin';
 
@@ -36,13 +36,7 @@ export async function POST(req: NextRequest) {
       const household = await prisma.household.findUnique({ where: { id: existing.householdId }, select: { onboardedAt: true } });
       const hasPin = await hasPinConfigured(existing.householdId);
       const res = NextResponse.json({ ok: true, onboarded: !!household?.onboardedAt, user: { id: existing.id, name: trimmedName } });
-      res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(existing.householdId), String(existing.id), hasPin), {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: SESSION_MAX_AGE_S,
-      });
+      issueAuthCookies(res, authSecret, { householdId: String(existing.householdId), userId: String(existing.id), hasPin });
       return res;
     }
 
@@ -73,13 +67,7 @@ export async function POST(req: NextRequest) {
     // Brand-new household — onboardedAt is null by construction (no default,
     // never set at create time), so this is always false here.
     const res = NextResponse.json({ ok: true, onboarded: false, user: { id: user.id, name: user.name } });
-    res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.householdId), String(user.id)), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: SESSION_MAX_AGE_S,
-    });
+    issueAuthCookies(res, authSecret, { householdId: String(user.householdId), userId: String(user.id), hasPin: false });
     return res;
   } catch (e) {
     console.error('[auth/email/register POST]', e);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyTelegramAuth, signPendingRegistration } from '@/lib/telegramAuth';
-import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
+import { issueAuthCookies } from '@/lib/session';
 import { hasPinConfigured } from '@/lib/pin';
 
 export async function POST(req: NextRequest) {
@@ -54,13 +54,7 @@ export async function POST(req: NextRequest) {
     // Telegram identity alone never bypasses a configured PIN lock (P4) —
     // if hasPin is true here, middleware.ts sends them to /lock next.
     const hasPin = await hasPinConfigured(user.householdId);
-    res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(user.householdId), String(user.id), hasPin), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: SESSION_MAX_AGE_S,
-    });
+    issueAuthCookies(res, authSecret, { householdId: String(user.householdId), userId: String(user.id), hasPin });
     return res;
   } catch (e) {
     console.error('[auth/telegram POST]', e);

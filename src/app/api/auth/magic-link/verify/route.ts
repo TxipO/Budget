@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyMagicLinkToken, signPendingEmailRegistration } from '@/lib/magicLink';
-import { sessionCookieValue, SESSION_MAX_AGE_S } from '@/lib/session';
+import { issueAuthCookies } from '@/lib/session';
 import { getAppOrigin } from '@/lib/monobank';
 import { hasPinConfigured } from '@/lib/pin';
 
@@ -30,13 +30,7 @@ export async function GET(req: NextRequest) {
       const dest = verifiedUser.household?.onboardedAt ? '/' : '/onboarding';
       const hasPin = await hasPinConfigured(verifiedUser.householdId);
       const res = NextResponse.redirect(`${origin}${dest}`);
-      res.cookies.set('budget-auth', sessionCookieValue(authSecret, String(verifiedUser.householdId), String(verifiedUser.id), hasPin), {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: SESSION_MAX_AGE_S,
-      });
+      issueAuthCookies(res, authSecret, { householdId: String(verifiedUser.householdId), userId: String(verifiedUser.id), hasPin });
       return res;
     }
 

@@ -44,7 +44,15 @@ export default function PlanningPage() {
       .then((txs: { date: string; amount: number; category: { id: number; type: string } }[]) => {
         const map: Record<string, number> = {};
         txs.forEach(tx => {
-          const m   = new Date(tx.date).getMonth() + 1;
+          // getUTCMonth, not getMonth — tx.date is a UTC-midnight-truncated
+          // date string from the API (matches this app's own convention, see
+          // e.g. verify-data-integrity.mjs's timezone-residue check). Reading
+          // it with local-timezone getMonth() is only safe by accident for a
+          // browser whose local time is ahead of UTC (Norway/Ukraine both
+          // are) — a browser set to a UTC-negative zone would roll a date-1
+          // transaction back to the previous month here, silently misfiling
+          // it in the planning grid. Found during /fullreview 2026-08-19.
+          const m   = new Date(tx.date).getUTCMonth() + 1;
           const key = `${tx.category.id}-${m}`;
           map[key]  = (map[key] || 0) + tx.amount;
         });

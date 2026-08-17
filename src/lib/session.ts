@@ -55,27 +55,41 @@ export function unlockCookieValue(secret: string, householdId: string): string {
 }
 
 // Shared by every route that issues or reissues auth state (PIN login,
-// api/account/pin's set/change/remove, onboarding completion) — previously
-// each one hand-built the same cookieOpts object and two res.cookies.set
-// calls, and the three copies had already drifted (one always set both
-// cookies, one conditionally cleared the unlock cookie, one only ran at all
-// when a PIN was involved). One place now decides the cookie attributes;
-// callers only decide the three things that actually vary: identity,
-// whether the lock is on, and whether this response should also unlock.
+// api/account/pin's set/change/remove, onboarding completion, and every
+// Telegram/email login route) — previously each one hand-built the same
+// cookieOpts object and res.cookies.set call, and copies had already
+// drifted (one always set both cookies, one conditionally cleared the
+// unlock cookie, one only ran at all when a PIN was involved). One place
+// now decides the cookie attributes; callers only decide the things that
+// actually vary: identity, whether the lock is on, and what this response
+// should do to the unlock state.
+//
+// unlock has three meanings, not two — found live 2026-08-19 (/fullreview):
+// the six Telegram/email login routes were still hand-rolling their own
+// res.cookies.set instead of calling this, specifically because neither
+// `true` nor `false` was correct for them. Establishing identity via
+// Telegram/email is NOT proof of the household's PIN (so `true` would
+// bypass the P4 lock without ever checking it), but this device may
+// already have proven the PIN minutes ago on this SAME household — see
+// UNLOCK_MAX_AGE_S — so `false` would force a re-prompt that current,
+// verified behavior never required. `undefined` (the default) leaves
+// whatever unlock cookie the browser already has untouched, which is what
+// every one of those six routes actually needs.
 export function issueAuthCookies(
   res: NextResponse,
   secret: string,
-  opts: { householdId: string; userId?: string; hasPin: boolean; unlock: boolean },
+  opts: { householdId: string; userId?: string; hasPin: boolean; unlock?: boolean },
 ): void {
   const cookieOpts = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/' };
   res.cookies.set('budget-auth', sessionCookieValue(secret, opts.householdId, opts.userId ?? 'shared', opts.hasPin), { ...cookieOpts, maxAge: SESSION_MAX_AGE_S });
-  if (opts.unlock) {
+  if (opts.unlock === true) {
     res.cookies.set('budget-unlocked', unlockCookieValue(secret, opts.householdId), { ...cookieOpts, maxAge: UNLOCK_MAX_AGE_S });
-  } else {
+  } else if (opts.unlock === false) {
     // Explicit clear, not "leave whatever unlock cookie the browser already
     // had" — callers that pass unlock:false mean the lock should NOT be
     // considered open after this response (e.g. removing a PIN), so a stale
     // still-valid unlock cookie from before must not linger.
     res.cookies.set('budget-unlocked', '', { ...cookieOpts, maxAge: 0 });
   }
+  // opts.unlock omitted entirely: don't touch the unlock cookie at all.
 }
