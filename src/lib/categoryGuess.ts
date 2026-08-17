@@ -48,7 +48,7 @@ async function guessCategoryByLLM(merchantText: string, categoryNames: string[])
 // fallback tiers, just called with mcc: undefined (a voice transcript has no
 // MCC, only free text). Two callers now; sharing this instead of duplicating
 // it is the fix for the "same concept, two independent implementations" bug
-// class this project's /deep-review already watches for.
+// class this project's /fullreview already watches for.
 export async function guessCategoryId(householdId: number, userId: number, txType: 'expense' | 'income', merchantKey: string, mcc: number | undefined): Promise<number> {
   // 1. Learned rule from a manual correction — highest priority, no guessing.
   // Checked against the category's current isActive, not just that the rule

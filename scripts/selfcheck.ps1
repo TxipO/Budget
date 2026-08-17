@@ -5,10 +5,12 @@ $logDir  = Join-Path $project ".claude\logs"
 $logFile = Join-Path $logDir "selfcheck-$(Get-Date -Format 'yyyyMMdd-HHmm').log"
 
 $prompt = @"
-Run selfcheck on the budget tracker project at C:\Users\doter\Budget.
-Follow the instructions in .claude/skills/selfcheck/SKILL.md exactly:
-- Use Grep only, never read full files
-- Run all 10 checks
+Run the weekly mechanical code sweep on the budget tracker project at C:\Users\doter\Budget.
+Follow .claude/skills/fullreview/SKILL.md, STAGE 1 ONLY (the grep sweep) — this is
+the `/fullreview quick` mode. Do not run stages 2-4 here; they are far too
+expensive for an unattended weekly job and need a human in the loop.
+- Use Grep only, never read a file in full
+- Run every check in Stage 1's table
 - Fix every Critical immediately
 - Commit and push all fixes with message starting with "Selfcheck fixes"
 "@

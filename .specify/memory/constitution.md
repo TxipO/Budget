@@ -27,7 +27,7 @@ Sync Impact Report
 ## Core Principles
 
 ### I. Fix Confirmed Bugs Immediately
-When a review (self-review, `/selfcheck`, `/deep-review`, or ad-hoc reading)
+When a review (self-review, `/fullreview`, or ad-hoc reading)
 turns up a confirmed bug, fix it in the same pass. Do not write it into a
 list of "potential improvements" and wait for approval — a confirmed defect
 gets fixed, committed, and verified before the task is considered done.
@@ -40,11 +40,15 @@ new information — the fix is going to happen either way.
 
 ### II. Security Review Gates for Sensitive Work
 Any change touching authentication, session handling, webhooks, external
-API integrations, or money math MUST go through `/selfcheck` and
-`/deep-review` before being considered done. This includes new endpoints
-under `src/app/api/**` and anything in `src/lib/**`. A change in this
-category is not "done" at type-check-passes; it is done after both review
-skills report clean (or their findings are fixed and re-verified).
+API integrations, or money math MUST go through `/fullreview` (stages 1-3 —
+the mechanical sweep, the reasoning pass, and the security lens) before
+being considered done. This includes new endpoints under `src/app/api/**`
+and anything in `src/lib/**`. A change in this category is not "done" at
+type-check-passes; it is done after those stages report clean (or their
+findings are fixed and re-verified). Work touching a bank integration's
+ingest/dedup path additionally needs stage 4 (`/fullreview deep`), since
+that's the only stage that reconciles stored rows against the bank's own
+feed.
 
 **Rationale**: This codebase has shipped real security regressions (a
 brute-force lockout counter that silently stopped working once deployed
@@ -152,7 +156,7 @@ This constitution supersedes ad-hoc practice when the two conflict. Amendments h
 3. Updating the Sync Impact Report at the top of this file.
 
 Compliance is reviewed the same way the principles themselves are applied —
-via `/selfcheck` and `/deep-review` for security-sensitive work, and via
+via `/fullreview` for security-sensitive work, and via
 direct reasoning for everything else. Complexity or a deviation from a
 principle must be justified in the change itself (e.g. a plan's Complexity
 Tracking section), not silently introduced.
