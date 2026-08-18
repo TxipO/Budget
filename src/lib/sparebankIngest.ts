@@ -4,6 +4,7 @@ import { guessCategoryId } from '@/lib/categoryGuess';
 import { SbTransaction, SbAccountId } from '@/lib/enableBanking';
 import { getCachedExchangeRate, ISO_4217 } from '@/lib/monobank';
 import { numericForCurrency } from '@/lib/currencies';
+import { looksLikeTransferIntermediary, findCrossBankTransferMatch } from '@/lib/transferDetect';
 
 const TRANSFER_CATEGORY_NAME = 'Переказ між рахунками';
 
@@ -312,6 +313,18 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     categoryId = await guessCategoryId(householdId, userId, txType, merchantKey, undefined);
   }
 
+  // Cross-bank same-person transfer (e.g. a Paysend top-up landing on the
+  // household's own Monobank account) — see transferDetect.ts's own
+  // comment. Only attempted when this isn't already a known SpareBank-
+  // internal movement (transferAccountId above), and deliberately doesn't
+  // touch categoryId: this row keeps whatever the user taught it (e.g.
+  // "Враховано деінде").
+  let crossBankMatchId: number | null = null;
+  if (!isTransfer && looksLikeTransferIntermediary(merchantKey)) {
+    crossBankMatchId = await findCrossBankTransferMatch(userId, 'sparebank', txType, amount, date);
+    if (crossBankMatchId) isTransfer = true;
+  }
+
   // Same double-count guard as Ф5 (Monobank) — a sparebank transaction
   // landing in a category+month that already has a recurring/import row is a
   // real signal two independent writers might be recording the same event.
@@ -351,6 +364,15 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     // a benign "someone else already recorded this" outcome, not an error.
     if (e?.code === 'P2002') return { status: 'skipped_duplicate' };
     throw e;
+  }
+
+  // Cross-bank match: only flip isTransfer on the other leg (Monobank side),
+  // never its category — see transferDetect.ts's own comment on why.
+  if (crossBankMatchId) {
+    await prisma.transaction.update({
+      where: { id: crossBankMatchId },
+      data: { isTransfer: true },
+    });
   }
 
   return { status: 'created', id: created.id };

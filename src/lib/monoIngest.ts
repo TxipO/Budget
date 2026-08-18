@@ -3,6 +3,7 @@ import { roundMoney } from '@/lib/validate';
 import { normalizeMerchantKey, getCachedExchangeRate } from '@/lib/monobank';
 import { guessCategoryId as resolveCategoryId } from '@/lib/categoryGuess';
 import { numericForCurrency } from '@/lib/currencies';
+import { looksLikeTransferIntermediary, findCrossBankTransferMatch } from '@/lib/transferDetect';
 
 export interface MonoStatementItem {
   id: string;
@@ -126,7 +127,7 @@ export async function ingestStatementItem(userId: number, householdId: number, i
   // Is this the household moving money between Паша's and Женя's own
   // connected Monobank accounts? See findMonoTransferMatch's own comment.
   const matchedTransferId = await findMonoTransferMatch(householdId, userId, txType, amount, date);
-  const isTransfer = matchedTransferId !== null;
+  let isTransfer = matchedTransferId !== null;
 
   const merchantKey = normalizeMerchantKey(item.description || '');
   const categoryId = isTransfer
@@ -137,6 +138,18 @@ export async function ingestStatementItem(userId: number, householdId: number, i
         select: { id: true },
       })).id
     : await resolveCategoryId(householdId, userId, txType, merchantKey, item.mcc);
+
+  // Cross-bank same-person transfer (e.g. a Paysend top-up from the
+  // household's own SpareBank account) — see transferDetect.ts's own
+  // comment. Only attempted when this ISN'T already a same-bank transfer
+  // match above, and deliberately doesn't touch categoryId: this row keeps
+  // whatever it already resolved to (e.g. the receiving member's own
+  // personal-income category).
+  let crossBankMatchId: number | null = null;
+  if (!isTransfer && looksLikeTransferIntermediary(item.description || '', item.mcc)) {
+    crossBankMatchId = await findCrossBankTransferMatch(userId, 'mono', txType, amount, date);
+    if (crossBankMatchId) isTransfer = true;
+  }
 
   // Only read when the resolved category turns out to be type "savings" —
   // see Transaction.savingsWithdrawal's own schema comment and the matching
@@ -201,14 +214,22 @@ export async function ingestStatementItem(userId: number, householdId: number, i
     throw e;
   }
 
-  // The matched OTHER half of this transfer was recorded earlier under
-  // whatever category it originally guessed (it had no way to know about
-  // this side yet) — retroactively reclassify it now too, or only the
+  // The matched OTHER half of a same-bank transfer was recorded earlier
+  // under whatever category it originally guessed (it had no way to know
+  // about this side yet) — retroactively reclassify it now too, or only the
   // later-arriving side would ever get excluded from budget totals.
-  if (isTransfer && matchedTransferId) {
+  if (matchedTransferId) {
     await prisma.transaction.update({
       where: { id: matchedTransferId },
       data: { categoryId, isTransfer: true },
+    });
+  }
+  // Cross-bank match: only flip isTransfer on the other leg, never its
+  // category — see transferDetect.ts's own comment on why.
+  if (crossBankMatchId) {
+    await prisma.transaction.update({
+      where: { id: crossBankMatchId },
+      data: { isTransfer: true },
     });
   }
 
