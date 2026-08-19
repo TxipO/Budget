@@ -35,16 +35,24 @@ import { sendMessage } from '@/lib/telegramBot';
 // daily fire (they land about an hour apart) from double-triggering once one
 // of them lands inside it.
 //
-// Week 1 (2026-07-25): a single midnight window only, per explicit user
-// decision to watch how Enable Banking's undocumented unattended quota
-// behaves in practice before adding the second (noon) window.
-const TARGET_HOURS_OSLO = [23, 0, 1, 2];
+// Week 1 (2026-07-25) ran a single midnight window only, to watch how Enable
+// Banking's undocumented unattended quota behaves in practice. Held up clean
+// (0 failures), so a second (noon) window was added 2026-08-19 — each window
+// is its own 4-hour band for the same reason the midnight one is: GitHub
+// Actions' scheduled triggers land 55-70 min late (see the dated comment
+// above), so a single exact hour would silently never match.
+const TARGET_HOURS_OSLO = [23, 0, 1, 2, 11, 12, 13, 14];
 
-// Guards against the same day's two DST-candidate cron fires both matching
-// (shouldn't happen since only one can equal a TARGET_HOURS_OSLO value on
-// any given day, but a stray manual re-trigger or Vercel retry could still
-// double-fire) — a wasted unattended-quota call is not recoverable today.
-const MIN_GAP_HOURS = 12;
+// Guards against the same window's two DST-candidate cron fires both
+// matching (a stray manual re-trigger or Vercel retry could still
+// double-fire) while still letting the midnight and noon windows both run —
+// must clear the ~2-3h worst-case gap between two candidates in the SAME
+// window, but stay under the shortest gap BETWEEN windows (a run landing at
+// the very end of the midnight window, e.g. 02:59 Oslo, and the next firing
+// at the very start of noon's, e.g. 11:00 Oslo, are only ~8h01m apart). 12h
+// used to be safe when there was only one window a day; halved to 6h so it
+// still clears same-window double-fires without also blocking the noon run.
+const MIN_GAP_HOURS = 6;
 
 // Reminders at exactly these thresholds, not every day of the final week —
 // a person doesn't need "expires in 6 days", "5 days", "4 days"... daily.

@@ -12,6 +12,8 @@ on:
   schedule:
     - cron: '0 22 * * *' # Oslo midnight during CEST (summer, UTC+2)
     - cron: '0 23 * * *' # Oslo midnight during CET (winter, UTC+1)
+    - cron: '0 10 * * *' # Oslo noon during CEST (summer, UTC+2)
+    - cron: '0 11 * * *' # Oslo noon during CET (winter, UTC+1)
   workflow_dispatch: {} # manual trigger, for testing without waiting for a scheduled fire
 
 jobs:
