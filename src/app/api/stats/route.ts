@@ -19,7 +19,15 @@ async function sumByType(householdId: number, start: Date, end: Date) {
   const income   = budgetTxs.filter(t => t.category.type === 'income')  .reduce((s, t) => s + t.amount, 0);
   const expenses = budgetTxs.filter(t => t.category.type === 'expense') .reduce((s, t) => s + t.amount, 0);
   const savings  = budgetTxs.filter(t => t.category.type === 'savings') .reduce((s, t) => s + savingsAmount(t), 0);
-  return { income, expenses, savings, balance: income - expenses - savings, txs: budgetTxs };
+  // Deliberately from the FULL `txs`, not `budgetTxs` — isBudgetRelevant
+  // excludes every 'transfer'-type row by design (see its own comment), so
+  // this is the one sum that has to read type 'transfer' rows directly.
+  // Transfers land in pairs (one outgoing leg, one incoming), so summing
+  // both would double the real moved amount — only the outgoing
+  // (savingsWithdrawal: false) leg of each pair is counted, same
+  // "count each real movement once" reasoning as savingsAmount().
+  const transfers = txs.filter(t => t.category.type === 'transfer' && !t.savingsWithdrawal).reduce((s, t) => s + t.amount, 0);
+  return { income, expenses, savings, transfers, balance: income - expenses - savings, txs: budgetTxs };
 }
 
 export async function GET(req: NextRequest) {
@@ -95,7 +103,7 @@ export async function GET(req: NextRequest) {
   const current = await sumByType(householdId, rangeStart, rangeEnd);
   const prev    = period !== 'all' ? await sumByType(householdId, prevStart, prevEnd) : null;
 
-  const { income, expenses, savings, balance, txs } = current;
+  const { income, expenses, savings, transfers, balance, txs } = current;
 
   // Cumulative balance
   const allTxs = await prisma.transaction.findMany({
@@ -181,7 +189,9 @@ export async function GET(req: NextRequest) {
     // showing it here reads as an unexplained duplicate of its counted
     // counterpart. Filtered at the query itself, not just hidden in the UI,
     // so it can't also silently push a real transaction out of the top 8.
-    where: { householdId, date: { gte: rangeStart, lt: rangeEnd }, isTransfer: false },
+    // category.type 'transfer' excluded too, independent of isTransfer — see
+    // isBudgetRelevant's own comment on why both checks matter.
+    where: { householdId, date: { gte: rangeStart, lt: rangeEnd }, isTransfer: false, category: { type: { not: 'transfer' } } },
     include: { category: true, user: { select: { id: true, name: true } } },
     orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     take: 8,
@@ -207,9 +217,9 @@ export async function GET(req: NextRequest) {
   }));
 
   return NextResponse.json({
-    income, expenses, savings, balance, cumBalance,
+    income, expenses, savings, transfers, balance, cumBalance,
     byCategory, byUser, trend, recent, lastByUser,
-    prev: prev ? { income: prev.income, expenses: prev.expenses, savings: prev.savings, balance: prev.balance } : null,
+    prev: prev ? { income: prev.income, expenses: prev.expenses, savings: prev.savings, transfers: prev.transfers, balance: prev.balance } : null,
   });
   } catch (e) {
     console.error('[stats GET]', e);

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, Landmark, PieChart, LineChart } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, Landmark, PieChart, LineChart, ArrowLeftRight } from 'lucide-react';
 import { MONTH_NAMES, MONTH_SHORT, TYPE_COLORS, CATEGORY_PALETTE, BANK_SYNC_COLOR, type Period, PERIOD_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
@@ -14,7 +14,7 @@ const ExpenseDonut = dynamic(() => import('@/components/charts/ExpenseDonut'), {
 const BalanceTrend = dynamic(() => import('@/components/charts/BalanceTrend'), { ssr: false });
 
 interface Stats {
-  income: number; expenses: number; savings: number;
+  income: number; expenses: number; savings: number; transfers: number;
   balance: number; cumBalance: number;
   byCategory: { name: string; amount: number; color: string; icon: string; planned: number }[];
   byUser: { name: string; income: number; expenses: number; savings: number; net: number }[];
@@ -27,7 +27,7 @@ interface Stats {
     user: { id: number; name: string } | null;
   }[];
   lastByUser: { userId: number; name: string; date: string | null }[];
-  prev: { income: number; expenses: number; savings: number; balance: number } | null;
+  prev: { income: number; expenses: number; savings: number; transfers: number; balance: number } | null;
 }
 
 const PERIODS: Period[] = ['month', 'quarter', '6m', 'year', 'all'];
@@ -259,10 +259,14 @@ export default function Dashboard() {
   }
 
   const cardDefs = [
-    { label: 'Дохід',           key: 'income'   as const, color: TYPE_COLORS.income,   icon: TrendingUp,   bg: 'rgba(34,197,94,0.08)',   invertGood: false },
-    { label: 'Витрати',         key: 'expenses' as const, color: TYPE_COLORS.expense,  icon: TrendingDown, bg: 'rgba(239,68,68,0.08)',   invertGood: true  },
-    { label: 'Збереження',      key: 'savings'  as const, color: TYPE_COLORS.savings,  icon: PiggyBank,    bg: 'rgba(245,158,11,0.08)',  invertGood: false },
-    { label: 'Вільний залишок', key: 'balance'  as const, color: '#FB923C',            icon: Wallet,       bg: 'rgba(249,115,22,0.08)', invertGood: false },
+    { label: 'Дохід',           key: 'income'    as const, color: TYPE_COLORS.income,   icon: TrendingUp,     bg: 'rgba(34,197,94,0.08)',   invertGood: false },
+    { label: 'Витрати',         key: 'expenses'  as const, color: TYPE_COLORS.expense,  icon: TrendingDown,   bg: 'rgba(239,68,68,0.08)',   invertGood: true  },
+    { label: 'Збереження',      key: 'savings'   as const, color: TYPE_COLORS.savings,  icon: PiggyBank,      bg: 'rgba(245,158,11,0.08)',  invertGood: false },
+    // Neutral, not "good"/"bad" — money moving between your own accounts
+    // isn't a budget outcome, so DeltaBadge's usual up-is-good/down-is-good
+    // framing doesn't apply. invertGood is arbitrary either way here.
+    { label: 'Перекази',        key: 'transfers' as const, color: TYPE_COLORS.transfer, icon: ArrowLeftRight, bg: 'rgba(100,116,139,0.08)', invertGood: false },
+    { label: 'Вільний залишок', key: 'balance'   as const, color: '#FB923C',            icon: Wallet,         bg: 'rgba(249,115,22,0.08)',  invertGood: false },
   ];
 
   const categoriesWithPlan = stats?.byCategory.filter(c => c.planned > 0) ?? [];
@@ -486,7 +490,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid-4" style={{ marginBottom: 24 }}>
+      <div className="grid-5" style={{ marginBottom: 24 }}>
         {loading
           ? cardDefs.map(c => <SkeletonCard key={c.label} />)
           : cardDefs.map(c => {

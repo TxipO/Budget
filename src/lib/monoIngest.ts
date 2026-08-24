@@ -31,7 +31,15 @@ export const MONO_CCY_NAMES: Record<number, string> = { 980: 'UAH', 578: 'NOK', 
 
 export type IngestResult = 'created' | 'skipped_hold' | 'skipped_duplicate' | 'skipped_malformed';
 
-const TRANSFER_CATEGORY_NAME = 'Переказ між рахунками';
+// 'Перекази' — its own category TYPE (not 'savings'), so isBudgetRelevant()
+// excludes every row filed here by type alone, independent of whether
+// isTransfer itself got set correctly (see that function's own comment on
+// the 2026-08-24 #938/#939 case this guards against). Renamed/retyped from
+// 'Переказ між рахунками' (type 'savings') 2026-08-24, at the user's
+// request, to give transfers their own dashboard tile instead of hiding
+// inside Збереження's totals.
+const TRANSFER_CATEGORY_NAME = 'Перекази';
+const TRANSFER_CATEGORY_TYPE = 'transfer';
 
 // Monobank statement items carry no counterparty account id (unlike
 // SpareBank's creditor_account/debtor_account — see sparebankIngest.ts's own
@@ -42,11 +50,18 @@ const TRANSFER_CATEGORY_NAME = 'Переказ між рахунками';
 // account has a transaction of the exact opposite direction, the exact same
 // amount (both already converted to the household's own currency, so
 // directly comparable), within a few days of this one.
-// ponytail: exact-amount match, no cents-tolerance for cross-conversion
-// rounding drift between the two sides' fx snapshots — if a real pair is
-// ever missed because of that, it's user-correctable the same as any other
-// mono transaction; revisit with a tolerance only if that turns out to
-// happen in practice.
+// FIXED 2026-08-24: was an exact-amount match, "revisit with a tolerance
+// only if that turns out to happen in practice" (original comment). It did
+// — confirmed live: #938 (-2582.22) / #939 (+2583.55), a genuine same-day
+// transfer pair, missed each other because each leg's UAH->NOK conversion
+// hit a different snapshot of the 1h-TTL exchange-rate cache (0.05% apart).
+// Both legs go through independent currency conversion (see the
+// amount-vs-operationAmount comment above), so a small tolerance is
+// structurally expected, not a data-quality problem — 0.5% is an order of
+// magnitude above the observed drift while staying two orders below the
+// cross-bank detector's 12% (transferDetect.ts), which has to cover an
+// intermediary's real FX spread/fee, not just a stale cache.
+const TRANSFER_MATCH_AMOUNT_TOLERANCE = 0.005;
 const TRANSFER_MATCH_WINDOW_DAYS = 2;
 
 async function findMonoTransferMatch(householdId: number, userId: number, txType: 'income' | 'expense', amount: number, date: Date): Promise<number | null> {
@@ -59,7 +74,7 @@ async function findMonoTransferMatch(householdId: number, userId: number, txType
       userId: { not: userId },
       source: 'mono',
       isTransfer: false,
-      amount,
+      amount: { gte: amount * (1 - TRANSFER_MATCH_AMOUNT_TOLERANCE), lte: amount * (1 + TRANSFER_MATCH_AMOUNT_TOLERANCE) },
       date: { gte: windowStart, lte: windowEnd },
       category: { type: oppositeType },
     },
@@ -132,9 +147,9 @@ export async function ingestStatementItem(userId: number, householdId: number, i
   const merchantKey = normalizeMerchantKey(item.description || '');
   const categoryId = isTransfer
     ? (await prisma.category.upsert({
-        where: { householdId_name_type: { householdId, name: TRANSFER_CATEGORY_NAME, type: 'savings' } },
+        where: { householdId_name_type: { householdId, name: TRANSFER_CATEGORY_NAME, type: TRANSFER_CATEGORY_TYPE } },
         update: {},
-        create: { householdId, name: TRANSFER_CATEGORY_NAME, type: 'savings', color: '#64748B', icon: 'wallet' },
+        create: { householdId, name: TRANSFER_CATEGORY_NAME, type: TRANSFER_CATEGORY_TYPE, color: '#64748B', icon: 'wallet' },
         select: { id: true },
       })).id
     : await resolveCategoryId(householdId, userId, txType, merchantKey, item.mcc);
@@ -157,8 +172,11 @@ export async function ingestStatementItem(userId: number, householdId: number, i
   // (amount < 0, "expense"-shaped) into a savings pot is a deposit; money
   // coming back IN (amount >= 0, "income"-shaped) is a withdrawal. Applies
   // the same whether the row landed in the dedicated transfer category or an
-  // ordinary category — isTransfer (not this) is what actually excludes a
-  // row from budget math, see isBudgetRelevant's own comment.
+  // ordinary category — isTransfer/category.type (not this) is what actually
+  // excludes a row from budget math, see isBudgetRelevant's own comment.
+  // Also doubles as the "Перекази" tile's direction signal for type
+  // 'transfer' rows (stats.ts sums only the false/outgoing leg of each pair,
+  // to avoid double-counting a matched transfer twice).
   const savingsWithdrawal = txType === 'income';
 
   // Ф5: the same real-world payment counted twice from two independent

@@ -11,6 +11,7 @@ const TYPE_UA: Record<string, string> = {
   income:  'Дохід',
   expense: 'Витрати',
   savings: 'Збереження',
+  transfer: 'Перекази',
 };
 
 const DATE_FMT = '[$-FC22]d\\ mmmm\\ yyyy" р."';

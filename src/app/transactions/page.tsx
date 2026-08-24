@@ -201,7 +201,11 @@ export default function TransactionsPage() {
     // totals; still fully visible via a category edit or a direct DB query
     // if ever needed. Found confusing live 2026-08-14: two rows for one real
     // checking<->pillow transfer, distinguished only by a small icon.
-    return matchesSearch && matchesUser && matchesSource && !tx.isTransfer;
+    // category.type 'transfer' excluded too, independent of isTransfer — see
+    // lib/validate.ts's isBudgetRelevant for why both checks matter (a
+    // learned rule can file a row under "Перекази" before the automatic
+    // isTransfer matcher catches up, or in cases it never does).
+    return matchesSearch && matchesUser && matchesSource && !tx.isTransfer && tx.category.type !== 'transfer';
   });
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);

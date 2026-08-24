@@ -22,8 +22,8 @@ export function isValidDate(val: unknown): boolean {
   return !isNaN(d.getTime());
 }
 
-export function isValidType(val: unknown): val is 'income' | 'expense' | 'savings' {
-  return val === 'income' || val === 'expense' || val === 'savings';
+export function isValidType(val: unknown): val is 'income' | 'expense' | 'savings' | 'transfer' {
+  return val === 'income' || val === 'expense' || val === 'savings' || val === 'transfer';
 }
 
 export function isValidYear(val: unknown): val is number {
@@ -62,6 +62,17 @@ export function savingsAmount(t: { amount: number; savingsWithdrawal: boolean })
 // filed as a savings category, whose type-based summing counted it as new
 // money either way it was signed — an internal transfer needs to be excluded
 // outright, not just correctly signed within one bucket.
-export function isBudgetRelevant(t: { isTransfer: boolean }): boolean {
-  return !t.isTransfer;
+//
+// category.type === 'transfer' is a SECOND, independent path to the same
+// exclusion — not redundant with isTransfer. Found live 2026-08-24: a pair
+// of same-bank Monobank transfer legs (#938/#939) landed in the "Перекази"
+// category via a learned MonoCategoryRule, but findMonoTransferMatch's
+// exact-amount check missed the pair (each leg's UAH->NOK conversion hit a
+// different 1h-TTL exchange-rate cache snapshot, 0.05% apart) — so isTransfer
+// stayed false while the category already said "this is a transfer". Category
+// type is the one place a manual re-categorization (or a learned rule) can
+// assert "not budget activity" even when the automatic matcher's own
+// isTransfer flag didn't fire, so both must be checked, not just one.
+export function isBudgetRelevant(t: { isTransfer: boolean; category: { type: string } }): boolean {
+  return !t.isTransfer && t.category.type !== 'transfer';
 }

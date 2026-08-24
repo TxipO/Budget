@@ -6,7 +6,10 @@ import { getCachedExchangeRate, ISO_4217 } from '@/lib/monobank';
 import { numericForCurrency } from '@/lib/currencies';
 import { looksLikeTransferIntermediary, findCrossBankTransferMatch } from '@/lib/transferDetect';
 
-const TRANSFER_CATEGORY_NAME = 'Переказ між рахунками';
+// See monoIngest.ts's own comment on the 2026-08-24 rename/retype from
+// 'Переказ між рахунками' (type 'savings') to a dedicated 'transfer' type.
+const TRANSFER_CATEGORY_NAME = 'Перекази';
+const TRANSFER_CATEGORY_TYPE = 'transfer';
 
 // SpareBank 1's own remittance_information format for (some) card
 // transactions embeds transaction-specific data directly in the text:
@@ -302,9 +305,9 @@ export async function ingestTransaction(userId: number, householdId: number, ite
       // the rule above for next time, same as any other category fix.
       isTransfer = true;
       categoryId = (await prisma.category.upsert({
-        where: { householdId_name_type: { householdId, name: TRANSFER_CATEGORY_NAME, type: 'savings' } },
+        where: { householdId_name_type: { householdId, name: TRANSFER_CATEGORY_NAME, type: TRANSFER_CATEGORY_TYPE } },
         update: {},
-        create: { householdId, name: TRANSFER_CATEGORY_NAME, type: 'savings', color: '#64748B', icon: 'wallet' },
+        create: { householdId, name: TRANSFER_CATEGORY_NAME, type: TRANSFER_CATEGORY_TYPE, color: '#64748B', icon: 'wallet' },
         select: { id: true },
       })).id;
     }

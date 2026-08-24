@@ -24,12 +24,14 @@ export const TYPE_LABELS: Record<string, string> = {
   income: 'Дохід',
   expense: 'Витрати',
   savings: 'Збереження',
+  transfer: 'Перекази',
 };
 
 export const TYPE_COLORS: Record<string, string> = {
   income: '#22C55E',
   expense: '#EF4444',
   savings: '#F59E0B',
+  transfer: '#64748B',
 };
 
 export const CATEGORY_PALETTE = [
