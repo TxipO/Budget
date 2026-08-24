@@ -186,7 +186,10 @@ export default function TransactionsPage() {
     }
   }
 
-  const filtered = txs.filter(tx => {
+  // Shared by both `filtered` (the visible list) and the transfers total
+  // below (which needs the SAME search/user/source scoping, just without the
+  // isTransfer/category-type exclusion those two disagree on).
+  function matchesFilters(tx: Tx) {
     const matchesSearch = !search ||
       tx.category.name.toLowerCase().includes(search.toLowerCase()) ||
       (tx.details ?? '').toLowerCase().includes(search.toLowerCase()) ||
@@ -194,6 +197,10 @@ export default function TransactionsPage() {
     const matchesUser = !userFilter || tx.user?.id === Number(userFilter);
     const isBankSourced = tx.source === 'mono' || tx.source === 'sparebank';
     const matchesSource = isBankSourced ? showBank : showManual;
+    return matchesSearch && matchesUser && matchesSource;
+  }
+
+  const filtered = txs.filter(tx => {
     // isTransfer rows (a self-transfer's redundant mirror leg, or a manually
     // excluded row) are real DB rows but never represent budget activity —
     // showing them next to their counted counterpart just reads as an
@@ -205,7 +212,7 @@ export default function TransactionsPage() {
     // lib/validate.ts's isBudgetRelevant for why both checks matter (a
     // learned rule can file a row under "Перекази" before the automatic
     // isTransfer matcher catches up, or in cases it never does).
-    return matchesSearch && matchesUser && matchesSource && !tx.isTransfer && tx.category.type !== 'transfer';
+    return matchesFilters(tx) && !tx.isTransfer && tx.category.type !== 'transfer';
   });
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
@@ -228,6 +235,14 @@ export default function TransactionsPage() {
     },
     { income: 0, expenses: 0, savings: 0 }
   );
+
+  // Deliberately from `txs` (not `filtered`, which excludes every 'transfer'
+  // row outright) with the same search/user/source scoping — matches
+  // stats.ts's `transfers` sum exactly: only the outgoing leg of each
+  // matched pair, so a transfer isn't counted twice.
+  const transfersTotal = txs
+    .filter(tx => matchesFilters(tx) && tx.category.type === 'transfer' && !tx.savingsWithdrawal)
+    .reduce((s, tx) => s + tx.amount, 0);
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
@@ -391,6 +406,7 @@ export default function TransactionsPage() {
           { label: 'Дохід', value: totals.income, color: '#4ADE80' },
           { label: 'Витрати', value: totals.expenses, color: '#FCA5A5' },
           { label: 'Збереження', value: totals.savings, color: '#FCD34D' },
+          { label: 'Перекази', value: transfersTotal, color: '#94A3B8' },
         ].map(s => (
           <div key={s.label} className="card" style={{ flex: '1 1 100px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: '#64748B' }}>{s.label}</span>
