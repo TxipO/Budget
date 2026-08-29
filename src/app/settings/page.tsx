@@ -35,7 +35,7 @@ export default function SettingsPage() {
   const [monoConnecting, setMonoConnecting] = useState<number | null>(null);
   const [monoSyncing, setMonoSyncing] = useState<number | null>(null);
 
-  interface SbAccount { id: number; label: string; iban: string | null; syncEnabled: boolean; lastSyncedAt: string | null; balanceAmount: number | null; balanceCurrency: string | null; balanceFetchedAt: string | null }
+  interface SbAccount { id: number; label: string; iban: string | null; syncEnabled: boolean; lastSyncedAt: string | null; balanceAmount: number | null; balanceCurrency: string | null; balanceFetchedAt: string | null; categoryId: number | null }
   const [sbStatus, setSbStatus] = useState<{ userId: number; name: string; connected: boolean; expired: boolean; autoSync: boolean; lastAutoSyncAt: string | null; autoSyncFailCount: number; accounts: SbAccount[] }[]>([]);
   const [sbAutoSyncToggling, setSbAutoSyncToggling] = useState<number | null>(null);
   const [sbConnecting, setSbConnecting] = useState<number | null>(null);
@@ -287,6 +287,26 @@ export default function SettingsPage() {
         body: JSON.stringify({ accountId, syncEnabled }),
       });
       if (!res.ok) { toast('Не вдалося змінити налаштування', 'error'); return; }
+      loadSbStatus();
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setSbAccountToggling(null);
+    }
+  }
+
+  // "This real bank account IS this tracked savings pool" — Ф2, see
+  // SparebankAccount.categoryId's own schema comment. null clears the
+  // mapping (an ordinary, non-pool account like "Основний").
+  async function setSbAccountCategory(accountId: number, categoryId: number | null) {
+    if (sbAccountToggling) return;
+    setSbAccountToggling(accountId);
+    try {
+      const res = await fetch('/api/sparebank/account', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, categoryId }),
+      });
+      if (!res.ok) { toast('Не вдалося зберегти категорію', 'error'); return; }
       loadSbStatus();
     } catch {
       toast('Помилка з’єднання', 'error');
@@ -950,6 +970,24 @@ export default function SettingsPage() {
                               />
                               Синхронізувати
                             </label>
+                          </div>
+                          {/* Ф2: mark this account as a tracked savings pool
+                              (e.g. Подушка -> "Фінансова подушка") — replaces
+                              the old guesswork sparebankIngest.ts used to do
+                              per-transaction. "—" means an ordinary account. */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                            <span style={{ color: '#64748B' }}>Це збереження:</span>
+                            <select
+                              className="input-field" style={{ fontSize: 12, padding: '3px 6px' }}
+                              value={a.categoryId ?? ''}
+                              disabled={sbAccountToggling === a.id}
+                              onChange={e => setSbAccountCategory(a.id, e.target.value ? Number(e.target.value) : null)}
+                            >
+                              <option value="">—</option>
+                              {cats.filter(c => c.type === 'savings' && c.isActive).map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                              ))}
+                            </select>
                           </div>
                         </div>
                       ))}

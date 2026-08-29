@@ -169,6 +169,25 @@ model SparebankAccount {
   balanceCurrency String?
   balanceFetchedAt DateTime?
   createdAt      DateTime  @default(now())
+
+  // Ф2 (deferred 2026-08-02, done 2026-08-29): the explicit "this real bank
+  // account IS a tracked savings pool" fact — e.g. Подушка -> "Фінансова
+  // подушка". Before this field existed, sparebankIngest.ts had to GUESS the
+  // same fact four different ways every time a same-person transfer synced:
+  // (1) which SparebankAccount has the higher id ("selfIsPoolSide", an
+  // ordinal proxy, correct only because Основний happened to connect
+  // first), (2) which of the transfer's two legs happened to sync FIRST
+  // (order, not meaning, decided which row survived as the real entry),
+  // (3) a MonoCategoryRule text match on the counterparty's name (fragile —
+  // the same bug class as feedback_generalize_category_rules' name-based
+  // rules generally), and (4) savingsWithdrawal doing double duty as both
+  // the math direction AND the display sign, which silently inverted
+  // against each other (found live 2026-08-29: a withdrawal rendered "+"
+  // green while the total correctly counted it negative). Every bug in this
+  // area since 2026-07-31 was a symptom of this fact not being recorded
+  // anywhere. Null for an ordinary (non-pool) account like "Основний".
+  categoryId     Int?
+  category       Category? @relation(fields: [categoryId], references: [id])
 }
 
 // MT Ф4: rate-limits magic-link email requests before any household/user
@@ -216,6 +235,7 @@ model Category {
   plans              MonthlyPlan[]
   recurringTemplates RecurringTemplate[]
   monoCategoryRules  MonoCategoryRule[]
+  sparebankAccounts  SparebankAccount[]
 
   // Phase C of the multi-tenant migration: uniqueness scoped per household,
   // not global — a global @@unique([name, type]) meant two different

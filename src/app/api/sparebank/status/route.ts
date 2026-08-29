@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
         id: true, name: true, sbSessionEnc: true, sbValidUntil: true,
         sbAutoSync: true, sbLastAutoSyncAt: true, sbSyncFailCount: true,
         sparebankAccounts: {
-          select: { id: true, label: true, iban: true, syncEnabled: true, lastSyncedAt: true, balanceAmount: true, balanceCurrency: true, balanceFetchedAt: true },
+          select: { id: true, label: true, iban: true, syncEnabled: true, lastSyncedAt: true, balanceAmount: true, balanceCurrency: true, balanceFetchedAt: true, categoryId: true },
           orderBy: { id: 'asc' },
         },
       },
@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
         balanceAmount: a.balanceAmount,
         balanceCurrency: a.balanceCurrency,
         balanceFetchedAt: a.balanceFetchedAt,
+        categoryId: a.categoryId,
       })),
     })));
   } catch (e) {

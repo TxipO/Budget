@@ -198,6 +198,25 @@ async function main() {
     for (const t of signMismatches) console.log(`      #${t.id} ${t.date.toISOString().slice(0, 10)} ${t.amount} withdrawal=${t.savingsWithdrawal} "${t.details}"`);
   } else pass(`all ${savingsRows.length} savings rows render a sign matching the total they sum into`);
 
+  // ── Step 4g: SparebankAccount pool-category mapping integrity ───────────
+  step('4g', 'SparebankAccount savings-pool mapping');
+  // Ф2 (2026-08-29): SparebankAccount.categoryId asserts "this real account
+  // IS this tracked savings pool" — sparebankIngest.ts trusts it directly
+  // (no defensive re-check at read time, by design, same as every other FK
+  // in this app). The API route validates active+type:savings on write, but
+  // a category could still be deactivated or retyped AFTER being mapped —
+  // catch that here rather than let it silently misroute future transfers.
+  const sbAccountsWithCat = await prisma.sparebankAccount.findMany({
+    where: { categoryId: { not: null } },
+    select: { id: true, label: true, categoryId: true },
+  });
+  const badPoolMapping = sbAccountsWithCat.filter(a => {
+    const cat = cats.find(c => c.id === a.categoryId);
+    return !cat || !cat.isActive || cat.type !== 'savings';
+  });
+  if (badPoolMapping.length) fail(`${badPoolMapping.length} SparebankAccount(s) map to a missing/inactive/non-savings category: ${badPoolMapping.map(a => `${a.label}(#${a.id})`).join(', ')}`);
+  else pass(`${sbAccountsWithCat.length} SparebankAccount savings-pool mapping(s), all point to a valid active savings category`);
+
   // ── Step 5: duplicate recurring applications ───────────────────────────
   step(5, 'Duplicate recurring-template applications');
   const byTplMonth = {};

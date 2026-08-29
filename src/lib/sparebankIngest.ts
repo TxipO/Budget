@@ -130,13 +130,14 @@ export function buildSbContentKeyBase(accountId: number, dateStr: string, direct
 
 // Once BOTH accounts of a same-person transfer are syncEnabled, EACH side's
 // own sync independently resolves the SAME real movement to the SAME
-// savings category (via the learned rule below) — so without this check,
+// savings category (via SparebankAccount.categoryId, see its own comment)
+// — so without this check,
 // a single real 3464 kr checking->pillow transfer would tally as 3464+3464
 // in "Фінансова подушка". Only the SECOND leg to actually get recorded
 // should end up excluded; the first stands as the real entry. Matches by
 // amount + SAME direction within a window — same, not opposite, because the
 // caller already normalizes savingsWithdrawal to the pool's own perspective
-// before calling this (see ingestTransaction's selfIsPoolSide flip), so
+// before calling this (see ingestTransaction's selfIsPool flip), so
 // both legs of one real transfer share the identical corrected sign by the
 // time either reaches here. Transaction has no column recording which
 // physical SparebankAccount a row came from (see the model's own comment),
@@ -290,45 +291,41 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   let categoryId: number;
 
   if (transferAccountId !== null) {
-    // Known movement between this user's own accounts. If a correction has
-    // already taught the category-guess chain that this exact counterparty
-    // (merchantKey — typically the account holder's own name on a
-    // self-transfer) belongs to a savings category, the transfer itself IS
-    // the real, meaningful event: money moving into or out of a tracked
-    // pool like "Фінансова подушка". Blanket-excluding it (the previous
-    // behavior) silently understated real savings activity — found live
-    // 2026-08-13 on a genuine "Основний -> Подушка" deposit. Bypasses
-    // guessCategoryId's normal expense/income-only tiers (which structurally
-    // can't return a savings category — see that function's own comment)
-    // and reads the learned rule directly.
-    const rule = await prisma.monoCategoryRule.findUnique({
-      where: { userId_merchantKey: { userId, merchantKey } },
-      select: { categoryId: true, category: { select: { isActive: true, type: true } } },
-    });
-    if (rule?.category.isActive && rule.category.type === 'savings') {
-      // ponytail: SparebankAccount ids have no explicit "which one is the
-      // tracked pool" marker (that's the deferred Ф2 — an explicit
-      // account<->category mapping + Settings UI). Lower id = the
-      // reference/checking side, higher id = the pool side, is an ordinal
-      // proxy, not a real signal — correct today because Основний (id 1)
-      // was created before Подушка (id 2), but not guaranteed for a
-      // household whose accounts get connected in the opposite order.
-      // Revisit with the explicit mapping if that ever produces a
-      // backwards-signed row.
-      const selfIsPoolSide = selfAccountId > transferAccountId;
-      if (selfIsPoolSide) savingsWithdrawal = !savingsWithdrawal;
-      const mirrorId = await findSavingsTransferMirror(userId, rule.categoryId, amount, date, savingsWithdrawal);
-      categoryId = rule.categoryId;
+    // Known movement between this user's own accounts. Ф2 (2026-08-29): ask
+    // the two real SparebankAccount rows directly whether either of them IS
+    // a tracked savings pool (SparebankAccount.categoryId, set once by the
+    // user in Settings) — an explicit fact, not a guess. Replaces the old
+    // MonoCategoryRule text-match ("does a learned rule for this
+    // counterparty's name point at a savings category?") and the ordinal
+    // id-comparison hack for which side is the pool — see
+    // SparebankAccount.categoryId's own schema comment for the whole
+    // history of what this used to get wrong.
+    const [selfAcct, counterpartAcct] = await Promise.all([
+      prisma.sparebankAccount.findUnique({ where: { id: selfAccountId }, select: { categoryId: true, category: { select: { isActive: true, type: true } } } }),
+      prisma.sparebankAccount.findUnique({ where: { id: transferAccountId }, select: { categoryId: true, category: { select: { isActive: true, type: true } } } }),
+    ]);
+    const selfIsPool = !!(selfAcct?.categoryId && selfAcct.category?.isActive && selfAcct.category.type === 'savings');
+    const counterpartIsPool = !!(counterpartAcct?.categoryId && counterpartAcct.category?.isActive && counterpartAcct.category.type === 'savings');
+    // Both sides mapped to a pool is a genuinely odd setup (not the normal
+    // checking<->pillow shape) — prefer this account's own mapping rather
+    // than silently pick one; not worth modeling further until it's a real
+    // household's actual setup.
+    const poolCategoryId = selfIsPool ? selfAcct!.categoryId! : counterpartIsPool ? counterpartAcct!.categoryId! : null;
+
+    if (poolCategoryId !== null) {
+      if (selfIsPool) savingsWithdrawal = !savingsWithdrawal;
+      const mirrorId = await findSavingsTransferMirror(userId, poolCategoryId, amount, date, savingsWithdrawal);
+      categoryId = poolCategoryId;
       // Only the SECOND leg to actually sync gets excluded — see
       // findSavingsTransferMirror's own comment on why blindly excluding
       // BOTH sides would drop a real deposit/withdrawal from the total.
       isTransfer = mirrorId !== null;
     } else {
-      // No learned rule pointing this counterparty at a savings category —
-      // still a same-person account movement, but we don't know which
-      // tracked pool (if any) it should reduce/increase, so file it
-      // separately rather than guessing. A manual correction here teaches
-      // the rule above for next time, same as any other category fix.
+      // Neither account is mapped to a tracked pool — still a same-person
+      // account movement, but we don't know which pool (if any) it should
+      // reduce/increase, so file it separately rather than guessing. Map
+      // one of the two accounts to a savings category in Settings to fix
+      // this for good, instead of a per-transaction correction.
       isTransfer = true;
       categoryId = (await prisma.category.upsert({
         where: { householdId_name_type: { householdId, name: TRANSFER_CATEGORY_NAME, type: TRANSFER_CATEGORY_TYPE } },
