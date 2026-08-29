@@ -224,6 +224,13 @@ export default function SettingsPage() {
           } : undefined,
           5000,
         );
+      } else if (data.reconciled > 0) {
+        // No NEW rows, but a previously-recorded one just got detected as a
+        // same-person transfer now that the bank finished enriching it
+        // (see ingestTransaction's `needsReconciliation` comment) — worth a
+        // distinct message so "0 нових" doesn't read as "sync found
+        // nothing to do" when it actually fixed something.
+        toast(`Уточнено транзакцій: ${data.reconciled}`);
       } else {
         toast('Нових транзакцій немає');
       }

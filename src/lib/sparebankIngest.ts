@@ -163,7 +163,7 @@ async function findSavingsTransferMirror(userId: number, categoryId: number, amo
   return match?.id ?? null;
 }
 
-export type IngestResult = 'created' | 'skipped_pending' | 'skipped_duplicate' | 'skipped_malformed';
+export type IngestResult = 'created' | 'reconciled' | 'skipped_pending' | 'skipped_duplicate' | 'skipped_malformed';
 export interface IngestOutcome { status: IngestResult; id?: number }
 
 // Single source of truth for turning one Enable Banking transaction into a
@@ -234,9 +234,6 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   occurrenceCounts.set(keyBase, occurrence);
   const storageKey = `${keyBase}#${occurrence}`;
 
-  const existing = await prisma.transaction.findFirst({ where: { userId, sbTransactionId: storageKey }, select: { id: true } });
-  if (existing) return { status: 'skipped_duplicate' };
-
   // Purely a DISPLAY signal (see the transactions-list sign/color logic that
   // reads it) — whether money is flowing INTO this account (CRDT, shown "+")
   // or OUT of it (DBIT, shown "-"). Computed before the transfer branch below
@@ -257,8 +254,37 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // accounts? DBIT's counterparty is who received it (creditor_account);
   // CRDT's is who sent it (debtor_account) — the account being synced is
   // never its own counterparty, so no need to exclude it explicitly.
+  // Computed BEFORE the dedup check below (moved there deliberately — see
+  // its own comment on why a self-transfer's account numbers can arrive
+  // only on a LATER re-fetch of the same already-stored transaction).
   const counterpartAccount = txType === 'expense' ? item.creditor_account : item.debtor_account;
   const transferAccountId = await findTransferCounterpartAccountId(userId, counterpartAccount);
+
+  const existing = await prisma.transaction.findFirst({
+    where: { userId, sbTransactionId: storageKey },
+    select: { id: true, isTransfer: true },
+  });
+  // Reconciliation, not just a duplicate skip. FOUND LIVE 2026-08-28: a
+  // same-person Основний<->Подушка transfer's FIRST sync recorded
+  // creditor_account/debtor_account both empty — SpareBank 1 hadn't
+  // resolved the counterparty account yet, only a generic placeholder
+  // description ("Overførsel mellom egne konti i Mobilbank, forfall i
+  // dag", same enrichment-arrives-later shape as stripCardAuthEnvelope's
+  // own precedent). transferAccountId came back null, isTransfer stayed
+  // false, and the row landed as an ordinary expense/income pair instead
+  // of a detected transfer. RECONCILIATION_OVERLAP_DAYS exists exactly to
+  // re-fetch this window and catch data that settles/enriches late — but
+  // the OLD dedup check exited on `existing` before any of that logic ever
+  // ran, so the later-arriving account numbers had nowhere to land; the
+  // pair just stayed silently mis-detected forever.
+  //
+  // Only reconsider when there's actually something new to act on (still
+  // not a transfer, AND the account now resolves) — every other duplicate
+  // hit (the overwhelming majority of re-fetches) still exits immediately
+  // below, without re-running guessCategoryId (which can reach an LLM
+  // tier) for rows that already have a perfectly good, unrelated category.
+  const needsReconciliation = existing !== null && !existing.isTransfer && transferAccountId !== null;
+  if (existing && !needsReconciliation) return { status: 'skipped_duplicate' };
 
   let isTransfer: boolean;
   let categoryId: number;
@@ -326,6 +352,22 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   if (!isTransfer && looksLikeTransferIntermediary(merchantKey)) {
     crossBankMatchId = await findCrossBankTransferMatch(userId, 'sparebank', txType, amount, date);
     if (crossBankMatchId) isTransfer = true;
+  }
+
+  if (existing) {
+    // Reconciling an already-stored row (see the `needsReconciliation`
+    // comment above) — only the fields this computation could actually
+    // have changed. sbTransactionId/date/amount/userId/householdId/source
+    // are identical by construction: that's what made `existing` match the
+    // same storageKey in the first place.
+    await prisma.transaction.update({
+      where: { id: existing.id },
+      data: { categoryId, isTransfer, savingsWithdrawal, details, sbCounterparty: counterparty || null },
+    });
+    if (crossBankMatchId) {
+      await prisma.transaction.update({ where: { id: crossBankMatchId }, data: { isTransfer: true } });
+    }
+    return { status: 'reconciled', id: existing.id };
   }
 
   // Same double-count guard as Ф5 (Monobank) — a sparebank transaction

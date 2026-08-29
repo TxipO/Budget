@@ -138,6 +138,38 @@ async function main() {
   if (halfConnected.length) fail(`${halfConnected.length} user(s) have a Monobank token but no webhookSecret — sync is silently broken: ${halfConnected.map(u => u.name).join(', ')}. Reconnect via Settings.`);
   else pass('every user with a stored Monobank token also has a webhookSecret');
 
+  // ── Step 4e: undetected SpareBank same-person internal transfers ────────
+  step('4e', 'SpareBank same-person transfer detection');
+  // FOUND LIVE 2026-08-28: a checking<->pillow transfer's first sync landed
+  // with creditor_account/debtor_account both still empty (SpareBank hadn't
+  // resolved them yet, only a generic placeholder description) — the
+  // reconciliation window's own dedup check used to exit before re-checking
+  // account numbers on a later re-fetch, so a pair like this could sit
+  // undetected indefinitely (fixed in sparebankIngest.ts's
+  // `needsReconciliation` path). This is the exact scan that caught it:
+  // same user, opposite direction, same amount, within a few days, both
+  // still isTransfer:false. A clean run should find 0 — any hit here is a
+  // live instance of that bug (or a new variant of it) sitting undetected
+  // right now, not a historical record.
+  const sbTxs = txs.filter(t => t.source === 'sparebank' && !t.isTransfer && t.userId !== null);
+  const sbSuspects = [];
+  for (let i = 0; i < sbTxs.length; i++) {
+    for (let j = i + 1; j < sbTxs.length; j++) {
+      const a = sbTxs[i], b = sbTxs[j];
+      if (a.userId !== b.userId || a.amount !== b.amount) continue;
+      if (Math.abs(a.date.getTime() - b.date.getTime()) > 3 * 24 * 3600 * 1000) continue;
+      const aDir = a.sbTransactionId?.split('|')[2];
+      const bDir = b.sbTransactionId?.split('|')[2];
+      if (aDir && bDir && aDir !== bDir) sbSuspects.push([a, b]);
+    }
+  }
+  if (sbSuspects.length) {
+    fail(`${sbSuspects.length} pair(s) of SpareBank transactions look like an undetected same-person internal transfer:`);
+    for (const [a, b] of sbSuspects) {
+      console.log(`      #${a.id} <-> #${b.id}: user ${a.userId}, ${a.amount} kr, ${a.date.toISOString().slice(0, 10)}/${b.date.toISOString().slice(0, 10)}, "${a.details}" / "${b.details}"`);
+    }
+  } else pass('no undetected same-person SpareBank transfer pairs (opposite direction, same amount, same user, within 3 days)');
+
   // ── Step 5: duplicate recurring applications ───────────────────────────
   step(5, 'Duplicate recurring-template applications');
   const byTplMonth = {};

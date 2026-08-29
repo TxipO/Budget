@@ -42,6 +42,7 @@ export interface SyncableAccount {
 
 export interface SyncResult {
   createdIds: number[];
+  reconciledIds: number[];
   previousSyncedAt: Date | null;
   skippedPending: number;
   skippedExisting: number;
@@ -70,6 +71,7 @@ export async function syncSparebankAccount(
   }
 
   const createdIds: number[] = [];
+  const reconciledIds: number[] = [];
   let skippedPending = 0;
   let skippedExisting = 0;
   let skippedError = 0;
@@ -90,6 +92,7 @@ export async function syncSparebankAccount(
       try {
         const outcome = await ingestTransaction(account.userId, householdId, item, account.id, occurrenceCounts);
         if (outcome.status === 'created' && outcome.id) createdIds.push(outcome.id);
+        else if (outcome.status === 'reconciled' && outcome.id) reconciledIds.push(outcome.id);
         else if (outcome.status === 'skipped_pending') skippedPending++;
         else if (outcome.status === 'skipped_duplicate') skippedExisting++;
       } catch (e) {
@@ -104,7 +107,7 @@ export async function syncSparebankAccount(
   const previousSyncedAt = account.lastSyncedAt;
   await prisma.sparebankAccount.update({ where: { id: account.id }, data: { lastSyncedAt: new Date() } });
 
-  return { createdIds, previousSyncedAt, skippedPending, skippedExisting, skippedError, checked };
+  return { createdIds, reconciledIds, previousSyncedAt, skippedPending, skippedExisting, skippedError, checked };
 }
 
 export { EnableBankingError };

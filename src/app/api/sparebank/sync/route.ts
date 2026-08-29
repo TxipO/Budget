@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
     const psuUserAgent = req.headers.get('user-agent') || undefined;
 
     let createdIds: number[] = [];
+    let reconciledIds: number[] = [];
     let skippedPending = 0, skippedExisting = 0, skippedError = 0, checked = 0;
     // previousSyncedAt/accountId only make sense for a single account's undo
     // — with multiple accounts synced in one click, "Скасувати" would need
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
       try {
         const result = await syncSparebankAccount(account, householdId, { ipAddress: psuIp, userAgent: psuUserAgent });
         createdIds = createdIds.concat(result.createdIds);
+        reconciledIds = reconciledIds.concat(result.reconciledIds);
         skippedPending += result.skippedPending;
         skippedExisting += result.skippedExisting;
         skippedError += result.skippedError;
@@ -70,6 +72,12 @@ export async function POST(req: NextRequest) {
       ok: true,
       created: createdIds.length,
       createdIds,
+      // Rows that already existed (a same-day dedup hit) but got
+      // retroactively recategorized/flagged now that the bank finished
+      // enriching them — see ingestTransaction's `needsReconciliation`
+      // comment. Distinct from `created`: these aren't new rows, so they
+      // must never feed the undo-sync "Скасувати" delete set.
+      reconciled: reconciledIds.length,
       perAccount,
       skippedPending,
       skippedExisting,
