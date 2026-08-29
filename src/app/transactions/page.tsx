@@ -443,16 +443,21 @@ export default function TransactionsPage() {
           const dateStr = new Date(tx.date).toLocaleDateString('uk-UA', globalSearch
             ? { day: '2-digit', month: '2-digit', year: '2-digit' }
             : { day: '2-digit', month: '2-digit' });
-          // A savings withdrawal is money coming back OUT of the pot into
-          // general spending money — it should read as a "+" like income,
-          // not the "-" a deposit gets, or the sign would contradict the
-          // whole point of tracking it separately (see savingsWithdrawal's
-          // schema comment).
-          const isSavingsWithdrawal = tx.category.type === 'savings' && tx.savingsWithdrawal;
-          const amountStr = `${tx.category.type === 'income' || isSavingsWithdrawal ? '+' : '-'}${formatMoney(tx.amount)}`;
+          // A savings row's sign is the POT's perspective, not the wallet's.
+          // The row is labelled with the pot's own category name, and both
+          // the "Збереження" tile above and the dashboard's sum it into
+          // (savingsAmount() in lib/validate.ts) count a deposit as positive
+          // and a withdrawal as negative. This used to be inverted: a
+          // withdrawal rendered "+" green while every total counted it as
+          // negative, so one real event read as a gain here and a drop
+          // there. Found live 2026-08-29 on a 300 kr "Фінансова подушка"
+          // withdrawal showing "+300". Savings keeps its own colour in both
+          // directions — a pot growing is not income.
+          const isSavingsDeposit = tx.category.type === 'savings' && !tx.savingsWithdrawal;
+          const amountStr = `${tx.category.type === 'income' || isSavingsDeposit ? '+' : '-'}${formatMoney(tx.amount)}`;
           // isTransfer rows never reach here — filtered out above — so no
           // dimmed "excluded" color branch is needed.
-          const amountColor = tx.category.type === 'income' || isSavingsWithdrawal ? '#4ADE80'
+          const amountColor = tx.category.type === 'income' ? '#4ADE80'
                              : tx.category.type === 'expense' ? '#FCA5A5' : '#FCD34D';
           return (
           <div key={tx.id} className="table-row">

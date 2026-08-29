@@ -745,12 +745,22 @@ export default function Dashboard() {
                 {tx.user && ` · ${tx.user.name}`}
               </div>
             </div>
+            {/* A savings row's sign is the POT's perspective, not the
+                wallet's: the row is labelled with the pot's own category
+                name, and the "Збереження" tile it rolls up into already
+                sums it that way (savingsAmount() — deposit positive,
+                withdrawal negative). These used to be inverted against
+                each other: a 300 kr withdrawal FROM "Фінансова подушка"
+                rendered "+300" green while the tile counted it as -300,
+                so the same event read as a gain in the list and a drop in
+                the total. Found live 2026-08-29. Savings keeps its own
+                colour either way — a pot growing isn't income. */}
             <span style={{
               fontSize: 15, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-              color: tx.category.type === 'income' || (tx.category.type === 'savings' && tx.savingsWithdrawal) ? '#4ADE80'
+              color: tx.category.type === 'income' ? '#4ADE80'
                    : tx.category.type === 'expense' ? '#FCA5A5' : '#FCD34D',
             }}>
-              {tx.category.type === 'income' || (tx.category.type === 'savings' && tx.savingsWithdrawal) ? '+' : '-'}{formatMoney(tx.amount)}
+              {tx.category.type === 'income' || (tx.category.type === 'savings' && !tx.savingsWithdrawal) ? '+' : '-'}{formatMoney(tx.amount)}
             </span>
             <button
               className="btn-ghost"

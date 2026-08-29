@@ -170,6 +170,34 @@ async function main() {
     }
   } else pass('no undetected same-person SpareBank transfer pairs (opposite direction, same amount, same user, within 3 days)');
 
+  // ── Step 4f: rendered row sign agrees with the total it rolls into ──────
+  step('4f', 'Row sign vs aggregate sign consistency');
+  // FOUND LIVE 2026-08-29, and every previous check missed it because they
+  // all verify MATH (totals, FK integrity, amounts) and never the sign the
+  // UI actually renders. A "Фінансова подушка" withdrawal displayed "+300"
+  // green in both transaction lists while savingsAmount() counted it as
+  // -300 in the "Збереження" tile those same rows sum into — one real event
+  // reading as a gain in the list and a drop in the total. The arithmetic
+  // was right the whole time, so nothing here caught it; only a screenshot did.
+  //
+  // The rule this asserts: for a savings row, the sign shown next to the
+  // pot's own category name must match the sign savingsAmount() gives it.
+  // Deposit -> "+" (pot grew), withdrawal -> "-" (pot shrank). The two
+  // client components (src/app/page.tsx, src/app/transactions/page.tsx)
+  // each build that sign inline, so this reimplements the intended rule and
+  // compares — if either component is edited back to the old inverted form,
+  // this fails.
+  const savingsRows = txs.filter(t => t.category.type === 'savings' && !t.isTransfer);
+  const signMismatches = savingsRows.filter(t => {
+    const aggregateSign = (t.savingsWithdrawal ? -t.amount : t.amount) >= 0 ? '+' : '-';
+    const renderedSign = !t.savingsWithdrawal ? '+' : '-';
+    return aggregateSign !== renderedSign;
+  });
+  if (signMismatches.length) {
+    fail(`${signMismatches.length} savings row(s) would render a sign contradicting savingsAmount():`);
+    for (const t of signMismatches) console.log(`      #${t.id} ${t.date.toISOString().slice(0, 10)} ${t.amount} withdrawal=${t.savingsWithdrawal} "${t.details}"`);
+  } else pass(`all ${savingsRows.length} savings rows render a sign matching the total they sum into`);
+
   // ── Step 5: duplicate recurring applications ───────────────────────────
   step(5, 'Duplicate recurring-template applications');
   const byTplMonth = {};
