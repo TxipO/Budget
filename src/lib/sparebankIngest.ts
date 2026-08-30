@@ -146,7 +146,18 @@ export function buildSbContentKeyBase(accountId: number, dateStr: string, direct
 // inter-person transfers (0 false positives across 104 real transactions,
 // see project_monobank_integration memory), just scoped to one user's own
 // accounts instead of two different users.
-async function findSavingsTransferMirror(userId: number, categoryId: number, amount: number, date: Date, isWithdrawal: boolean): Promise<number | null> {
+// excludeId: the row currently being processed, when reconciling an
+// already-stored transaction (see ingestTransaction's `needsReconciliation`
+// path) — WITHOUT this, a reconciliation re-run matches the row against
+// ITSELF (same categoryId/amount/date/sign it already has) and "finds" a
+// mirror that's really just its own row, flipping isTransfer to true on the
+// one leg that was correctly counted. FOUND LIVE 2026-08-30: exactly this
+// happened to a real withdrawal the very next sync after it was correctly
+// recorded — both legs of the transfer ended up excluded and the withdrawal
+// silently vanished from "Фінансова подушка" entirely, not just miscounted.
+// In the CREATE path this can't happen (the row doesn't exist yet when this
+// runs), so excludeId is only ever passed from the reconcile path.
+async function findSavingsTransferMirror(userId: number, categoryId: number, amount: number, date: Date, isWithdrawal: boolean, excludeId?: number): Promise<number | null> {
   const windowStart = new Date(date.getTime() - MIRROR_WINDOW_DAYS * 24 * 3600 * 1000);
   const windowEnd = new Date(date.getTime() + MIRROR_WINDOW_DAYS * 24 * 3600 * 1000);
   const match = await prisma.transaction.findFirst({
@@ -158,6 +169,7 @@ async function findSavingsTransferMirror(userId: number, categoryId: number, amo
       amount,
       savingsWithdrawal: isWithdrawal,
       date: { gte: windowStart, lte: windowEnd },
+      ...(excludeId !== undefined ? { id: { not: excludeId } } : {}),
     },
     select: { id: true },
   });
@@ -263,7 +275,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
 
   const existing = await prisma.transaction.findFirst({
     where: { userId, sbTransactionId: storageKey },
-    select: { id: true, isTransfer: true },
+    select: { id: true, isTransfer: true, categoryId: true, savingsWithdrawal: true },
   });
   // Reconciliation, not just a duplicate skip. FOUND LIVE 2026-08-28: a
   // same-person Основний<->Подушка transfer's FIRST sync recorded
@@ -314,7 +326,11 @@ export async function ingestTransaction(userId: number, householdId: number, ite
 
     if (poolCategoryId !== null) {
       if (selfIsPool) savingsWithdrawal = !savingsWithdrawal;
-      const mirrorId = await findSavingsTransferMirror(userId, poolCategoryId, amount, date, savingsWithdrawal);
+      // excludeId: when reconciling, this row itself already sits in the DB
+      // with these exact categoryId/amount/date/sign — without excluding
+      // it, the query below finds itself as its own "mirror" (see this
+      // function's own comment for the real incident this caused).
+      const mirrorId = await findSavingsTransferMirror(userId, poolCategoryId, amount, date, savingsWithdrawal, existing?.id);
       categoryId = poolCategoryId;
       // Only the SECOND leg to actually sync gets excluded — see
       // findSavingsTransferMirror's own comment on why blindly excluding
@@ -353,10 +369,16 @@ export async function ingestTransaction(userId: number, householdId: number, ite
 
   if (existing) {
     // Reconciling an already-stored row (see the `needsReconciliation`
-    // comment above) — only the fields this computation could actually
-    // have changed. sbTransactionId/date/amount/userId/householdId/source
-    // are identical by construction: that's what made `existing` match the
-    // same storageKey in the first place.
+    // comment above). Only actually write when the freshly computed result
+    // DIFFERS from what's stored — this row will keep re-entering this
+    // branch on every future sync (transferAccountId resolves every time
+    // once the accounts are known; that's not something that stops being
+    // true), so treating every re-entry as a real change is what let a
+    // correctly-resolved row get re-processed and corrupted the next day
+    // (see findSavingsTransferMirror's own comment on the exact incident).
+    // A no-op recompute now behaves exactly like an ordinary duplicate hit.
+    const changed = existing.categoryId !== categoryId || existing.isTransfer !== isTransfer || existing.savingsWithdrawal !== savingsWithdrawal;
+    if (!changed) return { status: 'skipped_duplicate' };
     await prisma.transaction.update({
       where: { id: existing.id },
       data: { categoryId, isTransfer, savingsWithdrawal, details, sbCounterparty: counterparty || null },
