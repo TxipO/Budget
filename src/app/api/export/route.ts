@@ -6,6 +6,7 @@ import path from 'path';
 import { readFile } from 'fs/promises';
 import { requireHouseholdId } from '@/lib/household';
 import { isBudgetRelevant, savingsAmount } from '@/lib/validate';
+import { PLANNING_YEARS, planningMonthCol, planningSumCol } from '@/lib/planningLayout';
 
 const TYPE_UA: Record<string, string> = {
   income:  'Дохід',
@@ -16,16 +17,12 @@ const TYPE_UA: Record<string, string> = {
 
 const DATE_FMT = '[$-FC22]d\\ mmmm\\ yyyy" р."';
 
-// ── Column mapping for Планування ─────────────────────────────────────────
-// 2026: cols E-Q  (indices 5-17), 2027: S-AE (19-31), etc. step=14
-const YEARS = [2026, 2027, 2028, 2029, 2030];
-
-function monthCol(year: number, month: number): number {
-  return 5 + (year - 2026) * 14 + (month - 1); // 1-based col index
-}
-function sumCol(year: number): number {
-  return 5 + (year - 2026) * 14 + 12; // 13th col in block (sum)
-}
+// Column mapping for Планування — see lib/planningLayout.ts for the full
+// layout note (shared with import/route.ts, which used to reimplement this
+// and only ever cover year 1).
+const YEARS = PLANNING_YEARS;
+const monthCol = planningMonthCol;
+const sumCol = planningSumCol;
 
 // Section layout in Планування
 const SECTIONS = [

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import ExcelJS from 'exceljs';
 import { requireHouseholdId } from '@/lib/household';
+import { PLANNING_YEARS, planningMonthCol } from '@/lib/planningLayout';
 
 const INCOME_COLORS: Record<string, string> = {
   'Женя': '#22C55E', 'Паша': '#16A34A', 'Додаткове': '#4ADE80',
@@ -99,21 +100,10 @@ export async function POST(req: NextRequest) {
     const planSheet = wb.getWorksheet('Планування');
     if (!planSheet) return NextResponse.json({ error: 'Sheet "Планування" not found' }, { status: 400 });
 
-    // Starting year comes from Налаштування!E7, not hardcoded — a hardcoded
-    // year here would silently misfile every future re-import (e.g. importing
-    // a 2027 template would still write everything into 2026) with no error.
-    const settingsSheet = wb.getWorksheet('Налаштування');
-    const yearCell = settingsSheet ? cellNumber(settingsSheet.getCell('E7').value) : null;
-    const baseYear = yearCell && yearCell >= 2000 && yearCell <= 2100 ? Math.trunc(yearCell) : new Date().getUTCFullYear();
-
     // Find section boundaries by scanning column C (index 3, exceljs is 1-based)
     type SectionType = 'income' | 'expense' | 'savings' | null;
     let currentSection: SectionType = null;
     const importedCats = new Map<string, number>(); // name → id
-
-    // Month columns: col 5=Jan,6=Feb,...,16=Dec (1-based) for year 2026 block
-    const YEAR_COL = 5;
-    const MONTHS   = 12;
 
     for (let r = 1; r <= planSheet.rowCount; r++) {
       const row = planSheet.getRow(r);
@@ -136,40 +126,50 @@ export async function POST(req: NextRequest) {
       });
       importedCats.set(name, cat.id);
 
-      // Read monthly values (cols 5..16 = Jan..Dec 2026)
-      for (let m = 0; m < MONTHS; m++) {
-        const amount = cellNumber(row.getCell(YEAR_COL + m).value);
-        if (amount === null || amount <= 0) continue;
+      // Read monthly values across EVERY year block the export template
+      // actually has (2026-2030, see lib/planningLayout.ts), not just the
+      // first — FIXED 2026-08-30 (/fullreview deep): this used to hardcode
+      // cols 5..16 (year 2026's own block) and label whatever it found there
+      // with a single baseYear read from Налаштування!E7 (which the export
+      // route never actually changes — it's a static template cell, always
+      // 2026). A household re-importing a real multi-year-edited export
+      // would have every 2027+ column silently ignored, with no error — the
+      // exact "silent data loss" class this skill's Stage 2 exists to catch.
+      for (const year of PLANNING_YEARS) {
+        for (let m = 0; m < 12; m++) {
+          const amount = cellNumber(row.getCell(planningMonthCol(year, m + 1)).value);
+          if (amount === null || amount <= 0) continue;
 
-        // Create a monthly summary transaction on the 1st of each month.
-        // UTC explicitly so this doesn't depend on the server process's
-        // timezone (local dev vs Vercel) — see stats/route.ts for the bug
-        // this class of mistake caused when those didn't match.
-        const date = new Date(Date.UTC(baseYear, m, 1));
+          // Create a monthly summary transaction on the 1st of each month.
+          // UTC explicitly so this doesn't depend on the server process's
+          // timezone (local dev vs Vercel) — see stats/route.ts for the bug
+          // this class of mistake caused when those didn't match.
+          const date = new Date(Date.UTC(year, m, 1));
 
-        // Upsert: avoid duplicates on re-import (delete existing for this cat/month then re-create)
-        await prisma.transaction.deleteMany({
-          where: {
-            categoryId: cat.id,
-            householdId,
-            date: { gte: new Date(Date.UTC(baseYear, m, 1)), lt: new Date(Date.UTC(baseYear, m + 1, 1)) },
-            details: '[імпорт]',
-          },
-        });
-        await prisma.transaction.create({
-          data: {
-            date, categoryId: cat.id, amount, details: '[імпорт]', householdId,
-          },
-        });
+          // Upsert: avoid duplicates on re-import (delete existing for this cat/month then re-create)
+          await prisma.transaction.deleteMany({
+            where: {
+              categoryId: cat.id,
+              householdId,
+              date: { gte: new Date(Date.UTC(year, m, 1)), lt: new Date(Date.UTC(year, m + 1, 1)) },
+              details: '[імпорт]',
+            },
+          });
+          await prisma.transaction.create({
+            data: {
+              date, categoryId: cat.id, amount, details: '[імпорт]', householdId,
+            },
+          });
 
-        // Create monthly plan — year+month+categoryId is already implicitly
-        // household-scoped (a category belongs to exactly one household),
-        // no compound-key change needed the way Category's was.
-        await prisma.monthlyPlan.upsert({
-          where: { year_month_categoryId: { year: baseYear, month: m + 1, categoryId: cat.id } },
-          update: { plannedAmount: amount },
-          create: { year: baseYear, month: m + 1, categoryId: cat.id, plannedAmount: amount, householdId },
-        });
+          // Create monthly plan — year+month+categoryId is already implicitly
+          // household-scoped (a category belongs to exactly one household),
+          // no compound-key change needed the way Category's was.
+          await prisma.monthlyPlan.upsert({
+            where: { year_month_categoryId: { year, month: m + 1, categoryId: cat.id } },
+            update: { plannedAmount: amount },
+            create: { year, month: m + 1, categoryId: cat.id, plannedAmount: amount, householdId },
+          });
+        }
       }
     }
 
