@@ -22,3 +22,4 @@ dist/
 
 # Impeccable detector cache (transient)
 .impeccable/hook.cache.json
+graphify-out/
