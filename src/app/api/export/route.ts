@@ -6,7 +6,7 @@ import path from 'path';
 import { readFile } from 'fs/promises';
 import { requireHouseholdId } from '@/lib/household';
 import { isBudgetRelevant, savingsAmount } from '@/lib/validate';
-import { PLANNING_YEARS, planningMonthCol, planningSumCol } from '@/lib/planningLayout';
+import { PLANNING_YEARS, planningMonthCol } from '@/lib/planningLayout';
 
 const TYPE_UA: Record<string, string> = {
   income:  'Дохід',
@@ -22,7 +22,6 @@ const DATE_FMT = '[$-FC22]d\\ mmmm\\ yyyy" р."';
 // and only ever cover year 1).
 const YEARS = PLANNING_YEARS;
 const monthCol = planningMonthCol;
-const sumCol = planningSumCol;
 
 // Section layout in Планування
 const SECTIONS = [
@@ -199,7 +198,8 @@ export async function GET(req: NextRequest) {
           const val = cat ? getActual(cat.id, year, m) : null;
           wsPlan.getCell(rowNum, monthCol(year, m)).value = val || null;
         }
-        // sumCol(year) has =SUM(E{row}:P{row}) formula in template — leave it
+        // The 13th column of each year block (planningLayout's sum column)
+        // has a =SUM(E{row}:P{row}) formula in the template — leave it
       }
     }
     // section.sumRow has =SUM() formulas — leave them

@@ -2,7 +2,6 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, ArrowLeftRight, CalendarDays, BarChart3, Settings } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 const NAV = [
   { href: '/',             icon: LayoutDashboard, label: 'Головна' },

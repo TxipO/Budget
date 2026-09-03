@@ -1,10 +1,3 @@
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
 // formatMoney/formatMoneySign moved to lib/currencies.ts — they now take the
 // household's own currency code instead of hardcoding NOK/'kr'. Use the
 // useCurrency() hook (lib/useCurrency.ts) from a component instead of

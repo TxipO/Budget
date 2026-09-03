@@ -30,7 +30,6 @@ export const CURRENCIES: CurrencyInfo[] = [
 const DEFAULT_CODE = 'NOK'; // matches Household.currency's own schema default — existing households never see a behavior change
 
 const byCode = new Map(CURRENCIES.map(c => [c.code, c]));
-const byNumeric = new Map(CURRENCIES.map(c => [c.numeric, c]));
 
 // Never throws on an unknown code (a stale/corrupted value should degrade to
 // the historical NOK behavior, not break every page that formats money).
@@ -40,10 +39,6 @@ export function getCurrencyInfo(code: string | undefined | null): CurrencyInfo {
 
 export function numericForCurrency(code: string): number {
   return getCurrencyInfo(code).numeric;
-}
-
-export function currencyForNumeric(numeric: number): string | null {
-  return byNumeric.get(numeric)?.code ?? null;
 }
 
 export function formatMoney(amount: number, currencyCode: string = DEFAULT_CODE): string {

@@ -16,6 +16,3 @@ export const PLANNING_YEARS = [2026, 2027, 2028, 2029, 2030];
 export function planningMonthCol(year: number, month: number): number {
   return 5 + (year - 2026) * 14 + (month - 1); // 1-based col index
 }
-export function planningSumCol(year: number): number {
-  return 5 + (year - 2026) * 14 + 12; // 13th col in block (sum)
-}

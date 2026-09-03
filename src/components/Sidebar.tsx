@@ -2,7 +2,6 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { LayoutDashboard, ArrowLeftRight, CalendarDays, BarChart3, Settings, Sun, Moon, Wallet, LogOut } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 import { useTheme } from '@/lib/theme';
 
@@ -118,7 +117,7 @@ export default function Sidebar() {
           <Link
             key={href}
             href={href}
-            className={cn('nav-link', pathname === href && 'active')}
+            className={`nav-link${pathname === href ? ' active' : ''}`}
           >
             <Icon size={17} />
             {label}
