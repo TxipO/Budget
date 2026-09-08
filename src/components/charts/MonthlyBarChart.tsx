@@ -13,7 +13,7 @@ interface MonthData {
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
-  const { formatMoney } = useCurrency();
+  const { formatMoney, formatMoneySign } = useCurrency();
   if (!active || !payload?.length) return null;
   return (
     <div style={{
@@ -24,7 +24,11 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       {payload.map((p: any) => (
         <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 4 }}>
           <span style={{ color: p.color }}>{p.name}</span>
-          <span style={{ color: 'var(--c-text)', fontWeight: 500 }}>{formatMoney(p.value)}</span>
+          {/* Only "Збереження" can genuinely go negative (a withdrawal-
+              heavy month) — income/expenses are always non-negative sums by
+              construction. formatMoney() alone drops the sign, same bug as
+              the stat cards on this page and Головна (found live 2026-09-07). */}
+          <span style={{ color: 'var(--c-text)', fontWeight: 500 }}>{p.dataKey === 'savings' ? formatMoneySign(p.value) : formatMoney(p.value)}</span>
         </div>
       ))}
     </div>

@@ -25,7 +25,7 @@ const INSIGHT_STYLE: Record<Insight['tone'], { bg: string; border: string; color
 };
 
 export default function AnalyticsPage() {
-  const { formatMoney } = useCurrency();
+  const { formatMoney, formatMoneySign } = useCurrency();
   const [year, setYear] = useState(2026);
   const [data, setData] = useState<MonthData[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
@@ -66,10 +66,17 @@ export default function AnalyticsPage() {
           on top, value below. Was text-only here, breaking the pattern. */}
       <div className="grid-4" style={{ marginBottom: 28 }}>
         {[
-          { label: 'Всього дохід',      value: totalIncome,   color: '#22C55E', icon: TrendingUp,   bg: 'rgba(34,197,94,0.08)'  },
-          { label: 'Всього витрати',    value: totalExpenses, color: '#EF4444', icon: TrendingDown, bg: 'rgba(239,68,68,0.08)'  },
-          { label: 'Всього збереження', value: totalSavings,  color: '#F59E0B', icon: PiggyBank,    bg: 'rgba(245,158,11,0.08)' },
-          { label: 'Чистий залишок',    value: totalBalance,  color: totalBalance >= 0 ? '#FB923C' : '#EF4444', icon: Wallet, bg: 'rgba(249,115,22,0.08)' },
+          { label: 'Всього дохід',      value: totalIncome,   color: '#22C55E', icon: TrendingUp,   bg: 'rgba(34,197,94,0.08)',  signed: false },
+          { label: 'Всього витрати',    value: totalExpenses, color: '#EF4444', icon: TrendingDown, bg: 'rgba(239,68,68,0.08)',  signed: false },
+          // Savings and balance can both genuinely go negative (a
+          // withdrawal-heavy year; spending more than earned) — unlike
+          // income/expenses, always non-negative sums by construction.
+          // formatMoney() alone drops the sign (Math.abs under the hood),
+          // which used to show a real net withdrawal/deficit as a plain
+          // positive number. Found live 2026-09-07 on the dashboard's own
+          // matching card, which had the same bug.
+          { label: 'Всього збереження', value: totalSavings,  color: '#F59E0B', icon: PiggyBank,    bg: 'rgba(245,158,11,0.08)', signed: true },
+          { label: 'Чистий залишок',    value: totalBalance,  color: totalBalance >= 0 ? '#FB923C' : '#EF4444', icon: Wallet, bg: 'rgba(249,115,22,0.08)', signed: true },
         ].map(c => (
           <div key={c.label} className="stat-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
@@ -79,7 +86,7 @@ export default function AnalyticsPage() {
               </div>
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, color: c.color, fontVariantNumeric: 'tabular-nums' }}>
-              {formatMoney(c.value)}
+              {c.signed ? formatMoneySign(c.value) : formatMoney(c.value)}
             </div>
           </div>
         ))}

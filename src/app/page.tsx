@@ -507,11 +507,23 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div style={{ fontSize: 22, fontWeight: 800, color: cardColor, fontVariantNumeric: 'tabular-nums', marginBottom: 8 }}>
-                    {/* "Вільний залишок" (balance) is the only one of these
-                        4 cards that can genuinely go negative — color alone
-                        wasn't enough to tell, since red/green/orange are
-                        used for other reasons across this dashboard too. */}
-                    {c.key === 'balance' ? formatMoneySign(val) : formatMoney(val)}
+                    {/* "Вільний залишок" and "Збереження" are the two cards
+                        that can genuinely go negative — a period with more
+                        withdrawals than deposits nets negative, same as a
+                        period spending more than it earns. formatMoney()
+                        alone silently drops the sign (Math.abs under the
+                        hood), which used to show a real net WITHDRAWAL
+                        month as a plain positive "110 kr" in savings-orange
+                        — reading as a deposit. Found live 2026-09-07: the
+                        first month this household's savings activity ever
+                        netted negative. Income/expenses/transfers never
+                        need this — each is already a sum of same-signed
+                        rows by construction, never negative. Colour stays
+                        each card's own regardless of sign (see the
+                        per-row sign fix's own comment from 2026-08-29 —
+                        a pot shrinking isn't a "bad" colour event the way
+                        overspending is). */}
+                    {c.key === 'balance' || c.key === 'savings' ? formatMoneySign(val) : formatMoney(val)}
                   </div>
                   {stats!.prev && (
                     <DeltaBadge current={val} prev={stats!.prev![c.key]} invertGood={c.invertGood} />

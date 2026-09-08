@@ -20,7 +20,7 @@ interface Tx {
 const PAGE_SIZE = 25;
 
 export default function TransactionsPage() {
-  const { formatMoney } = useCurrency();
+  const { formatMoney, formatMoneySign } = useCurrency();
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -403,15 +403,21 @@ export default function TransactionsPage() {
       {/* Summary row */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
         {[
-          { label: 'Дохід', value: totals.income, color: '#4ADE80' },
-          { label: 'Витрати', value: totals.expenses, color: '#FCA5A5' },
-          { label: 'Збереження', value: totals.savings, color: '#FCD34D' },
-          { label: 'Перекази', value: transfersTotal, color: '#94A3B8' },
+          { label: 'Дохід', value: totals.income, color: '#4ADE80', signed: false },
+          { label: 'Витрати', value: totals.expenses, color: '#FCA5A5', signed: false },
+          // Unlike income/expenses/transfers (always a sum of same-signed
+          // rows by construction, never negative), savings can genuinely
+          // net negative -- more withdrawals than deposits in the period.
+          // formatMoney() alone drops the sign (Math.abs under the hood),
+          // which used to show a real net WITHDRAWAL as a plain positive
+          // number, reading as a deposit. Found live 2026-09-07.
+          { label: 'Збереження', value: totals.savings, color: '#FCD34D', signed: true },
+          { label: 'Перекази', value: transfersTotal, color: '#94A3B8', signed: false },
         ].map(s => (
           <div key={s.label} className="card" style={{ flex: '1 1 100px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: '#64748B' }}>{s.label}</span>
             <span style={{ fontSize: 16, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums' }}>
-              {formatMoney(s.value)}
+              {s.signed ? formatMoneySign(s.value) : formatMoney(s.value)}
             </span>
           </div>
         ))}
