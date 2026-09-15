@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
   const filterMonth = monthRaw !== null && Number.isFinite(monthRaw) && monthRaw >= 1 && monthRaw <= 12 ? monthRaw : null;
 
   // ── Fetch all data ──────────────────────────────────────────────────────
-  const [categories, allTxs, allPlans] = await Promise.all([
+  const [categoriesRaw, allTxs, allPlans] = await Promise.all([
     prisma.category.findMany({ where: { isActive: true, householdId }, orderBy: { id: 'asc' } }),
     prisma.transaction.findMany({
       where: { householdId },
@@ -50,6 +50,19 @@ export async function GET(req: NextRequest) {
     }),
     prisma.monthlyPlan.findMany({ where: { notes: { not: '' }, householdId } }),
   ]);
+
+  // "Враховано деінде" — every transaction filed under it already has
+  // isTransfer:true (that's the category's whole purpose: "this money moved
+  // but was already counted somewhere else, don't double-count it"), so it
+  // never contributes to actuals/comments below anyway (see
+  // isBudgetRelevant's own comment) — it would only ever occupy an empty
+  // row in the template. Excluded from export by explicit request
+  // (2026-09-15) rather than expanding the fixed-row template. Name-matched
+  // like the other semantic category names already hardcoded in this
+  // codebase (TRANSFER_CATEGORY_NAME, the Незрозуміло/Додаткове fallbacks
+  // in categoryGuess.ts) — if this category is ever renamed, the capacity
+  // check below will fail loudly again rather than silently reappearing.
+  const categories = categoriesRaw.filter(c => c.name !== 'Враховано деінде');
 
   // The Планування sheet has a fixed number of category rows per section
   // (template constraint, see SECTIONS above). If a section ever has more

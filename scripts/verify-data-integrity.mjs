@@ -275,7 +275,13 @@ async function main() {
   // fails loudly (see the fix) instead of silently dropping the extras — but
   // catching it here too means it shows up before anyone tries to export.
   const EXPORT_CAPACITY = { income: 10, expense: 13, savings: 10 }; // must match SECTIONS in export/route.ts
-  const activeCats = cats.filter(c => c.isActive);
+  // "Враховано деінде" is explicitly excluded from export (2026-09-15) — see
+  // export/route.ts's own comment. Every row filed under it already has
+  // isTransfer:true, so it never contributed a real number to the export
+  // anyway; excluding it here too so this check reflects what the export
+  // route actually counts, not a stale total that FAILs even though a real
+  // export now succeeds.
+  const activeCats = cats.filter(c => c.isActive && c.name !== 'Враховано деінде');
   for (const [type, capacity] of Object.entries(EXPORT_CAPACITY)) {
     const count = activeCats.filter(c => c.type === type).length;
     if (count > capacity) fail(`${count} active "${type}" categories but the export template only has ${capacity} rows for that section`);
