@@ -12,7 +12,24 @@ import { guessCategoryByMcc, guessCategoryByKeyword } from '@/lib/monobank';
 // like every sibling tier in this chain — any failure (no key, rate limit,
 // bad JSON, no matching name) falls through to the safe fallback, never a
 // crash and never blocks the write.
-async function guessCategoryByLLM(merchantText: string, categoryNames: string[]): Promise<string | null> {
+//
+// Exported (not just used internally) so scripts/eval-llm-classification.mts
+// can call the EXACT same prompt/model logic offline against real labeled
+// data — Ф2a of the classification overhaul plan. Re-implementing the call
+// in the eval script would drift from this one the next time the model or
+// prompt changes here; importing it can't.
+//
+// Ф2b/2d were TRIED here 2026-09-15 (few-shot examples from this user's own
+// taught rules, plus flipping the null-bias to favor committing) and
+// reverted — measured via scripts/eval-llm-classification.mts against 125
+// real labeled pairs, neither individually nor combined moved the needle:
+// abstain rate stayed ~93-98%, and precision on the few guesses it DID make
+// didn't clearly improve either (some "wrong" cases were genuinely
+// unguessable from text alone, like a self-named income transfer that a
+// different tier already resolves correctly regardless of what this one
+// does). Not shipping an unproven prompt change — see
+// project_classification_overhaul.md for the numbers and the open question.
+export async function guessCategoryByLLM(merchantText: string, categoryNames: string[]): Promise<string | null> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey || categoryNames.length === 0 || !merchantText.trim()) return null;
   try {
