@@ -20,7 +20,18 @@ async function guessCategoryByLLM(merchantText: string, categoryNames: string[])
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        // llama-3.3-70b-versatile was retired from Groq's catalog (404
+        // "model_not_found") — silently broke this whole tier for an
+        // unknown stretch of time, since every failure here falls through
+        // to the next tier with no error surfaced anywhere. Found live
+        // 2026-09-15 while investigating why obvious merchants (Vinmonopolet
+        // — Norway's state alcohol monopoly) were landing in "Незрозуміло"
+        // instead of reaching this tier's judgment at all. Replaced with
+        // openai/gpt-oss-120b after comparing it live against gpt-oss-20b on
+        // 5 real unclear merchants from this household's own data — 120b got
+        // Vinmonopolet/Clas Ohlson right, 20b got both wrong. Re-verify
+        // against Groq's current model list if this ever 404s again.
+        model: 'openai/gpt-oss-120b',
         messages: [
           {
             role: 'system',

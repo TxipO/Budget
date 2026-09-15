@@ -56,7 +56,11 @@ export async function extractWithLLM(
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
+      // See categoryGuess.ts's matching comment — llama-3.3-70b-versatile
+      // was retired from Groq's catalog, 404ing silently on every call.
+      // Voice logging has its own rule-based fallback (voiceParse.ts), so
+      // this degraded to the weaker regex/stem parser with no visible error.
+      model: 'openai/gpt-oss-120b',
       messages: [
         { role: 'system', content: buildSystemPrompt(senderName) },
         { role: 'user', content: userPrompt },
