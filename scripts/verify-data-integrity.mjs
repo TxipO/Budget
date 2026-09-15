@@ -217,6 +217,36 @@ async function main() {
   if (badPoolMapping.length) fail(`${badPoolMapping.length} SparebankAccount(s) map to a missing/inactive/non-savings category: ${badPoolMapping.map(a => `${a.label}(#${a.id})`).join(', ')}`);
   else pass(`${sbAccountsWithCat.length} SparebankAccount savings-pool mapping(s), all point to a valid active savings category`);
 
+  // ── Step 4h: LLM classification tier liveness ───────────────────────────
+  step('4h', 'LLM classification tier liveness (categorySource)');
+  // FOUND LIVE 2026-09-15: the LLM tier (Groq) sat completely dead for an
+  // unknown stretch of time — a retired model id AND an empty prod API key,
+  // both failing open ("try the next tier") with zero visible error
+  // anywhere. categorySource (added the same day) now records which tier
+  // resolved each row, so a repeat of that exact silent failure shows up
+  // here instead of only as the eventual symptom (everything piling into
+  // "Незрозуміло").
+  //
+  // Not a bare "did the LLM fire at all" check — the free tiers (rule/mcc/
+  // keyword) legitimately cover 100% of some households' merchants some
+  // weeks, and failing on that alone would be a false alarm every quiet
+  // week. The actual danger sign is fallback rows existing (something
+  // reached the end of the chain unresolved) while the LLM tier produced
+  // zero decisions in the same window — that's exactly the shape of the
+  // incident that started this whole overhaul.
+  const LOOKBACK_DAYS = 30;
+  const windowStart = new Date(Date.now() - LOOKBACK_DAYS * 24 * 3600 * 1000);
+  const recentSourced = txs.filter(t => t.categorySource !== null && t.date >= windowStart);
+  const recentLlm = recentSourced.filter(t => t.categorySource === 'llm');
+  const recentFallback = recentSourced.filter(t => t.categorySource === 'fallback');
+  if (recentSourced.length === 0) {
+    warn(`no guessCategoryId-routed transactions in the last ${LOOKBACK_DAYS} days yet — not enough data to judge the LLM tier's health`);
+  } else if (recentFallback.length > 0 && recentLlm.length === 0) {
+    fail(`${recentFallback.length} transaction(s) fell through to the safe fallback in the last ${LOOKBACK_DAYS} days but the LLM tier made zero decisions in that window — possible silent death (dead GROQ_API_KEY or a retired model), check categoryGuess.ts's guessCategoryByLLM live`);
+  } else {
+    pass(`LLM tier: ${recentLlm.length} decision(s) in the last ${LOOKBACK_DAYS} days (${recentFallback.length} fell through to fallback)`);
+  }
+
   // ── Step 5: duplicate recurring applications ───────────────────────────
   step(5, 'Duplicate recurring-template applications');
   const byTplMonth = {};
