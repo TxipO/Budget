@@ -29,10 +29,21 @@ import { guessCategoryByMcc, guessCategoryByKeyword } from '@/lib/monobank';
 // different tier already resolves correctly regardless of what this one
 // does). Not shipping an unproven prompt change — see
 // project_classification_overhaul.md for the numbers and the open question.
-export async function guessCategoryByLLM(merchantText: string, categoryNames: string[]): Promise<string | null> {
+//
+// context (Ф2c+Ф3, 2026-09-15) — optional free-text block (amount, day of
+// week, who paid, a crude "city" guess and whether it's typical for this
+// user, same-day neighbors that also look unusual) built by
+// scripts/eval-llm-classification.mts for backtesting ONLY at first —
+// deliberately NOT wired into the real guessCategoryId call site yet.
+// Optional and additive so every existing caller (production included)
+// keeps working unchanged while this is measured. See Ф3's own plan note:
+// this is assembled fresh per call and thrown away, never persisted as a
+// new "trip" entity — the entry_reference lesson about derived state.
+export async function guessCategoryByLLM(merchantText: string, categoryNames: string[], context?: string): Promise<string | null> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey || categoryNames.length === 0 || !merchantText.trim()) return null;
   try {
+    const contextBlock = context ? `\n\nДодатковий контекст: ${context}` : '';
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -54,7 +65,7 @@ export async function guessCategoryByLLM(merchantText: string, categoryNames: st
             role: 'system',
             content: 'Ти визначаєш категорію особистого бюджету за описом банківської транзакції (назва мерчанта/отримувача — часто норвезькою, англійською чи обрізана/з кодами термінала). Поверни ЛИШЕ JSON: {"category": рядок або null}. "category" МАЄ бути точно одним із наданих варіантів, символ у символ, або null якщо жоден явно не підходить. Не вигадуй нову назву. Обирай null частіше, ніж здається правильним, якщо є хоч якийсь сумнів — краще не вгадувати, ніж вгадати неправильно.',
           },
-          { role: 'user', content: `Категорії: ${categoryNames.join(', ')}\n\nОпис транзакції: "${merchantText}"` },
+          { role: 'user', content: `Категорії: ${categoryNames.join(', ')}${contextBlock}\n\nОпис транзакції: "${merchantText}"` },
         ],
         response_format: { type: 'json_object' },
         temperature: 0,
