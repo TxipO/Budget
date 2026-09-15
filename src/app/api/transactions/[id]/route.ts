@@ -44,6 +44,38 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     const parsedDate = new Date(body.date);
     const truncatedDate = new Date(Date.UTC(parsedDate.getUTCFullYear(), parsedDate.getUTCMonth(), parsedDate.getUTCDate()));
 
+    // Voice transcripts rarely repeat verbatim, so this rarely hits tier 1
+    // of guessCategoryId on a *future* message the way a real merchant name
+    // does — but per spec.md's US1 acceptance criteria, a voice correction
+    // must still reach the same learning mechanism, not be silently
+    // excluded. Previously gated on source === 'mono' only, so a voice
+    // correction here never ran at all. sparebank uses `details` too — it's
+    // set to the exact same text (remittance info or counterparty name)
+    // that lib/sparebankIngest.ts derives merchantKey from for a future
+    // sync of the same merchant, same shape as the voice case. Found while
+    // investigating why the first SpareBank 1 sync left almost everything
+    // in "Незрозуміло": correcting one manually would never have helped
+    // the next 34 JOKER BALESTRAND rows without this.
+    //
+    // Computed BEFORE the update below (not after, like before this Ф1a
+    // change) so the primary row's own categorySource can be set in the
+    // same write, and so the retroactive-sibling pass has everything it
+    // needs without an extra round-trip.
+    const correctionKey = before.source === 'mono' ? before.monoMerchant
+      : (before.source === 'voice' || before.source === 'sparebank') ? before.details
+      : null;
+    // trim() guard — an all-whitespace correctionKey would normalize to '',
+    // and every future step here keys off that '' string. A learned rule
+    // for merchantKey '' would be harmless on its own (nothing legitimate
+    // ever looks up an empty key), but the retroactive-sibling scan below
+    // would then match every OTHER row that also happens to have blank/
+    // whitespace-only details under the same old category — a real way to
+    // silently mass-recategorize unrelated rows. Reject it at the source
+    // instead of trusting downstream matching to stay narrow.
+    const merchantKey = correctionKey && before.userId && newCategoryId !== before.categoryId
+      ? normalizeMerchantKey(correctionKey) : null;
+    const shouldLearnRule = merchantKey !== null && merchantKey !== '';
+
     const tx = await prisma.transaction.update({
       where: { id },
       data: {
@@ -58,35 +90,59 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         // comment. Editable both ways: turning it back off un-hides a row
         // that was flagged by mistake, no separate "undo" flow needed.
         isTransfer: body.isTransfer === true,
+        // As of this write, this row's category IS explained by a learned
+        // rule for its merchant (the upsert below makes that literally
+        // true) — record that instead of leaving whatever categorySource
+        // it had before the correction (often null/stale).
+        ...(shouldLearnRule ? { categorySource: 'rule' } : {}),
       },
       include: { category: true, user: { select: { id: true, name: true } } },
     });
 
-    // Voice transcripts rarely repeat verbatim, so this rarely hits tier 1
-    // of guessCategoryId on a *future* message the way a real merchant name
-    // does — but per spec.md's US1 acceptance criteria, a voice correction
-    // must still reach the same learning mechanism, not be silently
-    // excluded. Previously gated on source === 'mono' only, so a voice
-    // correction here never ran at all. sparebank uses `details` too — it's
-    // set to the exact same text (remittance info or counterparty name)
-    // that lib/sparebankIngest.ts derives merchantKey from for a future
-    // sync of the same merchant, same shape as the voice case. Found while
-    // investigating why the first SpareBank 1 sync left almost everything
-    // in "Незрозуміло": correcting one manually would never have helped
-    // the next 34 JOKER BALESTRAND rows without this.
-    const correctionKey = before?.source === 'mono' ? before.monoMerchant
-      : (before?.source === 'voice' || before?.source === 'sparebank') ? before.details
-      : null;
-    if (correctionKey && before?.userId && newCategoryId !== before.categoryId) {
-      const merchantKey = normalizeMerchantKey(correctionKey);
+    // Ф1a (classification overhaul, 2026-09-15): one correction now fixes
+    // every OTHER row of the same merchant still sitting under the OLD
+    // category, not just this one row + a rule for the future. Found live
+    // 2026-09-15 — the Stbar case: 16 identically-worded rows, 15 wrong,
+    // one manual fix only ever repaired the one row it was made on; the
+    // other 14 needed a second manual pass the next day. Deliberately
+    // narrow: same household, same user (rules are per-user), and only
+    // rows CURRENTLY under the exact OLD category being corrected away
+    // from — never touches a row already sitting under some other
+    // (possibly also-wrong, possibly intentionally different) category.
+    // merchantKey isn't a stored column, so this reads a bounded candidate
+    // set by the columns that ARE indexed (household+user+category) and
+    // computes/matches merchantKey in JS, exactly like the rule lookup
+    // above and categoryGuess.ts's own tier 1 — exact match only, never a
+    // substring/brand guess (that's Ф1b, a deliberately separate, lower-
+    // confidence tier, not this).
+    let retroactiveCount = 0;
+    if (shouldLearnRule) {
       await prisma.monoCategoryRule.upsert({
-        where: { userId_merchantKey: { userId: before.userId, merchantKey } },
+        where: { userId_merchantKey: { userId: before.userId!, merchantKey: merchantKey! } },
         update: { categoryId: newCategoryId, hitCount: { increment: 1 } },
-        create: { userId: before.userId, merchantKey, categoryId: newCategoryId, hitCount: 1 },
+        create: { userId: before.userId!, merchantKey: merchantKey!, categoryId: newCategoryId, hitCount: 1 },
       });
+
+      const candidates = await prisma.transaction.findMany({
+        where: { householdId, userId: before.userId!, categoryId: before.categoryId, id: { not: id }, source: { in: ['mono', 'sparebank', 'voice'] } },
+        select: { id: true, source: true, monoMerchant: true, details: true },
+      });
+      const siblingIds = candidates
+        .filter(c => {
+          const key = c.source === 'mono' ? c.monoMerchant : c.details;
+          return !!key && normalizeMerchantKey(key) === merchantKey;
+        })
+        .map(c => c.id);
+      if (siblingIds.length > 0) {
+        await prisma.transaction.updateMany({
+          where: { id: { in: siblingIds } },
+          data: { categoryId: newCategoryId, categorySource: 'rule' },
+        });
+        retroactiveCount = siblingIds.length;
+      }
     }
 
-    return NextResponse.json(tx);
+    return NextResponse.json({ ...tx, retroactiveCount });
   } catch (e: any) {
     if (e?.code === 'P2025') return NextResponse.json({ error: 'Транзакцію не знайдено' }, { status: 404 });
     console.error('[transactions/[id] PUT]', e);

@@ -120,7 +120,17 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
       const payload = { ...form, amount: String(totalAmount), details: finalDetails };
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error(await res.text());
-      toast(editId ? 'Транзакцію оновлено' : 'Транзакцію додано');
+      // retroactiveCount (PUT only) — Ф1a: correcting a synced transaction's
+      // category also retroactively fixes every OTHER row of the same
+      // merchant still sitting under the old category, not just this one.
+      // Surface that so a correction doesn't look like it silently did more
+      // than the user asked — see api/transactions/[id]/route.ts's comment.
+      const retroactiveCount = editId ? (await res.json().catch(() => null))?.retroactiveCount ?? 0 : 0;
+      toast(
+        editId
+          ? retroactiveCount > 0 ? `Транзакцію оновлено, також виправлено ще ${retroactiveCount}` : 'Транзакцію оновлено'
+          : 'Транзакцію додано'
+      );
       onSaved();
       onClose();
     } catch (e) {
