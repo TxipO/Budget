@@ -277,7 +277,7 @@ model Transaction {
   // through to the next tier" with zero visible error) — without this
   // column there was no way to measure whether any given tier is actually
   // firing, only to notice the eventual symptom (everything piling into
-  // "Незрозуміло"). One of: "rule" | "mcc" | "keyword" | "llm" |
+  // "Незрозуміло"). One of: "rule" | "brand" | "mcc" | "keyword" | "llm" |
   // "self-named" | "fallback". See lib/categoryGuess.ts's own comment.
   categorySource String?
 

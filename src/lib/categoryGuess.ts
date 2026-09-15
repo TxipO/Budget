@@ -58,7 +58,45 @@ async function guessCategoryByLLM(merchantText: string, categoryNames: string[])
 // Transaction.categorySource so a silent tier death (see this function's own
 // LLM-tier incident, 2026-09-15) shows up as a measurable gap instead of
 // nothing but the eventual "everything piles into Незрозуміло" symptom.
-export type CategorySource = 'rule' | 'mcc' | 'keyword' | 'llm' | 'self-named' | 'fallback';
+export type CategorySource = 'rule' | 'brand' | 'mcc' | 'keyword' | 'llm' | 'self-named' | 'fallback';
+
+// Ф1b (classification overhaul, 2026-09-15) — reuses the user's OWN learned
+// rules under a derived "brand" key (just the first word of the normalized
+// merchantKey) when the exact key has no rule. Catches "same chain,
+// different branch" — "joker balestrand" and "joker kyrkjeboe" are
+// different EXACT merchantKeys (a location suffix makes one store's rule
+// structurally unable to help at another branch of the same chain) but
+// obviously the same brand. Deliberately does NOT touch how merchantKey
+// itself is computed or matched (see normalizeMerchantKey's own "refine
+// only if it actually fragments" comment, and the entry_reference saga this
+// project already paid for once by normalizing a key too aggressively) —
+// this is a separate, additional, lower-confidence signal, tried only after
+// the exact key has already failed.
+//
+// Conservative on purpose: only fires when EVERY rule this user has already
+// taught for that same first word agrees on one category. If a household
+// uses one chain for two genuinely different real purposes (rare, but
+// real — e.g. a gas-station brand that also sells groceries), this stays
+// silent rather than guess wrong; the next tier gets a turn instead.
+async function guessCategoryByBrand(userId: number, merchantKey: string): Promise<number | null> {
+  const brand = merchantKey.split(' ')[0];
+  // Length guard — a short first "word" ("nr", "kr", a lone digit) is far
+  // more likely to coincidentally prefix-match something unrelated than to
+  // mean anything as a brand.
+  if (brand.length < 3) return null;
+  const candidates = await prisma.monoCategoryRule.findMany({
+    where: { userId, merchantKey: { startsWith: brand } }, // cheap DB-side prefilter
+    select: { merchantKey: true, categoryId: true, category: { select: { isActive: true } } },
+  });
+  // The DB prefilter is a raw string startsWith, which would also match an
+  // unrelated key that merely happens to start with the same characters
+  // (e.g. brand "joker" prefix-matching a hypothetical "jokerapp ...") —
+  // the real check is that the candidate's OWN first word equals brand
+  // exactly, same word-boundary rule "joker balestrand" was built to need.
+  const matches = candidates.filter(c => c.category.isActive && c.merchantKey.split(' ')[0] === brand);
+  const categoryIds = new Set(matches.map(m => m.categoryId));
+  return categoryIds.size === 1 ? matches[0].categoryId : null;
+}
 
 // Extracted out of the Monobank webhook route (was resolveCategoryId there) —
 // voice-logged transactions need the exact same rule → MCC → keyword →
@@ -80,6 +118,14 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
     select: { categoryId: true, category: { select: { isActive: true } } },
   });
   if (rule?.category.isActive) return { categoryId: rule.categoryId, source: 'rule' };
+
+  // 1b. Brand-key guess — see guessCategoryByBrand's own comment. Still part
+  // of the "rule" family (reuses only this user's own taught corrections,
+  // nothing generic), so it stays right after the exact rule and before
+  // MCC/keyword/LLM — a derived signal from the user's own history beats a
+  // generic ISO code or global keyword list.
+  const brandGuess = await guessCategoryByBrand(userId, merchantKey);
+  if (brandGuess !== null) return { categoryId: brandGuess, source: 'brand' };
 
   // Tiers 2-6 (MCC guess, keyword guess, LLM guess, safe fallback, last
   // resort) are all just "find an active category of this type by name"
