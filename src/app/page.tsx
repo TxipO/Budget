@@ -9,6 +9,7 @@ import RecurringModal from '@/components/RecurringModal';
 import CategoryIcon from '@/components/CategoryIcon';
 import { useDashboardPrefs } from '@/lib/dashboardPrefs';
 import { toast } from '@/lib/toast';
+import { downloadExport } from '@/lib/downloadExport';
 
 const ExpenseDonut = dynamic(() => import('@/components/charts/ExpenseDonut'), { ssr: false });
 const BalanceTrend = dynamic(() => import('@/components/charts/BalanceTrend'), { ssr: false });
@@ -341,18 +342,17 @@ export default function Dashboard() {
               }}>{pendingRecurring}</span>
             )}
           </button>
-          <a
-            href={
-              period === 'month' ? `/api/export?year=${year}&month=${month}` :
-              period === 'year'  ? `/api/export?year=${year}` :
-              `/api/export`
-            }
-            download
+          <button
+            onClick={() => downloadExport(
+              period === 'month' ? `?year=${year}&month=${month}` :
+              period === 'year'  ? `?year=${year}` :
+              ''
+            )}
             className="btn-ghost"
-            style={{ display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none', fontSize: 14, fontWeight: 600 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}
           >
             <Download size={15} /> <span className="hide-on-xs">Експорт</span>
-          </a>
+          </button>
           <button className="btn-primary" onClick={() => { setEditing(null); setShowForm(true); }} title="Додати (Alt+N)">
             <Plus size={16} /> Додати
           </button>

@@ -6,6 +6,7 @@ import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
 import CategoryIcon from '@/components/CategoryIcon';
 import { toast } from '@/lib/toast';
+import { downloadExport } from '@/lib/downloadExport';
 
 interface Tx {
   id: number; date: string; amount: number; details: string; source: string;
@@ -169,21 +170,8 @@ export default function TransactionsPage() {
   }
 
   async function exportExcel() {
-    const url = `/api/export?year=${year}&month=${month}`;
-    try {
-      const res = await fetch(url);
-      if (!res.ok) { toast('Помилка експорту'); return; }
-      const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `Ведення_${MONTH_NAMES[month - 1]}_${year}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-      setShowExport(false);
-      toast('Excel збережено');
-    } catch {
-      toast('Помилка з’єднання', 'error');
-    }
+    await downloadExport(`?year=${year}&month=${month}`);
+    setShowExport(false);
   }
 
   // Shared by both `filtered` (the visible list) and the transfers total
