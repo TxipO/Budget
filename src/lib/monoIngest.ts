@@ -145,14 +145,18 @@ export async function ingestStatementItem(userId: number, householdId: number, i
   let isTransfer = matchedTransferId !== null;
 
   const merchantKey = normalizeMerchantKey(item.description || '');
-  const categoryId = isTransfer
-    ? (await prisma.category.upsert({
-        where: { householdId_name_type: { householdId, name: TRANSFER_CATEGORY_NAME, type: TRANSFER_CATEGORY_TYPE } },
-        update: {},
-        create: { householdId, name: TRANSFER_CATEGORY_NAME, type: TRANSFER_CATEGORY_TYPE, color: '#64748B', icon: 'wallet' },
-        select: { id: true },
-      })).id
-    : await resolveCategoryId(householdId, userId, txType, merchantKey, item.mcc);
+  let categoryId: number;
+  let categorySource: string | null = null; // only the non-transfer branch below actually runs resolveCategoryId
+  if (isTransfer) {
+    categoryId = (await prisma.category.upsert({
+      where: { householdId_name_type: { householdId, name: TRANSFER_CATEGORY_NAME, type: TRANSFER_CATEGORY_TYPE } },
+      update: {},
+      create: { householdId, name: TRANSFER_CATEGORY_NAME, type: TRANSFER_CATEGORY_TYPE, color: '#64748B', icon: 'wallet' },
+      select: { id: true },
+    })).id;
+  } else {
+    ({ categoryId, source: categorySource } = await resolveCategoryId(householdId, userId, txType, merchantKey, item.mcc));
+  }
 
   // Cross-bank same-person transfer (e.g. a Paysend top-up from the
   // household's own SpareBank account) — see transferDetect.ts's own
@@ -200,6 +204,7 @@ export async function ingestStatementItem(userId: number, householdId: number, i
         householdId,
         date,
         categoryId,
+        categorySource,
         amount,
         details: item.description || '',
         userId,
@@ -239,7 +244,7 @@ export async function ingestStatementItem(userId: number, householdId: number, i
   if (matchedTransferId) {
     await prisma.transaction.update({
       where: { id: matchedTransferId },
-      data: { categoryId, isTransfer: true },
+      data: { categoryId, categorySource, isTransfer: true },
     });
   }
   // Cross-bank match: only flip isTransfer on the other leg, never its

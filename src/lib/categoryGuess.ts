@@ -54,13 +54,19 @@ async function guessCategoryByLLM(merchantText: string, categoryNames: string[])
   }
 }
 
+// Which tier of the chain below actually resolved a category — stored on
+// Transaction.categorySource so a silent tier death (see this function's own
+// LLM-tier incident, 2026-09-15) shows up as a measurable gap instead of
+// nothing but the eventual "everything piles into Незрозуміло" symptom.
+export type CategorySource = 'rule' | 'mcc' | 'keyword' | 'llm' | 'self-named' | 'fallback';
+
 // Extracted out of the Monobank webhook route (was resolveCategoryId there) —
 // voice-logged transactions need the exact same rule → MCC → keyword →
 // fallback tiers, just called with mcc: undefined (a voice transcript has no
 // MCC, only free text). Two callers now; sharing this instead of duplicating
 // it is the fix for the "same concept, two independent implementations" bug
 // class this project's /fullreview already watches for.
-export async function guessCategoryId(householdId: number, userId: number, txType: 'expense' | 'income', merchantKey: string, mcc: number | undefined): Promise<number> {
+export async function guessCategoryId(householdId: number, userId: number, txType: 'expense' | 'income', merchantKey: string, mcc: number | undefined): Promise<{ categoryId: number; source: CategorySource }> {
   // 1. Learned rule from a manual correction — highest priority, no guessing.
   // Checked against the category's current isActive, not just that the rule
   // exists — a category can be soft-deleted after a rule was learned against
@@ -73,7 +79,7 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
     where: { userId_merchantKey: { userId, merchantKey } },
     select: { categoryId: true, category: { select: { isActive: true } } },
   });
-  if (rule?.category.isActive) return rule.categoryId;
+  if (rule?.category.isActive) return { categoryId: rule.categoryId, source: 'rule' };
 
   // Tiers 2-6 (MCC guess, keyword guess, LLM guess, safe fallback, last
   // resort) are all just "find an active category of this type by name"
@@ -86,19 +92,19 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
   // 2. MCC guess — free, no external call (standard ISO 18245 codes). Skipped
   // entirely when mcc is undefined (voice transcripts have none).
   const mccGuess = guessCategoryByMcc(mcc);
-  if (mccGuess && idByName.has(mccGuess)) return idByName.get(mccGuess)!;
+  if (mccGuess && idByName.has(mccGuess)) return { categoryId: idByName.get(mccGuess)!, source: 'mcc' };
 
   // 3. Keyword guess — also free. Works against a merchant description
   // (Monobank) or a voice transcript (voice logging) equally well.
   const keywordGuess = guessCategoryByKeyword(merchantKey);
-  if (keywordGuess && idByName.has(keywordGuess)) return idByName.get(keywordGuess)!;
+  if (keywordGuess && idByName.has(keywordGuess)) return { categoryId: idByName.get(keywordGuess)!, source: 'keyword' };
 
   // 4. LLM guess — only reached once every free/instant tier above has
   // already refused. Handles merchant text no keyword list will ever fully
   // cover (foreign-language stores, one-off purchases, truncated terminal
   // codes) without hardcoding an ever-growing list of brand names.
   const llmGuess = await guessCategoryByLLM(merchantKey, categories.map(c => c.name));
-  if (llmGuess && idByName.has(llmGuess)) return idByName.get(llmGuess)!;
+  if (llmGuess && idByName.has(llmGuess)) return { categoryId: idByName.get(llmGuess)!, source: 'llm' };
 
   // 5. Self-named category — for unclear INCOME only, if the household has
   // a category literally named after the account that actually received
@@ -114,16 +120,16 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
   // principled version of what that rule was trying to do.
   if (txType === 'income') {
     const owner = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
-    if (owner?.name && idByName.has(owner.name)) return idByName.get(owner.name)!;
+    if (owner?.name && idByName.has(owner.name)) return { categoryId: idByName.get(owner.name)!, source: 'self-named' };
   }
 
   // 6. Safe fallback — a bucket that always exists for the type.
   const fallbackName = txType === 'expense' ? 'Незрозуміло' : 'Додаткове';
-  if (idByName.has(fallbackName)) return idByName.get(fallbackName)!;
+  if (idByName.has(fallbackName)) return { categoryId: idByName.get(fallbackName)!, source: 'fallback' };
 
   // 7. Absolute last resort — any active category of the right type, so a
   // write never crashes even if the expected fallback category was renamed
   // or deleted.
-  if (categories[0]) return categories[0].id;
+  if (categories[0]) return { categoryId: categories[0].id, source: 'fallback' };
   throw new Error(`No active ${txType} category exists to file a transaction under`);
 }

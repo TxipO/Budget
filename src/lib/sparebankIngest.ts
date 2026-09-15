@@ -319,6 +319,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
 
   let isTransfer: boolean;
   let categoryId: number;
+  let categorySource: string | null = null; // only the no-transfer-match branch below actually runs guessCategoryId
 
   if (transferAccountId !== null) {
     // Known movement between this user's own accounts. Ф2 (2026-08-29): ask
@@ -370,7 +371,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     }
   } else {
     isTransfer = false;
-    categoryId = await guessCategoryId(householdId, userId, txType, merchantKey, undefined);
+    ({ categoryId, source: categorySource } = await guessCategoryId(householdId, userId, txType, merchantKey, undefined));
   }
 
   // Cross-bank same-person transfer (e.g. a Paysend top-up landing on the
@@ -399,7 +400,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     if (!changed) return { status: 'skipped_duplicate' };
     await prisma.transaction.update({
       where: { id: existing.id },
-      data: { categoryId, isTransfer, savingsWithdrawal, details, sbCounterparty: counterparty || null },
+      data: { categoryId, categorySource, isTransfer, savingsWithdrawal, details, sbCounterparty: counterparty || null },
     });
     if (crossBankMatchId) {
       await prisma.transaction.update({ where: { id: crossBankMatchId }, data: { isTransfer: true } });
@@ -428,6 +429,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
         householdId,
         date,
         categoryId,
+        categorySource,
         amount,
         details,
         userId,

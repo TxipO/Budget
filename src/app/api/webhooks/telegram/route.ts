@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
     let direction: 'income' | 'expense';
     let amount: number;
     let categoryId: number;
+    let categorySource: string;
 
     const llmResult = await extractWithLLM(transcript, expenseNames, incomeNames, user.name).catch(() => null);
     if (llmResult) {
@@ -94,9 +95,10 @@ export async function POST(req: NextRequest) {
       if (!resolved) {
         // Extremely unlikely given the validation above, but if it somehow
         // happens, fall through to the rule-based path rather than crash.
-        categoryId = await guessCategoryId(householdId, user.id, direction, transcript, undefined);
+        ({ categoryId, source: categorySource } = await guessCategoryId(householdId, user.id, direction, transcript, undefined));
       } else {
         categoryId = resolved.id;
+        categorySource = 'llm'; // extractWithLLM's own category guess, not guessCategoryId's chain
       }
     } else {
       // FR-004/FR-005 — an unparseable amount or ambiguous direction asks
@@ -108,7 +110,7 @@ export async function POST(req: NextRequest) {
       }
       direction = parsed.direction;
       amount = parsed.amount;
-      categoryId = await guessCategoryId(householdId, user.id, direction, transcript, undefined);
+      ({ categoryId, source: categorySource } = await guessCategoryId(householdId, user.id, direction, transcript, undefined));
     }
 
     const category = await prisma.category.findUnique({ where: { id: categoryId }, select: { name: true } });
@@ -133,6 +135,7 @@ export async function POST(req: NextRequest) {
           details: transcript,
           userId: user.id,
           source: 'voice',
+          categorySource,
           telegramMessageId: voice.file_unique_id,
         },
       });
