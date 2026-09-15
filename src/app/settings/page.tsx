@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, RefreshCw, Landmark, Pencil, UserPlus } from 'lucide-react';
+import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, RefreshCw, Landmark, Pencil, UserPlus, AlertTriangle } from 'lucide-react';
 import { CATEGORY_PALETTE } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import { toast } from '@/lib/toast';
@@ -31,6 +31,7 @@ export default function SettingsPage() {
   const [savingTpl, setSavingTpl] = useState(false);
 
   const [monoStatus, setMonoStatus] = useState<{ userId: number; name: string; connected: boolean; accountId: string | null }[]>([]);
+  const [llmStatus, setLlmStatus] = useState<{ status: 'alive' | 'dead' | 'unknown'; llmCount: number; fallbackCount: number; lookbackDays: number } | null>(null);
   const [monoTokenInput, setMonoTokenInput] = useState<Record<number, string>>({});
   const [monoConnecting, setMonoConnecting] = useState<number | null>(null);
   const [monoSyncing, setMonoSyncing] = useState<number | null>(null);
@@ -104,6 +105,9 @@ export default function SettingsPage() {
 
   function loadMonoStatus() {
     fetch('/api/monobank/status').then(r => r.ok ? r.json() : Promise.reject()).then(setMonoStatus).catch(() => {});
+  }
+  function loadLlmStatus() {
+    fetch('/api/categorize/llm-status').then(r => r.ok ? r.json() : Promise.reject()).then(setLlmStatus).catch(() => {});
   }
 
   async function connectMono(userId: number) {
@@ -370,6 +374,7 @@ export default function SettingsPage() {
     loadMonoStatus();
     loadSbStatus();
     loadUsers();
+    loadLlmStatus();
 
     // Landed here straight off the bank's redirect (api/sparebank/callback) —
     // surface the result once, then strip the param so a page refresh
@@ -826,13 +831,25 @@ export default function SettingsPage() {
         <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Landmark size={16} color="#F97316" /> Банківське підключення
         </h2>
-        <p style={{ fontSize: 13, color: 'var(--c-text-muted)', marginBottom: 16 }}>
+        <p style={{ fontSize: 13, color: 'var(--c-text-muted)', marginBottom: 8 }}>
           Monobank — токен зі свого кабінету на{' '}
           <a href="https://api.monobank.ua/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c-accent-text)' }}>
             api.monobank.ua
           </a>
           . SpareBank 1 Sogn og Fjordane — підключення веде на сторінку входу банку (BankID), токен не потрібен.
         </p>
+        {/* Auto-categorization health — the LLM tier (Groq) sat silently dead
+            for an unknown stretch of time on 2026-09-15 (retired model +
+            empty prod API key), both failures shaped so nothing ever showed
+            an error. This surfaces that class of failure here instead of
+            only in a script someone has to remember to run. */}
+        {llmStatus && llmStatus.status !== 'unknown' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, marginBottom: 16, color: llmStatus.status === 'alive' ? '#4ADE80' : '#F97316' }}>
+            {llmStatus.status === 'alive'
+              ? <><CheckCircle size={13} /> Авто-категоризація (Groq): працює — {llmStatus.llmCount} рішень за {llmStatus.lookbackDays} днів</>
+              : <><AlertTriangle size={13} /> Авто-категоризація (Groq): не спрацювала жодного разу за {llmStatus.lookbackDays} днів, хоча {llmStatus.fallbackCount} транзакцій впали в "Незрозуміло" — перевірте GROQ_API_KEY</>}
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {users.map(u => {
             const mono = monoStatus.find(m => m.userId === u.id);
