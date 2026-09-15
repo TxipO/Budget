@@ -26,9 +26,27 @@ const TRANSFER_CATEGORY_TYPE = 'transfer';
 // just the merchant name (the same stable text the SAME merchant sends in
 // its other, non-card-format remittance style) before it becomes either.
 const CARD_AUTH_ENVELOPE = /^\*\d+\s+\d{2}\.\d{2}\s+[A-Z]{3}\s+[\d.,]+\s+(.+?)\s+Kurs:\s*[\d.,]+$/i;
+
+// A second, simpler card-auth envelope confirmed live 2026-09-15: plain
+// domestic-NOK purchases (no foreign currency, so no CCY/amount/Kurs) carry
+// just a leading "DD.MM " authorization-date stamp before the merchant name
+// — "13.09 96682762Stbar M DALSBERGSTIE STRØMMEN", "12.09 KIWI 582 TORGGA
+// TORGGATA 1 OSLO". Same root cause as CARD_AUTH_ENVELOPE above (a bank
+// envelope embedding THIS purchase's own date makes every visit to the same
+// merchant produce a unique string) — found because a household member
+// manually corrected one "Stbar" bar-tab line to "Залежності", which taught
+// a MonoCategoryRule keyed on "13.09 96682762stbar...", and the other 15
+// lines from the SAME night (same merchant, same real bar tab split across
+// many card authorizations) never matched it — the date in the key made it
+// unique to that one row. Confirmed systemic, not Stbar-specific: 32 of the
+// 53 most recent SpareBank rows carried this exact prefix shape.
+const DATE_STAMP_ENVELOPE = /^\d{2}\.\d{2}\s+(.+)$/;
+
 function stripCardAuthEnvelope(text: string): string {
-  const match = text.match(CARD_AUTH_ENVELOPE);
-  return match ? match[1].trim() : text;
+  const cardAuthMatch = text.match(CARD_AUTH_ENVELOPE);
+  if (cardAuthMatch) return cardAuthMatch[1].trim();
+  const dateStampMatch = text.match(DATE_STAMP_ENVELOPE);
+  return dateStampMatch ? dateStampMatch[1].trim() : text;
 }
 
 // True ONLY when the counterparty account is ALSO syncEnabled — i.e. this
