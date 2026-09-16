@@ -4,7 +4,7 @@ import { guessCategoryId } from '@/lib/categoryGuess';
 import { SbTransaction, SbAccountId } from '@/lib/enableBanking';
 import { getCachedExchangeRate, ISO_4217 } from '@/lib/monobank';
 import { numericForCurrency } from '@/lib/currencies';
-import { looksLikeTransferIntermediary, findCrossBankTransferMatch } from '@/lib/transferDetect';
+import { looksLikeTransferIntermediary, findCrossBankTransferMatch, looksLikeUnresolvedInternalTransfer, findUnresolvedInternalTransferMatch } from '@/lib/transferDetect';
 
 // See monoIngest.ts's own comment on the 2026-08-24 rename/retype from
 // 'Переказ між рахунками' (type 'savings') to a dedicated 'transfer' type.
@@ -314,7 +314,17 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // hit (the overwhelming majority of re-fetches) still exits immediately
   // below, without re-running guessCategoryId (which can reach an LLM
   // tier) for rows that already have a perfectly good, unrelated category.
-  const needsReconciliation = existing !== null && !existing.isTransfer && transferAccountId !== null;
+  //
+  // The account-number path above isn't the only way this can newly have
+  // something to act on: `looksLikeUnresolvedInternalTransfer` below covers
+  // the case where the account number NEVER resolves at all (confirmed
+  // live: still null 10+ days later, transferAccountId's OWN
+  // re-fetch window long since closed) — a stored row with that placeholder
+  // text and still isTransfer:false deserves the same re-check chance,
+  // bounded the exact same way (only re-fetched while still within the
+  // sync's own overlap window).
+  const needsReconciliation = existing !== null && !existing.isTransfer &&
+    (transferAccountId !== null || looksLikeUnresolvedInternalTransfer(details));
   if (existing && !needsReconciliation) return { status: 'skipped_duplicate' };
 
   let isTransfer: boolean;
@@ -386,6 +396,19 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     if (crossBankMatchId) isTransfer = true;
   }
 
+  // Same-bank internal transfer whose account numbers never arrived at all
+  // — see transferDetect.ts's own comment on findUnresolvedInternalTransferMatch
+  // for the real incident and why this is safe to act on from the
+  // placeholder text alone. excludeId matters here specifically on the
+  // reconcile path: `existing` already sits in the DB with this exact
+  // amount/date/text, so without excluding it, a stuck row with no real
+  // sibling yet would "match" itself.
+  let unresolvedInternalMatchId: number | null = null;
+  if (!isTransfer && looksLikeUnresolvedInternalTransfer(details)) {
+    unresolvedInternalMatchId = await findUnresolvedInternalTransferMatch(userId, amount, date, existing?.id);
+    if (unresolvedInternalMatchId) isTransfer = true;
+  }
+
   if (existing) {
     // Reconciling an already-stored row (see the `needsReconciliation`
     // comment above). Only actually write when the freshly computed result
@@ -404,6 +427,9 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     });
     if (crossBankMatchId) {
       await prisma.transaction.update({ where: { id: crossBankMatchId }, data: { isTransfer: true } });
+    }
+    if (unresolvedInternalMatchId) {
+      await prisma.transaction.update({ where: { id: unresolvedInternalMatchId }, data: { isTransfer: true } });
     }
     return { status: 'reconciled', id: existing.id };
   }
@@ -455,6 +481,16 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   if (crossBankMatchId) {
     await prisma.transaction.update({
       where: { id: crossBankMatchId },
+      data: { isTransfer: true },
+    });
+  }
+  // Same-bank unresolved-account match — same "only flip isTransfer, never
+  // touch categoryId" rule, for the same reason: the sibling already
+  // resolved to whatever it resolved to, and this fix's whole job is to
+  // stop excluding it from being a transfer, not to relitigate its category.
+  if (unresolvedInternalMatchId) {
+    await prisma.transaction.update({
+      where: { id: unresolvedInternalMatchId },
       data: { isTransfer: true },
     });
   }
