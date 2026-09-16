@@ -10,7 +10,7 @@ import { prisma } from '@/lib/prisma';
 export const MAX_USERS = 2;
 
 // The tenant-isolation boundary for every route touching household-owned
-// data (User, Category, Transaction, RecurringTemplate, MonthlyPlan).
+// data (User, Category, Transaction, MonthlyPlan).
 // middleware.ts always sets this header itself from the verified session
 // cookie for any request that reaches a non-public route — never a
 // client-supplied value by the time a route handler sees it (same guarantee

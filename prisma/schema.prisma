@@ -33,7 +33,6 @@ model Household {
   users              User[]
   categories         Category[]
   transactions       Transaction[]
-  recurringTemplates RecurringTemplate[]
   monthlyPlans       MonthlyPlan[]
   lockout            HouseholdLockout?
 }
@@ -55,7 +54,6 @@ model User {
   householdId        Int?
   household          Household?           @relation(fields: [householdId], references: [id])
   transactions       Transaction[]
-  recurringTemplates RecurringTemplate[]
   createdAt          DateTime             @default(now())
 
   // Monobank integration (see lib/crypto.ts). monoTokenEnc is the personal
@@ -233,7 +231,6 @@ model Category {
   household          Household?           @relation(fields: [householdId], references: [id])
   transactions       Transaction[]
   plans              MonthlyPlan[]
-  recurringTemplates RecurringTemplate[]
   monoCategoryRules  MonoCategoryRule[]
   sparebankAccounts  SparebankAccount[]
 
@@ -257,21 +254,19 @@ model Transaction {
   householdId         Int?
   household           Household?         @relation(fields: [householdId], references: [id])
   createdAt           DateTime           @default(now())
-  recurringTemplateId Int?
   category            Category           @relation(fields: [categoryId], references: [id])
   user                User?              @relation(fields: [userId], references: [id])
-  recurringTemplate   RecurringTemplate? @relation(fields: [recurringTemplateId], references: [id])
 
-  // Which subsystem wrote this row — manual entry, Excel plan import,
-  // recurring-template apply, or Monobank webhook. Lets Ф5's double-count
-  // guard tell "two independent writers recorded the same real payment"
-  // apart from "two genuinely separate transactions."
+  // Which subsystem wrote this row — manual entry, Excel plan import, or
+  // Monobank/SpareBank webhook/sync. Lets Ф5's double-count guard tell "two
+  // independent writers recorded the same real payment" apart from "two
+  // genuinely separate transactions."
   source String @default("manual")
 
   // Which TIER of guessCategoryId() actually resolved this row's category —
   // null for anything that didn't go through that function at all (manual
-  // entry, recurring apply, Excel import, all of which set categoryId
-  // directly). Added 2026-09-15 (/classification overhaul Phase 0) after
+  // entry, Excel import, both of which set categoryId directly). Added
+  // 2026-09-15 (/classification overhaul Phase 0) after
   // the LLM tier sat silently dead for an unknown stretch of time (a
   // retired model id + an empty prod API key, both failing open into "fall
   // through to the next tier" with zero visible error) — without this
@@ -304,11 +299,11 @@ model Transaction {
   fxRate             Float?          // rate applied at import time (original * fxRate = amount)
 
   // Set when a NEW mono transaction lands in the same category+month as an
-  // existing recurring/import row with a similar amount — the same shape of
-  // bug already found once this session (Excel import + recurring both
-  // silently writing "rent" for the same month). Never auto-blocks the
-  // write (blocking risks losing a real transaction that's just coincidentally
-  // similar); just flags it for a human to glance at in the transactions list.
+  // existing Excel-import row with a similar amount — the same shape of bug
+  // this guard exists to catch (two independent writers silently recording
+  // the same real-world payment). Never auto-blocks the write (blocking
+  // risks losing a real transaction that's just coincidentally similar);
+  // just flags it for a human to glance at in the transactions list.
   possibleDuplicateOf Int?
 
   // Dedup key for voice-logged transactions — Telegram's voice message
@@ -358,34 +353,12 @@ model Transaction {
   isTransfer Boolean @default(false)
 
   @@index([date])
-  // Guards against the recurring/apply race: concurrent requests applying the
-  // same template for the same month could both pass the "already applied"
-  // check before either commits. NULL recurringTemplateId (regular manual
-  // transactions) never conflicts with itself under Postgres unique-index
-  // semantics, so this only constrains recurring-generated rows.
-  @@unique([recurringTemplateId, date])
   // sbTransactionId is only unique WITHIN one user's own account — see the
   // field's own comment. NULL userId never conflicts with itself under
   // Postgres unique-index semantics, and every sparebank row always has a
   // real userId (ingestTransaction requires it), so this never loosens
   // anything for real data.
   @@unique([userId, sbTransactionId])
-}
-
-model RecurringTemplate {
-  id           Int           @id @default(autoincrement())
-  name         String
-  amount       Float
-  categoryId   Int
-  userId       Int
-  details      String        @default("")
-  isActive     Boolean       @default(true)
-  createdAt    DateTime      @default(now())
-  householdId  Int?
-  household    Household?    @relation(fields: [householdId], references: [id])
-  category     Category      @relation(fields: [categoryId], references: [id])
-  user         User          @relation(fields: [userId], references: [id])
-  transactions Transaction[]
 }
 
 model AppSetting {

@@ -5,7 +5,6 @@ import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, Chevron
 import { MONTH_NAMES, MONTH_SHORT, TYPE_COLORS, CATEGORY_PALETTE, BANK_SYNC_COLOR, type Period, PERIOD_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
-import RecurringModal from '@/components/RecurringModal';
 import CategoryIcon from '@/components/CategoryIcon';
 import { useDashboardPrefs } from '@/lib/dashboardPrefs';
 import { toast } from '@/lib/toast';
@@ -94,8 +93,6 @@ export default function Dashboard() {
   const [loading,  setLoading]  = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Stats['recent'][0] | null>(null);
-  const [showRecurring, setShowRecurring] = useState(false);
-  const [pendingRecurring, setPendingRecurring] = useState(0);
   // Collapsed by default — one of 6+ simultaneous dashboard blocks (critique
   // 2026-08-02, P1); still one click away, nothing lost, just not competing
   // with the stat cards and recent list for attention on first paint.
@@ -211,14 +208,6 @@ export default function Dashboard() {
     loadStats();
   }
 
-  useEffect(() => {
-    if (period !== 'month') { setPendingRecurring(0); return; }
-    fetch(`/api/recurring?year=${year}&month=${month}`)
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then((data: { applied: boolean }[]) => setPendingRecurring(data.filter(t => !t.applied).length))
-      .catch(() => {});
-  }, [year, month, period]);
-
   function loadStats() {
     setLoading(true);
     const params = new URLSearchParams({ period, year: String(year), month: String(month) });
@@ -326,22 +315,6 @@ export default function Dashboard() {
               )}
             </div>
           )}
-          <button
-            onClick={() => setShowRecurring(true)}
-            className="btn-ghost"
-            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600, position: 'relative' }}
-          >
-            <RefreshCw size={15} />
-            <span className="hide-on-xs">Шаблони</span>
-            {pendingRecurring > 0 && (
-              <span style={{
-                position: 'absolute', top: -6, right: -6,
-                background: 'var(--c-accent-fill)', color: 'white', fontSize: 10, fontWeight: 800,
-                borderRadius: '50%', width: 16, height: 16,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>{pendingRecurring}</span>
-            )}
-          </button>
           <button
             onClick={() => downloadExport(
               period === 'month' ? `?year=${year}&month=${month}` :
@@ -821,13 +794,6 @@ export default function Dashboard() {
         />
       )}
 
-      {showRecurring && (
-        <RecurringModal
-          year={year} month={month}
-          onClose={() => setShowRecurring(false)}
-          onApplied={() => { loadStats(); fetch(`/api/recurring?year=${year}&month=${month}`).then(r => r.ok ? r.json() : Promise.reject()).then((d: { applied: boolean }[]) => setPendingRecurring(d.filter(t => !t.applied).length)).catch(() => {}); }}
-        />
-      )}
     </div>
   );
 }

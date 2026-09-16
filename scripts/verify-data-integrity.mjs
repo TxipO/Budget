@@ -19,11 +19,10 @@ async function main() {
   console.log('=== Budget tracker data-integrity pipeline ===');
   console.log('Database:', process.env.DATABASE_URL?.replace(/:[^:@]+@/, ':***@'));
 
-  const [txs, cats, users, templates, plans] = await Promise.all([
+  const [txs, cats, users, plans] = await Promise.all([
     prisma.transaction.findMany({ include: { category: true, user: true } }),
     prisma.category.findMany(),
     prisma.user.findMany(),
-    prisma.recurringTemplate.findMany(),
     prisma.monthlyPlan.findMany(),
   ]);
 
@@ -31,16 +30,12 @@ async function main() {
   step(1, 'Foreign key integrity');
   const catIds = new Set(cats.map(c => c.id));
   const userIds = new Set(users.map(u => u.id));
-  const tplIds = new Set(templates.map(t => t.id));
   const orphanCat = txs.filter(t => !catIds.has(t.categoryId));
   const orphanUser = txs.filter(t => t.userId !== null && !userIds.has(t.userId));
-  const orphanTpl = txs.filter(t => t.recurringTemplateId !== null && !tplIds.has(t.recurringTemplateId));
   if (orphanCat.length) fail(`${orphanCat.length} transactions reference a missing category: ${orphanCat.map(t => t.id).join(',')}`);
   else pass(`all ${txs.length} transactions have a valid categoryId`);
   if (orphanUser.length) fail(`${orphanUser.length} transactions reference a missing user`);
   else pass('all userId references valid');
-  if (orphanTpl.length) fail(`${orphanTpl.length} transactions reference a missing recurring template`);
-  else pass('all recurringTemplateId references valid');
 
   // ── Step 2: amount sanity ─────────────────────────────────────────────
   step(2, 'Amount sanity');
@@ -67,48 +62,6 @@ async function main() {
     suspicious.forEach(t => console.log(`      #${t.id} ${t.date.toISOString()} ${t.category.name} "${t.details}" ${t.amount}`));
   } else pass(`all ${txs.length} transactions land on a clean UTC midnight or noon boundary`);
 
-  // ── Step 4: double-counting between [імпорт] and recurring-template rows ─
-  step(4, 'Double-counted recurring items');
-  // Both the Excel-plan import and the recurring-template "Застосувати"
-  // button can independently write a transaction for the same category in
-  // the same month. Neither checks whether the other already did, so the
-  // same real-world payment (e.g. rent) can get counted twice.
-  const byKey = {};
-  for (const t of txs) {
-    const key = `${t.categoryId}:${t.date.getUTCFullYear()}-${String(t.date.getUTCMonth() + 1).padStart(2, '0')}`;
-    (byKey[key] ??= []).push(t);
-  }
-  const doubled = Object.entries(byKey).filter(([, group]) =>
-    group.some(t => t.details === '[імпорт]') && group.some(t => t.recurringTemplateId !== null)
-  );
-  if (doubled.length) {
-    fail(`${doubled.length} category+month combos have BOTH an [імпорт] row and a recurring-template row (likely double-counted):`);
-    for (const [key, group] of doubled) {
-      console.log(`      ${key} ${group[0].category.name}:`);
-      group.forEach(t => console.log(`        #${t.id} ${t.date.toISOString()} "${t.details}" ${t.amount} (recurringTemplateId=${t.recurringTemplateId})`));
-    }
-  } else pass('no category+month combo double-counted between import and recurring sources');
-
-  // Broader version of the same class of bug: the check above only catches
-  // the [імпорт]-vs-recurring pair we already found once. But the same "two
-  // independent writers for one real-world event" shape applies to ANY
-  // manually-entered or Ведення-imported transaction (recurringTemplateId
-  // null, not an [імпорт] summary row) landing in the same category+month as
-  // a recurring-template row — e.g. someone logs "Оренда" by hand the same
-  // month the rent template gets applied. Deliberately as broad as the bug's
-  // actual mechanism, not just the first example that triggered it (see the
-  // WHERE-clause lesson in the deep-review skill).
-  const doubledAny = Object.entries(byKey).filter(([, group]) =>
-    group.some(t => t.recurringTemplateId !== null) &&
-    group.some(t => t.recurringTemplateId === null && t.details !== '[імпорт]')
-  );
-  if (doubledAny.length) {
-    warn(`${doubledAny.length} category+month combos have BOTH a recurring-template row and an unrelated manual/imported row — verify these aren't the same real payment counted twice:`);
-    for (const [key, group] of doubledAny) {
-      console.log(`      ${key} ${group[0].category.name}:`);
-      group.forEach(t => console.log(`        #${t.id} ${t.date.toISOString()} "${t.details}" ${t.amount} (recurringTemplateId=${t.recurringTemplateId})`));
-    }
-  } else pass('no category+month combo mixes a recurring-template row with an unrelated manual/imported row');
 
   // ── Step 4c: Ф5's possibleDuplicateOf flag ──────────────────────────────
   step('4c', 'Mono possibleDuplicateOf flags');
@@ -246,17 +199,6 @@ async function main() {
   } else {
     pass(`LLM tier: ${recentLlm.length} decision(s) in the last ${LOOKBACK_DAYS} days (${recentFallback.length} fell through to fallback)`);
   }
-
-  // ── Step 5: duplicate recurring applications ───────────────────────────
-  step(5, 'Duplicate recurring-template applications');
-  const byTplMonth = {};
-  for (const t of txs.filter(t => t.recurringTemplateId !== null)) {
-    const key = `${t.recurringTemplateId}:${t.date.getUTCFullYear()}-${t.date.getUTCMonth()}`;
-    (byTplMonth[key] ??= []).push(t);
-  }
-  const tplDupes = Object.entries(byTplMonth).filter(([, g]) => g.length > 1);
-  if (tplDupes.length) fail(`${tplDupes.length} template+month combos have more than one transaction (race-condition duplicate)`);
-  else pass('every recurring template applied at most once per month');
 
   // ── Step 6: MonthlyPlan sanity ──────────────────────────────────────────
   step(6, 'MonthlyPlan integrity');

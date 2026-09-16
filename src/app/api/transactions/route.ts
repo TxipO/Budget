@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     if (userId && !(await isOwnedUser(householdId, parseInt(userId)))) return badRequest('Невалідний користувач');
 
     // Truncate to a clean UTC calendar-day boundary, matching every other
-    // writer (monoIngest.ts, the voice webhook, import, recurring/apply) —
+    // writer (monoIngest.ts, the voice webhook, import) —
     // the UI's <input type="date"> always sends a bare YYYY-MM-DD (read as
     // UTC midnight already), but this route is also a plain JSON API; a
     // caller sending a full ISO timestamp with a time/offset would otherwise

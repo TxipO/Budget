@@ -1,8 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, RefreshCw, Landmark, Pencil, UserPlus, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, Landmark, Pencil, UserPlus, AlertTriangle } from 'lucide-react';
 import { CATEGORY_PALETTE } from '@/lib/utils';
-import { useCurrency } from '@/lib/useCurrency';
 import { toast } from '@/lib/toast';
 import { useTheme } from '@/lib/theme';
 import { useDashboardPrefs, PREF_LABELS, type DashboardPrefs } from '@/lib/dashboardPrefs';
@@ -10,14 +9,8 @@ import { ICON_KEYS } from '@/lib/icons';
 import CategoryIcon from '@/components/CategoryIcon';
 
 interface Category { id: number; name: string; type: string; color: string; icon: string; isActive: boolean }
-interface RecurringTemplate {
-  id: number; name: string; amount: number; details: string;
-  category: { name: string; color: string; type: string };
-  user: { name: string };
-}
 
 export default function SettingsPage() {
-  const { formatMoney } = useCurrency();
   const [cats, setCats] = useState<Category[]>([]);
   const [form, setForm] = useState({ name: '', type: 'expense', color: CATEGORY_PALETTE[0], icon: 'circle' });
   const [importStatus, setImportStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
@@ -25,10 +18,7 @@ export default function SettingsPage() {
   const [editingIconId, setEditingIconId] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
-  const [tplForm, setTplForm] = useState({ name: '', amount: '', categoryId: '', userId: '' });
-  const [savingTpl, setSavingTpl] = useState(false);
 
   const [monoStatus, setMonoStatus] = useState<{ userId: number; name: string; connected: boolean; accountId: string | null }[]>([]);
   const [llmStatus, setLlmStatus] = useState<{ status: 'alive' | 'dead' | 'unknown'; llmCount: number; fallbackCount: number; lookbackDays: number } | null>(null);
@@ -359,18 +349,11 @@ export default function SettingsPage() {
       .then(setCats)
       .catch(() => toast('Помилка завантаження категорій', 'error'));
   }
-  function loadTemplates() {
-    fetch('/api/recurring')
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(setTemplates)
-      .catch(() => toast('Помилка завантаження шаблонів', 'error'));
-  }
   function loadUsers() {
     fetch('/api/users').then(r => r.ok ? r.json() : Promise.reject()).then(setUsers).catch(() => {});
   }
   useEffect(() => {
     loadCats();
-    loadTemplates();
     loadMonoStatus();
     loadSbStatus();
     loadUsers();
@@ -461,36 +444,6 @@ export default function SettingsPage() {
     }
   }
 
-  async function addTemplate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!tplForm.name || !tplForm.amount || !tplForm.categoryId || !tplForm.userId || savingTpl) return;
-    setSavingTpl(true);
-    try {
-      const res = await fetch('/api/recurring', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...tplForm, amount: Number(tplForm.amount), categoryId: Number(tplForm.categoryId), userId: Number(tplForm.userId) }),
-      });
-      if (!res.ok) { toast('Помилка додавання шаблону', 'error'); return; }
-      toast(`Шаблон "${tplForm.name}" додано`);
-      setTplForm({ name: '', amount: '', categoryId: '', userId: '' });
-      loadTemplates();
-    } catch {
-      toast('Помилка з’єднання', 'error');
-    } finally {
-      setSavingTpl(false);
-    }
-  }
-
-  async function deleteTemplate(id: number, name: string) {
-    try {
-      const res = await fetch(`/api/recurring/${id}`, { method: 'DELETE' });
-      if (!res.ok) { toast('Помилка видалення шаблону', 'error'); return; }
-      toast(`Шаблон "${name}" видалено`, 'info');
-      loadTemplates();
-    } catch {
-      toast('Помилка з’єднання', 'error');
-    }
-  }
 
   async function addCat(e: React.FormEvent) {
     e.preventDefault();
@@ -1131,59 +1084,6 @@ export default function SettingsPage() {
           {importStatus === 'error' && (
             <div style={{ color: '#FCA5A5', fontSize: 13 }}>Помилка імпорту</div>
           )}
-        </div>
-      </div>
-
-      {/* Recurring templates */}
-      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <RefreshCw size={16} color="#F97316" /> Шаблони (recurring)
-        </h2>
-        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>
-          Щомісячні транзакції — оренда, комунальні, підписки. Натисни "Шаблони" на головній щоб застосувати їх одним кліком.
-        </p>
-
-        <form onSubmit={addTemplate} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
-          <div style={{ flex: '1 1 140px' }}>
-            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Назва</label>
-            <input className="input-field" value={tplForm.name} onChange={e => setTplForm(f => ({ ...f, name: e.target.value }))} required placeholder="Напр. Оренда" />
-          </div>
-          <div style={{ flex: '0 0 110px' }}>
-            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Сума</label>
-            <input className="input-field" type="number" value={tplForm.amount} onChange={e => setTplForm(f => ({ ...f, amount: e.target.value }))} required placeholder="0" min="0" />
-          </div>
-          <div style={{ flex: '1 1 130px' }}>
-            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Категорія</label>
-            <select className="input-field" value={tplForm.categoryId} onChange={e => setTplForm(f => ({ ...f, categoryId: e.target.value }))} required>
-              <option value="">Вибрати…</option>
-              {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div style={{ flex: '0 0 100px' }}>
-            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Хто</label>
-            <select className="input-field" value={tplForm.userId} onChange={e => setTplForm(f => ({ ...f, userId: e.target.value }))} required>
-              <option value="">Вибрати…</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
-          </div>
-          <button type="submit" className="btn-primary" disabled={savingTpl}><Plus size={15} /> {savingTpl ? 'Збереження…' : 'Додати'}</button>
-        </form>
-
-        {templates.length === 0 && <p style={{ fontSize: 13, color: '#475569' }}>Шаблонів ще немає</p>}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {templates.map(t => (
-            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: t.category.color, flexShrink: 0 }} />
-              <div style={{ flex: 1 }}>
-                <span style={{ fontSize: 14, color: 'var(--c-text-sec)', fontWeight: 600 }}>{t.name}</span>
-                <span style={{ fontSize: 12, color: '#475569', marginLeft: 8 }}>{t.category.name} · {t.user.name}</span>
-              </div>
-              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text)', marginRight: 8 }}>{formatMoney(t.amount)}</span>
-              <button className="btn-ghost" style={{ padding: '4px 6px', border: 'none', color: '#EF4444' }} onClick={() => deleteTemplate(t.id, t.name)}>
-                <Trash2 size={13} />
-              </button>
-            </div>
-          ))}
         </div>
       </div>
 

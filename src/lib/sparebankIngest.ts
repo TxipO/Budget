@@ -435,7 +435,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   }
 
   // Same double-count guard as Ф5 (Monobank) — a sparebank transaction
-  // landing in a category+month that already has a recurring/import row is a
+  // landing in a category+month that already has an Excel-imported row is a
   // real signal two independent writers might be recording the same event.
   const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
   const monthEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
@@ -444,7 +444,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
       householdId,
       categoryId,
       date: { gte: monthStart, lt: monthEnd },
-      OR: [{ recurringTemplateId: { not: null } }, { details: '[імпорт]' }],
+      details: '[імпорт]',
     },
   });
 

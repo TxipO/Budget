@@ -185,8 +185,8 @@ export async function ingestStatementItem(userId: number, householdId: number, i
 
   // Ф5: the same real-world payment counted twice from two independent
   // writers. A mono transaction landing in a category+month that already
-  // has a recurring-generated or Excel-imported row is a real signal
-  // something might double-count — flag it rather than block the write.
+  // has an Excel-imported row is a real signal something might
+  // double-count — flag it rather than block the write.
   const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
   const monthEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
   const possibleDup = await prisma.transaction.findFirst({
@@ -194,7 +194,7 @@ export async function ingestStatementItem(userId: number, householdId: number, i
       householdId,
       categoryId,
       date: { gte: monthStart, lt: monthEnd },
-      OR: [{ recurringTemplateId: { not: null } }, { details: '[імпорт]' }],
+      details: '[імпорт]',
     },
   });
 

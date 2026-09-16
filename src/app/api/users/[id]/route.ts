@@ -46,14 +46,9 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
     // Transaction.userId is optional with an implicit SetNull on delete —
     // their transaction history survives, just becomes unassigned to a
-    // specific person. RecurringTemplate.userId is required (Restrict), so
-    // block instead of letting Postgres reject it with an opaque FK error.
-    const templateCount = await prisma.recurringTemplate.count({ where: { userId: id } });
-    if (templateCount > 0) {
-      return badRequest('У цього користувача є шаблони — спочатку видаліть або передайте їх іншому користувачу');
-    }
+    // specific person.
 
-    // MonoCategoryRule.userId is also Restrict, but these are just
+    // MonoCategoryRule.userId is Restrict, but these are just
     // auto-learned categorization rules from past corrections (Ф4b) —
     // nothing financial, safe to drop along with the user rather than
     // blocking the delete over them.

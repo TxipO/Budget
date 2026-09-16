@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
-import { Plus, Search, Trash2, Pencil, ChevronLeft, ChevronRight, Download, RefreshCw, Globe, AlertTriangle, Landmark } from 'lucide-react';
+import { Plus, Search, Trash2, Pencil, ChevronLeft, ChevronRight, Download, Globe, AlertTriangle, Landmark } from 'lucide-react';
 import { MONTH_NAMES, TYPE_LABELS, BANK_SYNC_COLOR } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
@@ -10,7 +10,6 @@ import { downloadExport } from '@/lib/downloadExport';
 
 interface Tx {
   id: number; date: string; amount: number; details: string; source: string;
-  recurringTemplateId: number | null;
   possibleDuplicateOf: number | null;
   savingsWithdrawal: boolean;
   isTransfer: boolean;
@@ -473,8 +472,7 @@ export default function TransactionsPage() {
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
                     {tx.category.name}
-                    {tx.recurringTemplateId && <span title="Recurring" style={{ display: 'flex' }}><RefreshCw size={11} color="#F97316" /></span>}
-                    {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є шаблонна/імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex' }}><AlertTriangle size={11} color="#FBBF24" /></span>}
+                    {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex' }}><AlertTriangle size={11} color="#FBBF24" /></span>}
                     {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex' }}><Landmark size={11} color={BANK_SYNC_COLOR} /></span>}
                   </div>
                   {tx.details && (
@@ -527,8 +525,7 @@ export default function TransactionsPage() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
                   {tx.category.name}
-                  {tx.recurringTemplateId && <span title="Recurring" style={{ display: 'flex', flexShrink: 0 }}><RefreshCw size={10} color="#F97316" /></span>}
-                  {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є шаблонна/імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex', flexShrink: 0 }}><AlertTriangle size={10} color="#FBBF24" /></span>}
+                  {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex', flexShrink: 0 }}><AlertTriangle size={10} color="#FBBF24" /></span>}
                   {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex', flexShrink: 0 }}><Landmark size={10} color={BANK_SYNC_COLOR} /></span>}
                 </div>
                 <div style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
