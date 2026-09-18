@@ -117,6 +117,26 @@ export async function GET(req: NextRequest) {
     return s;
   }, 0);
 
+  // Running balance PER savings category (as of the same rangeEnd cutoff as
+  // cumBalance above, from the same already-fetched allTxs) — "скільки
+  // лежить у кожному пулі" is a running-total question, not a this-period-
+  // flow one, so this deliberately doesn't reset per period the way
+  // `savings`/`sumByType` above does. Found live 2026-09-18: the only
+  // savings number the dashboard ever showed was one combined total across
+  // every pool — "Фінансова подушка" vs "Dual Invest" vs "Акції" was
+  // nowhere in the UI, DB-only. Same sign convention as savingsAmount()
+  // itself (a deposit grows the pool, a withdrawal shrinks it) — POSITIVE
+  // here, unlike cumBalance's own use of savingsAmount() which SUBTRACTS it
+  // (money going into savings reduces free cash; this is the pool's own
+  // balance, the opposite side of that same movement).
+  const savingsByCategory: Record<number, { name: string; color: string; icon: string; balance: number }> = {};
+  allTxs.filter(isBudgetRelevant).filter(t => t.category.type === 'savings').forEach(t => {
+    if (!savingsByCategory[t.categoryId]) {
+      savingsByCategory[t.categoryId] = { name: t.category.name, color: t.category.color, icon: t.category.icon, balance: 0 };
+    }
+    savingsByCategory[t.categoryId].balance += savingsAmount(t);
+  });
+
   // Category breakdown (expenses) + plan
   const expenseByCategory: Record<number, { name: string; amount: number; color: string; icon: string; planned: number }> = {};
   txs.filter(t => t.category.type === 'expense').forEach(t => {
@@ -219,6 +239,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     income, expenses, savings, transfers, balance, cumBalance,
     byCategory, byUser, trend, recent, lastByUser,
+    savingsByCategory: Object.values(savingsByCategory).sort((a, b) => b.balance - a.balance),
     prev: prev ? { income: prev.income, expenses: prev.expenses, savings: prev.savings, transfers: prev.transfers, balance: prev.balance } : null,
   });
   } catch (e) {

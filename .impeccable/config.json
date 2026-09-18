@@ -8,6 +8,24 @@
         "value": "inter",
         "createdAt": "2026-08-02T17:06:06.563Z",
         "reason": "User confirmed Inter is intentional"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(0,0,0,0.25)",
+        "files": [
+          "src/app/page.tsx"
+        ],
+        "createdAt": "2026-09-16T13:18:35.001Z",
+        "reason": "pre-existing dropdown boxShadow, consistent across both menus, not introduced this session"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#eab308",
+        "files": [
+          "src/app/page.tsx"
+        ],
+        "createdAt": "2026-09-16T13:18:35.309Z",
+        "reason": "intentional traffic-light budget-progress warning color, paired with existing accent orange, sibling line uses the same unflagged pattern for the over-budget case"
       }
     ]
   }

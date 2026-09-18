@@ -27,6 +27,7 @@ interface Stats {
     user: { id: number; name: string } | null;
   }[];
   lastByUser: { userId: number; name: string; date: string | null }[];
+  savingsByCategory: { name: string; color: string; icon: string; balance: number }[];
   prev: { income: number; expenses: number; savings: number; transfers: number; balance: number } | null;
 }
 
@@ -569,6 +570,35 @@ export default function Dashboard() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Savings pool balances — "скільки лежить у подушці, скільки в
+          Dual Invest" (found live 2026-09-18: this was DB-only, the
+          dashboard only ever showed one combined "Збереження" number
+          across every pool). Running balance, not scoped to the period
+          selector the way the stat cards above are — see stats/route.ts's
+          own comment on savingsByCategory. Shown regardless of period for
+          the same reason "З початку" (cumBalance) already ignores it. */}
+      {sections.savings && stats && stats.savingsByCategory.length > 0 && (
+        <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+            <PiggyBank size={16} color="#FB923C" />
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Заощадження по категоріях</h3>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
+            {stats.savingsByCategory.map(cat => (
+              <div key={cat.name} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <CategoryIcon name={cat.icon} color={cat.color} size={18} tile />
+                <div>
+                  <div style={{ fontSize: 13, color: 'var(--c-text-sec)', fontWeight: 500 }}>{cat.name}</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    {formatMoneySign(cat.balance)}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
