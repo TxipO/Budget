@@ -5,6 +5,7 @@ import { TrendingUp, TrendingDown, PiggyBank, Wallet } from 'lucide-react';
 import { MONTH_SHORT } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import { toast } from '@/lib/toast';
+import CategoryIcon from '@/components/CategoryIcon';
 
 const MonthlyBarChart = dynamic(() => import('@/components/charts/MonthlyBarChart'), { ssr: false });
 
@@ -91,15 +92,52 @@ export default function AnalyticsPage() {
             <div style={{ fontSize: 22, fontWeight: 800, color: c.color, fontVariantNumeric: 'tabular-nums' }}>
               {c.signed ? formatMoneySign(c.value) : formatMoney(c.value)}
             </div>
-            {/* Small footnote, savings card only — "Всього збереження" above
+            {/* Per-pool chips, savings card only — "Всього збереження" above
                 is a within-year FLOW (deposits minus withdrawals); this is
                 each pool's actual standing balance as of the end of the
                 selected year, the answer to "скільки лежить у подушці,
                 скільки в Dual Invest" (asked live 2026-09-18, previously
-                answerable only via a direct DB query — nowhere in the UI). */}
+                answerable only via a direct DB query — nowhere in the UI).
+                Chips over a joined text line so each pool reads as a
+                distinct, scannable unit — color comes from the category
+                itself (Three-Tier Tint Rule's data-color case, same `${color}20`
+                formula CategoryIcon's own tile mode uses), radius 6px
+                matches the badge/chip step of the radius scale. One per row
+                (not wrapped inline) — this card sits in a 4-column grid, and
+                a full pool name ("Фінансова подушка") needs the card's full
+                width to read without truncating; ellipsis + title stay as a
+                fallback for a genuinely long category name. */}
             {c.label === 'Всього збереження' && savingsByCategory.length > 0 && (
-              <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 6, lineHeight: 1.5 }}>
-                {savingsByCategory.map(s => `${s.name}: ${formatMoneySign(s.balance)}`).join(' · ')}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 10 }}>
+                {savingsByCategory.map(s => (
+                  <div
+                    key={s.name}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 6, justifyContent: 'space-between',
+                      background: `${s.color}20`, borderRadius: 6,
+                      padding: '5px 9px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5, minWidth: 0 }}>
+                      <div style={{ marginTop: 1, flexShrink: 0 }}>
+                        <CategoryIcon name={s.icon} color={s.color} size={12} />
+                      </div>
+                      {/* Wraps instead of truncating — this card is one of
+                          four equal columns (~240px), too narrow to fit an
+                          18-char name like "Фінансова подушка" on one line
+                          alongside the icon and amount; a wrapped pool name
+                          stays fully readable, an ellipsis would just hide
+                          the answer to the question this chip exists to
+                          answer. */}
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--c-text-sec)', lineHeight: 1.35 }}>
+                        {s.name}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                      {formatMoneySign(s.balance)}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
