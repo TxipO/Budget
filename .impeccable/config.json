@@ -26,6 +26,24 @@
         ],
         "createdAt": "2026-09-16T13:18:35.309Z",
         "reason": "intentional traffic-light budget-progress warning color, paired with existing accent orange, sibling line uses the same unflagged pattern for the over-budget case"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "apple color emoji",
+        "files": [
+          "src/app/globals.css"
+        ],
+        "createdAt": "2026-09-18T20:49:15.468Z",
+        "reason": "part of Tailwind Preflight's stock html font-stack, copied verbatim when replacing @tailwind base with a hand-written reset (ponytail-audit) — same fallback stack that already shipped before this change, body's own font-family:Inter still wins for all real text"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "sfmono-regular",
+        "files": [
+          "src/app/globals.css"
+        ],
+        "createdAt": "2026-09-18T20:49:15.679Z",
+        "reason": "part of Tailwind Preflight's stock code/kbd/pre monospace fallback stack, copied verbatim when replacing @tailwind base with a hand-written reset (ponytail-audit) — pre-existing behavior, not a new typography choice"
       }
     ]
   }
