@@ -359,13 +359,13 @@ export default function Dashboard() {
             display: 'flex', alignItems: 'center', gap: 2,
             background: 'var(--c-elevated)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 4,
           }}>
-            <button onClick={prevMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }}>
+            <button onClick={prevMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }} title="Попередній місяць" aria-label="Попередній місяць">
               <ChevronLeft size={16} />
             </button>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-sec)', padding: '0 8px', minWidth: 128, textAlign: 'center' }}>
               {MONTH_NAMES[month - 1]} {year}
             </span>
-            <button onClick={nextMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }}>
+            <button onClick={nextMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }} title="Наступний місяць" aria-label="Наступний місяць">
               <ChevronRight size={16} />
             </button>
           </div>

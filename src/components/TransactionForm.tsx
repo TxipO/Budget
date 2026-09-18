@@ -161,7 +161,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
           <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--c-text)' }}>
             {editId ? 'Редагувати' : 'Нова транзакція'}
           </h2>
-          <button onClick={onClose} className="btn-ghost" style={{ padding: '6px 8px' }}>
+          <button onClick={onClose} className="btn-ghost" style={{ padding: '6px 8px' }} title="Закрити" aria-label="Закрити">
             <X size={16} />
           </button>
         </div>
@@ -298,6 +298,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
                     <button
                       type="button" onClick={() => removeAmountPart(i)}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', padding: 2, display: 'flex' }}
+                      title="Прибрати суму" aria-label="Прибрати суму"
                     >
                       <X size={12} />
                     </button>

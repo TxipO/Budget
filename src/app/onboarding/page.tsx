@@ -207,7 +207,7 @@ export default function OnboardingPage() {
                             onChange={e => updateCategory(cat.idx, { name: e.target.value })}
                             style={{ flex: 1, fontSize: 13, color: 'var(--c-text-sec)', background: 'none', border: 'none', outline: 'none' }}
                           />
-                          <button type="button" onClick={() => removeCategory(cat.idx)} className="btn-ghost" style={{ padding: '3px 5px', border: 'none', color: '#EF4444' }}>
+                          <button type="button" onClick={() => removeCategory(cat.idx)} className="btn-ghost" style={{ padding: '3px 5px', border: 'none', color: '#EF4444' }} title="Прибрати категорію" aria-label="Прибрати категорію">
                             <Trash2 size={12} />
                           </button>
                         </div>

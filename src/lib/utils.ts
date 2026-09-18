@@ -3,6 +3,15 @@
 // useCurrency() hook (lib/useCurrency.ts) from a component instead of
 // importing these two names from here.
 
+// Full-screen auth/setup gates — each renders its own fixed, full-viewport
+// overlay (position:fixed, inset:0) with no destination behind it yet. The
+// app shell (Sidebar, MobileNav) skips rendering entirely on these routes:
+// nesting a fixed overlay inside <main>'s own stacking context (position:
+// relative + z-index) traps it at main's paint layer instead of truly
+// covering the page, so the shell was visible AND clickable underneath a
+// "full-screen" login/lock/onboarding/setup gate (found live 2026-09-18).
+export const APP_SHELL_HIDDEN_ROUTES = ['/login', '/lock', '/onboarding', '/setup'];
+
 export const MONTH_NAMES = [
   'Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень',
   'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень',

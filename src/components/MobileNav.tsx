@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, ArrowLeftRight, CalendarDays, BarChart3, Settings } from 'lucide-react';
+import { APP_SHELL_HIDDEN_ROUTES } from '@/lib/utils';
 
 const NAV = [
   { href: '/',             icon: LayoutDashboard, label: 'Головна' },
@@ -13,6 +14,7 @@ const NAV = [
 
 export default function MobileNav() {
   const pathname = usePathname();
+  if (APP_SHELL_HIDDEN_ROUTES.includes(pathname)) return null;
 
   return (
     <nav className="bottom-nav" style={{

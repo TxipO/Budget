@@ -247,13 +247,13 @@ export default function TransactionsPage() {
             opacity: globalSearch ? 0.35 : 1,
             pointerEvents: globalSearch ? 'none' : 'auto',
           }}>
-            <button onClick={prevMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }}>
+            <button onClick={prevMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }} title="Попередній місяць" aria-label="Попередній місяць">
               <ChevronLeft size={16} />
             </button>
             <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-sec)', padding: '0 8px', minWidth: 120, textAlign: 'center' }}>
               {globalSearch ? 'Всі роки' : `${MONTH_NAMES[month - 1]} ${year}`}
             </span>
-            <button onClick={nextMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }}>
+            <button onClick={nextMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }} title="Наступний місяць" aria-label="Наступний місяць">
               <ChevronRight size={16} />
             </button>
           </div>
@@ -573,6 +573,7 @@ export default function TransactionsPage() {
               style={{ padding: '5px 8px', border: 'none', opacity: page === 1 ? 0.3 : 1 }}
               disabled={page === 1}
               onClick={() => setPage(p => p - 1)}
+              title="Попередня сторінка" aria-label="Попередня сторінка"
             >
               <ChevronLeft size={15} />
             </button>
@@ -584,6 +585,7 @@ export default function TransactionsPage() {
               style={{ padding: '5px 8px', border: 'none', opacity: page === totalPages ? 0.3 : 1 }}
               disabled={page === totalPages}
               onClick={() => setPage(p => p + 1)}
+              title="Наступна сторінка" aria-label="Наступна сторінка"
             >
               <ChevronRight size={15} />
             </button>

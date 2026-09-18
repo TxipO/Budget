@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { LayoutDashboard, ArrowLeftRight, CalendarDays, BarChart3, Settings, Sun, Moon, Wallet, LogOut } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTheme } from '@/lib/theme';
+import { APP_SHELL_HIDDEN_ROUTES } from '@/lib/utils';
 
 
 const NAV = [
@@ -26,11 +27,11 @@ export default function Sidebar() {
     // No session yet on /login. /lock is skipped too — every /api/* route
     // except the small unlock/logout allowlist 401s while locked (P4), so
     // these fetches would just fail there; nothing to gate or prefill on
-    // that page anyway. /onboarding is exempted from the redirect-check
-    // below only (not from the fetches — it still needs /api/account/me
-    // itself for its own prefill), or a not-yet-onboarded household would
-    // bounce back into a redirect loop against itself.
-    if (pathname === '/login' || pathname === '/lock') return;
+    // that page anyway. Same for /onboarding and /setup: the sidebar itself
+    // doesn't render on any of these (see APP_SHELL_HIDDEN_ROUTES below),
+    // so there's nothing here to prefill and no redirect-loop risk to
+    // guard against by fetching anyway.
+    if (APP_SHELL_HIDDEN_ROUTES.includes(pathname)) return;
 
     const saved = localStorage.getItem('currentUser');
     if (saved) setUser(saved);
@@ -74,6 +75,8 @@ export default function Sidebar() {
       setLoggingOut(false);
     }
   }
+
+  if (APP_SHELL_HIDDEN_ROUTES.includes(pathname)) return null;
 
   return (
     <aside style={{
@@ -173,18 +176,17 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Logout */}
-      {pathname !== '/login' && (
-        <button
-          onClick={logout}
-          disabled={loggingOut}
-          className="nav-link"
-          style={{ width: '100%', justifyContent: 'flex-start', marginTop: 8, color: 'var(--c-text-muted)' }}
-        >
-          <LogOut size={17} />
-          {loggingOut ? 'Вихід…' : 'Вийти'}
-        </button>
-      )}
+      {/* Logout — the /login guard this used to need is now the early
+          `return null` above; the sidebar never reaches here on that route. */}
+      <button
+        onClick={logout}
+        disabled={loggingOut}
+        className="nav-link"
+        style={{ width: '100%', justifyContent: 'flex-start', marginTop: 8, color: 'var(--c-text-muted)' }}
+      >
+        <LogOut size={17} />
+        {loggingOut ? 'Вихід…' : 'Вийти'}
+      </button>
     </aside>
   );
 }

@@ -1180,7 +1180,7 @@ export default function SettingsPage() {
                       }}
                     />
                     <span style={{ flex: 1, fontSize: 14, color: 'var(--c-text-sec)' }}>{cat.name}</span>
-                    <button className="btn-ghost" style={{ padding: '4px 6px', border: 'none', color: '#EF4444' }} onClick={() => deleteCat(cat.id)}>
+                    <button className="btn-ghost" style={{ padding: '4px 6px', border: 'none', color: '#EF4444' }} onClick={() => deleteCat(cat.id)} title={`Видалити ${cat.name}`} aria-label={`Видалити ${cat.name}`}>
                       <Trash2 size={13} />
                     </button>
                   </div>

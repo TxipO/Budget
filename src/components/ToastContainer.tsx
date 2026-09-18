@@ -66,6 +66,7 @@ export default function ToastContainer() {
             <button
               onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: c.color, padding: 0, opacity: 0.7 }}
+              title="Закрити" aria-label="Закрити"
             >
               <X size={13} />
             </button>
