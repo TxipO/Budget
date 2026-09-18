@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireHouseholdId } from '@/lib/household';
 import { savingsAmount, isBudgetRelevant } from '@/lib/validate';
+import { computeSavingsByCategory } from '@/lib/savingsBreakdown';
 
 const MONTHS_UA = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
 const MONTHS_UA_LOC = ['січні','лютому','березні','квітні','травні','червні','липні','серпні','вересні','жовтні','листопаді','грудні'];
@@ -16,13 +17,27 @@ export async function GET(req: NextRequest) {
     const yearParam = parseInt(req.nextUrl.searchParams.get('year') || String(new Date().getFullYear()));
     const year = Number.isFinite(yearParam) ? yearParam : new Date().getFullYear();
 
+    const yearEnd = new Date(Date.UTC(year + 1, 0, 1));
     const txs = await prisma.transaction.findMany({
       where: {
         householdId,
-        date: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) },
+        date: { gte: new Date(Date.UTC(year, 0, 1)), lt: yearEnd },
       },
       select: { date: true, amount: true, details: true, savingsWithdrawal: true, isTransfer: true, category: { select: { name: true, type: true } } },
     });
+
+    // Per-pool running balance as of the end of the selected year — a small
+    // footnote next to "Всього збереження" (that stat is a within-year FLOW;
+    // this is each pool's actual standing balance, see
+    // computeSavingsByCategory's own comment). Deliberately a SEPARATE
+    // all-time query, not derived from `txs` above, since `txs` is scoped to
+    // just this one year and a pool's balance is a running total from the
+    // start of the household's history.
+    const savingsTxs = await prisma.transaction.findMany({
+      where: { householdId, date: { lt: yearEnd }, category: { type: 'savings' } },
+      select: { categoryId: true, amount: true, savingsWithdrawal: true, isTransfer: true, category: { select: { name: true, color: true, icon: true, type: true } } },
+    });
+    const savingsByCategory = computeSavingsByCategory(savingsTxs);
 
     const months = Array.from({ length: 12 }, () => ({
       income: 0, expenses: 0, savings: 0, balance: 0,
@@ -111,7 +126,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ months, insights });
+    return NextResponse.json({ months, insights, savingsByCategory });
   } catch (e) {
     console.error('[analytics GET]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

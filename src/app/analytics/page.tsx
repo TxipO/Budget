@@ -17,6 +17,7 @@ interface MonthData {
 }
 
 interface Insight { text: string; tone: 'good' | 'warn' | 'info' }
+interface SavingsCategoryBalance { name: string; color: string; icon: string; balance: number }
 
 const INSIGHT_STYLE: Record<Insight['tone'], { bg: string; border: string; color: string }> = {
   good: { bg: 'rgba(34,197,94,0.08)',  border: 'rgba(34,197,94,0.2)',  color: '#4ADE80' },
@@ -29,13 +30,15 @@ export default function AnalyticsPage() {
   const [year, setYear] = useState(2026);
   const [data, setData] = useState<MonthData[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
+  const [savingsByCategory, setSavingsByCategory] = useState<SavingsCategoryBalance[]>([]);
 
   useEffect(() => {
     fetch(`/api/analytics?year=${year}`)
       .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
-      .then((res: { months: { income: number; expenses: number; savings: number; balance: number }[]; insights: Insight[] }) => {
+      .then((res: { months: { income: number; expenses: number; savings: number; balance: number }[]; insights: Insight[]; savingsByCategory: SavingsCategoryBalance[] }) => {
         if (Array.isArray(res.months)) setData(res.months.map((m, i) => ({ month: MONTH_SHORT[i], ...m })));
         setInsights(Array.isArray(res.insights) ? res.insights : []);
+        setSavingsByCategory(Array.isArray(res.savingsByCategory) ? res.savingsByCategory : []);
       })
       .catch(() => toast('Помилка завантаження аналітики', 'error'));
   }, [year]);
@@ -88,6 +91,17 @@ export default function AnalyticsPage() {
             <div style={{ fontSize: 22, fontWeight: 800, color: c.color, fontVariantNumeric: 'tabular-nums' }}>
               {c.signed ? formatMoneySign(c.value) : formatMoney(c.value)}
             </div>
+            {/* Small footnote, savings card only — "Всього збереження" above
+                is a within-year FLOW (deposits minus withdrawals); this is
+                each pool's actual standing balance as of the end of the
+                selected year, the answer to "скільки лежить у подушці,
+                скільки в Dual Invest" (asked live 2026-09-18, previously
+                answerable only via a direct DB query — nowhere in the UI). */}
+            {c.label === 'Всього збереження' && savingsByCategory.length > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 6, lineHeight: 1.5 }}>
+                {savingsByCategory.map(s => `${s.name}: ${formatMoneySign(s.balance)}`).join(' · ')}
+              </div>
+            )}
           </div>
         ))}
       </div>
