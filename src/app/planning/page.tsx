@@ -41,9 +41,22 @@ export default function PlanningPage() {
 
     fetch(`/api/transactions?year=${year}&limit=9999`)
       .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
-      .then((txs: { date: string; amount: number; category: { id: number; type: string } }[]) => {
+      .then((txs: { date: string; amount: number; isTransfer: boolean; savingsWithdrawal: boolean; category: { id: number; type: string } }[]) => {
         const map: Record<string, number> = {};
         txs.forEach(tx => {
+          // Same exclusion+sign rule as lib/validate.ts's isBudgetRelevant/
+          // savingsAmount (stats.ts, analytics.ts) — reimplemented inline,
+          // not imported, because that module pulls in next/server and this
+          // is a client component (same reason transactions/page.tsx
+          // reimplements it instead of importing). Found live 2026-09-18:
+          // this page counted every isTransfer row as "actual" regardless
+          // of category — 3 real same-person-transfer rows (Женя, income,
+          // isTransfer:true) were inflating "факт" against a plan for
+          // Aug/Sep 2026. A savings withdrawal would double-add instead of
+          // subtracting for the same reason, though no live row had hit
+          // that combination yet.
+          if (tx.isTransfer || tx.category.type === 'transfer') return;
+          const signedAmount = tx.category.type === 'savings' && tx.savingsWithdrawal ? -tx.amount : tx.amount;
           // getUTCMonth, not getMonth — tx.date is a UTC-midnight-truncated
           // date string from the API (matches this app's own convention, see
           // e.g. verify-data-integrity.mjs's timezone-residue check). Reading
@@ -54,7 +67,7 @@ export default function PlanningPage() {
           // it in the planning grid. Found during /fullreview 2026-08-19.
           const m   = new Date(tx.date).getUTCMonth() + 1;
           const key = `${tx.category.id}-${m}`;
-          map[key]  = (map[key] || 0) + tx.amount;
+          map[key]  = (map[key] || 0) + signedAmount;
         });
         setActuals(Object.entries(map).map(([key, actual]) => {
           const [catId, month] = key.split('-').map(Number);
