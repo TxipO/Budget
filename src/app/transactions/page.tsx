@@ -266,7 +266,7 @@ export default function TransactionsPage() {
               <Download size={15} /> <span className="hide-on-xs">Експорт</span>
             </button>
             {showExport && (
-              <div style={{
+              <div className="header-dropdown" style={{
                 position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 50,
                 background: 'var(--c-raised)', border: '1px solid var(--c-border-hi)',
                 borderRadius: 10, overflow: 'hidden', minWidth: 130,

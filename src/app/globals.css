@@ -357,6 +357,23 @@ select.input-field option {
     position: fixed !important; top: 50% !important; left: 50% !important;
     transform: translate(-50%, -50%) !important; width: 220px;
   }
+
+  /* Header dropdowns (bank-sync menu, quarter picker, export menu — found
+     live 2026-09-19, reported by user screenshot): each is `position:
+     absolute` anchored to its own small icon-only trigger button, which can
+     land anywhere once the header wraps on a narrow screen — a 200px+ menu
+     expanding away from a trigger near the screen edge rendered mostly
+     off-screen. Same "positioned relative to a small trigger instead of the
+     viewport" shape as the planning popover above; same fix, as a bottom
+     sheet since these all open from header buttons, not a mid-page cell. */
+  .header-dropdown {
+    position: fixed !important; top: auto !important;
+    bottom: calc(68px + 16px + env(safe-area-inset-bottom)) !important;
+    left: 16px !important; right: 16px !important; min-width: 0 !important;
+  }
+  /* Same root cause, plain text instead of a menu — let it flow normally
+     under its button instead of floating off an unpredictable edge. */
+  .sync-status-label { position: static !important; white-space: normal !important; margin-top: 4px !important; }
 }
 
 /* ── Light mode extras ── */
