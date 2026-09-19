@@ -274,7 +274,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
 
   if (registration) {
     return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg, #0A0A0F)' }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg, #0A0A0F)', overflowY: 'auto', padding: '24px 0' }}>
         <form onSubmit={completeRegistration} style={cardStyle}>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--c-text)' }}>Вітаємо, {registration.firstName}!</div>
@@ -339,7 +339,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
 
   if (emailStep === 'register') {
     return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg, #0A0A0F)' }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg, #0A0A0F)', overflowY: 'auto', padding: '24px 0' }}>
         <div style={cardStyle}>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--c-text)' }}>Email підтверджено!</div>
@@ -394,6 +394,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
       position: 'fixed', inset: 0, zIndex: 50,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'var(--c-bg, #0A0A0F)',
+      overflowY: 'auto', padding: '24px 0',
     }}>
       <form onSubmit={submitPin} style={cardStyle}>
         <div style={{

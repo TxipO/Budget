@@ -46,6 +46,7 @@ export default function LockPage() {
       position: 'fixed', inset: 0, zIndex: 50,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'var(--c-bg, #0A0A0F)',
+      overflowY: 'auto', padding: '24px 0',
     }}>
       <form onSubmit={submit} style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18,

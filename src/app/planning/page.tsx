@@ -160,7 +160,7 @@ export default function PlanningPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
-              <th style={{
+              <th className="plan-cat-col" style={{
                 ...headerStyle, textAlign: 'left', padding: '14px 20px', width: 180,
                 position: 'sticky', left: 0, zIndex: 2, background: 'var(--c-elevated)',
                 boxShadow: '1px 0 0 var(--c-border)',
@@ -199,14 +199,14 @@ export default function PlanningPage() {
                   const yearPlanned = MONTH_SHORT.reduce((s, _, i) => s + getPlanned(cat.id, i + 1), 0);
                   return (
                     <tr key={cat.id} className="table-row">
-                      <td style={{
+                      <td className="plan-cat-col" style={{
                         padding: '10px 20px',
                         position: 'sticky', left: 0, zIndex: 1, background: 'var(--c-elevated)',
                         boxShadow: '1px 0 0 var(--c-border)',
                       }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: cat.color }} />
-                          <span style={{ fontSize: 13, color: 'var(--c-text-sec)', fontWeight: 500 }}>{cat.name}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />
+                          <span style={{ fontSize: 13, color: 'var(--c-text-sec)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</span>
                         </div>
                       </td>
                       {MONTH_SHORT.map((_, i) => {
@@ -222,7 +222,7 @@ export default function PlanningPage() {
                         return (
                           <td key={m} style={{ padding: '4px', textAlign: 'center', position: 'relative' }}>
                             {isEdit ? (
-                              <div style={{
+                              <div className="plan-edit-popover" style={{
                                 position: 'absolute', zIndex: 20, top: 0, left: '50%', transform: 'translateX(-50%)',
                                 background: 'var(--c-elevated)', border: '1px solid #F97316', borderRadius: 10,
                                 padding: 10, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 180,

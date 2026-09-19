@@ -40,7 +40,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={inter.className} style={{ display: 'flex', minHeight: '100vh', position: 'relative' }}>
         <Particles />
         <div className="sidebar-wrap"><Sidebar /></div>
-        <main style={{ flex: 1, minHeight: '100vh', overflow: 'auto', padding: 'clamp(16px, 4vw, 32px)', position: 'relative', zIndex: 1 }}>
+        {/* No zIndex here on purpose (found live 2026-09-19, mobile audit):
+            position:relative + an explicit z-index together make <main> its
+            own stacking context, which traps every position:fixed descendant
+            (TransactionForm's .modal-overlay included) at main's own paint
+            layer — so no z-index inside main, however high, could ever beat
+            a sibling like MobileNav's z-index:100. Root cause confirmed by
+            hit-testing: the modal's Save button resolved to a MobileNav
+            <svg> underneath it. Dropping zIndex removes that trap; Particles
+            (position:fixed, z-index:0) still paints behind <main> from plain
+            DOM order (canvas mounts first), no explicit z-index needed for
+            that ordering. */}
+        <main style={{ flex: 1, minHeight: '100vh', overflow: 'auto', padding: 'clamp(16px, 4vw, 32px)', position: 'relative' }}>
           {children}
         </main>
         <MobileNav />

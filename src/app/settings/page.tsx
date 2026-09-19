@@ -838,9 +838,9 @@ export default function SettingsPage() {
                 </div>
 
                 {monoConnected && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                     <span style={{ fontSize: 12, color: '#64748B' }}>Monobank</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#4ADE80' }}>
                         <CheckCircle size={13} /> Підключено
                       </span>
@@ -859,9 +859,9 @@ export default function SettingsPage() {
 
                 {sbConnected && sb && (
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                       <span style={{ fontSize: 12, color: '#64748B' }}>SpareBank 1</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                         {sb.expired ? (
                           <span style={{ fontSize: 12, color: 'var(--c-accent-text)' }}>Доступ прострочено</span>
                         ) : (

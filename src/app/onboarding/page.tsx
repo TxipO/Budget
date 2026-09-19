@@ -131,7 +131,7 @@ export default function OnboardingPage() {
   const stepLabel = { users: '1 з 3 — Хто ви', categories: '2 з 3 — Категорії', settings: '3 з 3 — Базові налаштування' }[step];
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg, #0A0A0F)', padding: 16 }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg, #0A0A0F)', padding: 16, overflowY: 'auto' }}>
       <div style={cardStyle}>
         <div>
           <div style={{ fontSize: 12, color: 'var(--c-accent-text)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{stepLabel}</div>

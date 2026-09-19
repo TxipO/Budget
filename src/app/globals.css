@@ -279,7 +279,12 @@ select.input-field option {
   inset: 0;
   background: rgba(0,0,0,0.7);
   backdrop-filter: blur(4px);
-  z-index: 50;
+  /* Above MobileNav's 100 (bottom-nav is a body-level sibling, not inside
+     <main>, so this only needed to clear it once <main> stopped trapping
+     this in its own stacking context — see layout.tsx). Still under
+     ToastContainer's 1000, so a save/delete toast still surfaces above a
+     closing modal. */
+  z-index: 150;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -314,12 +319,24 @@ select.input-field option {
 
   .stat-card { padding: 16px; border-radius: 14px; }
 
-  .modal-overlay { align-items: flex-end; padding: 0; }
+  .modal-overlay { align-items: flex-end; padding: 0; padding-bottom: env(safe-area-inset-bottom); }
 
   .grid-4 { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .grid-5 { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .grid-5 > :last-child { grid-column: 1 / -1; }
   .grid-2 { grid-template-columns: 1fr; gap: 12px; }
 
   .hide-on-xs { display: none !important; }
+
+  /* iOS Safari auto-zooms the page on focusing any input under 16px and
+     doesn't zoom back out on blur (found live 2026-09-19 mobile audit) —
+     16px is the exact threshold, not a rounder "safer" number. */
+  .input-field, select, textarea { font-size: 16px; }
+
+  /* Toasts (incl. the delete-undo action) sat directly on top of 2 of the
+     5 bottom-nav links (found live 2026-09-19 mobile audit) — clear the
+     68px nav (body's own padding-bottom above) plus the safe-area inset. */
+  .toast-stack { bottom: calc(68px + 16px + env(safe-area-inset-bottom)) !important; right: 16px !important; left: 16px; align-items: stretch !important; }
 
   .donut-row { flex-direction: column; align-items: stretch !important; }
   .donut-chart-box { width: 140px !important; height: 140px !important; align-self: center; }
@@ -327,6 +344,19 @@ select.input-field option {
 
   .tx-row-desktop { display: none !important; }
   .tx-row-mobile  { display: flex !important; }
+
+  /* Planning grid (found live 2026-09-19 mobile audit): the sticky category
+     column ate 161px of a 342px card (47%), leaving ~3 months visible at a
+     time, and the amount/note edit popover — anchored + centered on the
+     cell it opened from — could open partly outside the horizontally
+     scrolled viewport with no way to reach it. Narrower column first;
+     popover becomes a plain centered fixed sheet instead of a cell-relative
+     one, so its position no longer depends on scroll offset. */
+  .plan-cat-col { width: 90px !important; padding-left: 10px !important; padding-right: 6px !important; }
+  .plan-edit-popover {
+    position: fixed !important; top: 50% !important; left: 50% !important;
+    transform: translate(-50%, -50%) !important; width: 220px;
+  }
 }
 
 /* ── Light mode extras ── */

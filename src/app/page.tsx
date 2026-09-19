@@ -337,6 +337,10 @@ export default function Dashboard() {
         <div style={{
           display: 'flex', gap: 2, padding: 4,
           background: 'var(--c-elevated)', border: '1px solid var(--c-border)', borderRadius: 12,
+          // 5 labels measure ~393px, wider than a 375px phone (found live
+          // 2026-09-19 mobile audit) — scroll instead of wrap so the pill
+          // shape stays intact instead of breaking into rows.
+          overflowX: 'auto', maxWidth: '100%',
         }}>
           {PERIODS.map(p => (
             <button
@@ -347,6 +351,7 @@ export default function Dashboard() {
                 fontSize: 13, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.2s',
                 background: period === p ? 'var(--c-accent-fill)' : 'transparent',
                 color:      period === p ? 'white' : 'var(--c-text-muted)',
+                flexShrink: 0,
               }}
             >
               {PERIOD_LABELS[p]}

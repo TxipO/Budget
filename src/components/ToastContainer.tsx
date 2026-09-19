@@ -33,7 +33,7 @@ export default function ToastContainer() {
   if (!toasts.length) return null;
 
   return (
-    <div style={{
+    <div className="toast-stack" style={{
       position: 'fixed', bottom: 24, right: 24, zIndex: 1000,
       display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end',
     }}>
