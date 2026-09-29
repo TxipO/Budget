@@ -46,6 +46,14 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
   const [saving, setSaving] = useState(false);
   const { formatMoney } = useCurrency();
 
+  // "Лише ця / Усі від мерчанта" — see GET /api/transactions/[id]/sweep-preview.
+  // Set when saving an edited synced transaction's changed category would
+  // otherwise touch other rows or overwrite a learned rule; the user picks,
+  // then Save is pressed again.
+  interface ScopeChoice { siblings: number; existingRule: { categoryName: string } | null; merchantLabel: string | null; defaultScope: 'one' | 'merchant' }
+  const [scopeChoice, setScopeChoice] = useState<ScopeChoice | null>(null);
+  const [scope, setScope] = useState<'one' | 'merchant'>('one');
+
   // Multi-amount entry ("100 + 200 + 500" -> one 800 transaction) — each
   // confirmed part sits here, the amount field itself holds only the part
   // not yet added.
@@ -105,6 +113,31 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
     if (totalAmount <= 0) { toast('Сума має бути більше 0', 'error'); return; }
     setSaving(true);
     try {
+      // Decide the scope for an edit that changes the category. Preview
+      // failing must never block saving or silently sweep — fall back to the
+      // safe direction ('one': only this row, no rule change).
+      let scopeToSend: 'one' | 'merchant' | undefined;
+      if (editId && form.categoryId !== initial?.categoryId) {
+        if (scopeChoice) {
+          scopeToSend = scope;
+        } else {
+          const pv = await fetch(`/api/transactions/${editId}/sweep-preview?categoryId=${form.categoryId}`)
+            .then(r => r.ok ? r.json() : null).catch(() => null);
+          if (!pv) {
+            scopeToSend = 'one';
+            toast('Не вдалося перевірити інші транзакції мерчанта — змінено лише цю', 'info');
+          } else if (pv.applicable && pv.needsChoice) {
+            setScopeChoice({ siblings: pv.siblings, existingRule: pv.existingRule, merchantLabel: pv.merchantLabel, defaultScope: pv.defaultScope });
+            setScope(pv.defaultScope);
+            setSaving(false);
+            return;
+          } else {
+            // Nothing to damage (no siblings, no rule to overwrite): a
+            // brand-new merchant just learns the rule, like before.
+            scopeToSend = pv.applicable ? 'merchant' : 'one';
+          }
+        }
+      }
       const url    = editId ? `/api/transactions/${editId}` : '/api/transactions';
       const method = editId ? 'PUT' : 'POST';
       // Fold a still-unconfirmed amount into the breakdown too, but only
@@ -117,19 +150,39 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
       const userText = form.details.startsWith(oldPrefix) ? form.details.slice(oldPrefix.length) : form.details;
       const separator = userText.trim() ? ' — ' : '';
       const finalDetails = finalParts.length > 0 ? finalParts.join('+') + separator + userText : userText;
-      const payload = { ...form, amount: String(totalAmount), details: finalDetails };
+      const payload = { ...form, amount: String(totalAmount), details: finalDetails, ...(scopeToSend ? { scope: scopeToSend } : {}) };
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error(await res.text());
-      // retroactiveCount (PUT only) — Ф1a: correcting a synced transaction's
-      // category also retroactively fixes every OTHER row of the same
-      // merchant still sitting under the old category, not just this one.
-      // Surface that so a correction doesn't look like it silently did more
-      // than the user asked — see api/transactions/[id]/route.ts's comment.
-      const retroactiveCount = editId ? (await res.json().catch(() => null))?.retroactiveCount ?? 0 : 0;
+      // retroactiveCount/sweep (PUT only) — only present when the user chose
+      // "all from this merchant": every OTHER row of the same merchant under
+      // the old category moved too. Surface that, with a real "Скасувати"
+      // (revert-sweep) so a correction never does more than the user meant.
+      const result = editId ? await res.json().catch(() => null) : null;
+      const retroactiveCount: number = result?.retroactiveCount ?? 0;
+      const sweep = result?.sweep;
+      const primaryId = editId;
       toast(
         editId
           ? retroactiveCount > 0 ? `Транзакцію оновлено, також виправлено ще ${retroactiveCount}` : 'Транзакцію оновлено'
-          : 'Транзакцію додано'
+          : 'Транзакцію додано',
+        'success',
+        sweep && primaryId ? {
+          label: 'Скасувати для решти',
+          onClick: async () => {
+            try {
+              const undo = await fetch('/api/transactions/revert-sweep', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ primaryId, ...sweep }),
+              });
+              if (!undo.ok) { toast('Не вдалося скасувати', 'error'); return; }
+              toast('Скасовано — змінено лише цю транзакцію', 'info');
+              onSaved();
+            } catch {
+              toast('Помилка з’єднання', 'error');
+            }
+          },
+        } : undefined,
+        sweep ? 10000 : undefined,
       );
       onSaved();
       onClose();
@@ -189,7 +242,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
               {(['income', 'expense', 'savings'] as const).map(t => (
                 <button
                   key={t} type="button"
-                  onClick={() => setForm(f => ({ ...f, type: t, categoryId: '' }))}
+                  onClick={() => { setScopeChoice(null); setForm(f => ({ ...f, type: t, categoryId: '' })); }}
                   style={{
                     flex: 1, padding: '8px 4px', borderRadius: 8, border: 'none',
                     cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
@@ -220,7 +273,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
             <select
               className="input-field"
               value={form.categoryId}
-              onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}
+              onChange={e => { setScopeChoice(null); setForm(f => ({ ...f, categoryId: e.target.value })); }}
               required
             >
               <option value="">Оберіть категорію…</option>
@@ -365,6 +418,38 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
         </form>
 
         <div style={{ padding: '20px 28px 28px', flexShrink: 0 }}>
+          {/* Lives in the footer (not the scrolling form) so it can never be
+              off-screen when Save is pressed — the modal is a bottom sheet
+              on mobile with the form area shrinking to fit. */}
+          {scopeChoice && (
+            <div role="radiogroup" aria-label="Як застосувати зміну категорії" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+              <div style={{ fontSize: 13, color: 'var(--c-text-sec)', fontWeight: 600 }}>
+                {scopeChoice.merchantLabel ? `«${scopeChoice.merchantLabel}»` : 'Цей мерчант'} — як застосувати?
+              </div>
+              {([
+                { v: 'one' as const, title: 'Лише ця транзакція', sub: 'Інші та правило не зміняться' },
+                {
+                  v: 'merchant' as const,
+                  title: `Усі від цього мерчанта${scopeChoice.siblings > 0 ? ` (ще ${scopeChoice.siblings})` : ''} і надалі`,
+                  sub: scopeChoice.existingRule ? `Змінить і правило: зараз «${scopeChoice.existingRule.categoryName}»` : 'Запам’ятає категорію для майбутніх',
+                },
+              ]).map(opt => (
+                <button
+                  key={opt.v} type="button" role="radio" aria-checked={scope === opt.v}
+                  onClick={() => setScope(opt.v)}
+                  style={{
+                    textAlign: 'left', padding: '12px 14px', minHeight: 44, borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit',
+                    border: `1px solid ${scope === opt.v ? '#F97316' : 'var(--c-border-hi)'}`,
+                    background: scope === opt.v ? 'rgba(249,115,22,0.12)' : 'rgba(255,255,255,0.04)',
+                    color: 'var(--c-text)', display: 'flex', flexDirection: 'column', gap: 2,
+                  }}
+                >
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>{opt.title}</span>
+                  <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>{opt.sub}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <button type="submit" form="tx-form" className="btn-primary" disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
             <Save size={15} />
             {saving ? 'Збереження…' : 'Зберегти'}
