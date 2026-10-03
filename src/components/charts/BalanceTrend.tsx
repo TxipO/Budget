@@ -4,6 +4,7 @@ import {
   Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { useCurrency } from '@/lib/useCurrency';
+import { formatCompact } from '@/lib/currencies';
 
 interface TrendPoint {
   month: string;
@@ -64,7 +65,7 @@ export default function BalanceTrend({ data }: { data: TrendPoint[] }) {
             tick={{ fill: '#475569', fontSize: 11 }}
             axisLine={false}
             tickLine={false}
-            tickFormatter={v => `${(v / 1000).toFixed(0)}к`}
+            tickFormatter={formatCompact}
           />
           <Tooltip content={<CustomTooltip />} />
           {/* Витрати gets a dashed stroke, not just a different hue — the two

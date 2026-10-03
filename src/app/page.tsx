@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, Landmark, PieChart, LineChart, ArrowLeftRight } from 'lucide-react';
 import { MONTH_NAMES, MONTH_SHORT, TYPE_COLORS, CATEGORY_PALETTE, BANK_SYNC_COLOR, type Period, PERIOD_LABELS } from '@/lib/utils';
@@ -104,6 +104,27 @@ export default function Dashboard() {
   const [bankConnections, setBankConnections] = useState<BankConnection[]>([]);
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
   const [quarterMenuOpen, setQuarterMenuOpen] = useState(false);
+  const syncRef = useRef<HTMLDivElement>(null);
+  const quarterRef = useRef<HTMLDivElement>(null);
+
+  // Outside tap/click closes the header dropdowns. On phones they are fixed
+  // bottom sheets with no backdrop, so without this the only way out was
+  // re-tapping the small trigger. touchstart too: iOS Safari doesn't always
+  // synthesize mousedown for taps on non-interactive areas.
+  useEffect(() => {
+    if (!syncMenuOpen && !quarterMenuOpen) return;
+    function onOutside(e: Event) {
+      const t = e.target as Node;
+      if (syncMenuOpen && !syncRef.current?.contains(t)) setSyncMenuOpen(false);
+      if (quarterMenuOpen && !quarterRef.current?.contains(t)) setQuarterMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onOutside);
+    document.addEventListener('touchstart', onOutside);
+    return () => {
+      document.removeEventListener('mousedown', onOutside);
+      document.removeEventListener('touchstart', onOutside);
+    };
+  }, [syncMenuOpen, quarterMenuOpen]);
   const [syncSelected, setSyncSelected] = useState<Record<string, boolean>>({});
   const [syncing, setSyncing] = useState(false);
   // Only visible feedback once the dropdown auto-closes at sync start
@@ -269,12 +290,13 @@ export default function Dashboard() {
           <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Головна</h1>
           <p style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>Огляд фінансів · {periodLabel()}</p>
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' }}>
           {bankConnections.length > 0 && (
-            <div style={{ position: 'relative' }}>
+            <div ref={syncRef} style={{ position: 'relative' }}>
               <button
                 onClick={() => setSyncMenuOpen(o => !o)}
                 className="btn-ghost"
+                title="Синхронізувати" aria-label="Синхронізувати"
                 style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}
               >
                 <RefreshCw size={15} className={syncing ? 'spin' : undefined} />
@@ -322,6 +344,7 @@ export default function Dashboard() {
               ''
             )}
             className="btn-ghost"
+            title="Експорт" aria-label="Експорт"
             style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}
           >
             <Download size={15} /> <span className="hide-on-xs">Експорт</span>
@@ -386,7 +409,7 @@ export default function Dashboard() {
             lands on a calendar-quarter-ending month, so no backend change
             was needed here. */}
         {period === 'quarter' && (
-          <div style={{ position: 'relative' }}>
+          <div ref={quarterRef} style={{ position: 'relative' }}>
             <button
               onClick={() => setQuarterMenuOpen(o => !o)}
               className="btn-ghost"
@@ -689,7 +712,7 @@ export default function Dashboard() {
                   {p.description || 'Без опису'}
                 </span>
                 <span style={{ color: 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                  {formatMoney(p.amount)}
+                  -{formatMoney(p.amount)}
                 </span>
               </div>
             ))}
@@ -726,13 +749,16 @@ export default function Dashboard() {
           <div key={tx.id} className="table-row" style={{ display: 'flex', alignItems: 'center', padding: '12px 0', gap: 12 }}>
             <CategoryIcon name={tx.category.icon} color={tx.category.color} size={16} tile />
 
-            <div style={{ flex: 1 }}>
+            {/* minWidth: 0 + nowrap ellipsis: a long details string
+                ("364+460+1200+89+250+75") has no break opportunity and used
+                to push the row wider and wrap the amount. */}
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', display: 'flex', alignItems: 'center', gap: 5 }}>
                 {tx.category.name}
-                {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex' }}><Landmark size={11} color={BANK_SYNC_COLOR} /></span>}
+                {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex', flexShrink: 0 }}><Landmark size={11} color={BANK_SYNC_COLOR} /></span>}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--c-text-sub)', marginTop: 2 }}>
-                {new Date(tx.date).toLocaleDateString('uk-UA')}
+              <div style={{ fontSize: 12, color: 'var(--c-text-sub)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {new Date(tx.date).toLocaleDateString('uk-UA', { timeZone: 'UTC' })}
                 {tx.details && tx.details !== '[імпорт]' && ` · ${tx.details}`}
                 {tx.user && ` · ${tx.user.name}`}
               </div>
@@ -748,7 +774,7 @@ export default function Dashboard() {
                 the total. Found live 2026-08-29. Savings keeps its own
                 colour either way — a pot growing isn't income. */}
             <span style={{
-              fontSize: 15, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+              fontSize: 15, fontWeight: 700, fontVariantNumeric: 'tabular-nums', flexShrink: 0, whiteSpace: 'nowrap',
               color: tx.category.type === 'income' ? '#4ADE80'
                    : tx.category.type === 'expense' ? '#FCA5A5' : '#FCD34D',
             }}>
@@ -758,7 +784,7 @@ export default function Dashboard() {
               className="btn-ghost"
               onClick={() => { setEditing(tx); setShowForm(true); }}
               style={{ padding: '6px', border: 'none', borderRadius: 8, opacity: 0.5 }}
-              title="Редагувати"
+              title="Редагувати" aria-label="Редагувати"
             >
               <Pencil size={14} />
             </button>
@@ -775,7 +801,7 @@ export default function Dashboard() {
             <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--c-text-sec)' }}>Останнє додавання:</div>
             {stats.lastByUser.map(u => (
               <div key={u.userId}>
-                {u.name} — {u.date ? new Date(u.date).toLocaleDateString('uk-UA') : 'ще немає транзакцій'}
+                {u.name} — {u.date ? new Date(u.date).toLocaleDateString('uk-UA', { timeZone: 'UTC' }) : 'ще немає транзакцій'}
               </div>
             ))}
           </div>

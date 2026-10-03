@@ -315,7 +315,12 @@ select.input-field option {
   .mobile-only   { display: block; }
   .desktop-only  { display: none; }
 
-  body { padding-bottom: 68px; }
+  /* Real height of the fixed bottom nav (MobileNav: 8+12 padding, 6+6 link
+     padding, 20 icon, 3 gap, 15 label line + 1 border = 71 measured at 375px).
+     body padding, toasts and header sheets all key off this one number —
+     they used a hand-copied 68 that left the last 3px of content under the nav. */
+  :root { --nav-h: 71px; }
+  body { padding-bottom: var(--nav-h); }
 
   .stat-card { padding: 16px; border-radius: 14px; }
 
@@ -331,12 +336,22 @@ select.input-field option {
   /* iOS Safari auto-zooms the page on focusing any input under 16px and
      doesn't zoom back out on blur (found live 2026-09-19 mobile audit) —
      16px is the exact threshold, not a rounder "safer" number. */
-  .input-field, select, textarea { font-size: 16px; }
+  /* !important + a selector that also covers class-less inputs: inline
+     fontSize (13-14px on the planning popover, settings and onboarding
+     fields) outranks a plain stylesheet rule, which is how the zoom came
+     back after the 2026-09-19 fix. Checkboxes/radios don't zoom. */
+  .input-field, select, textarea,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]) { font-size: 16px !important; }
 
   /* Toasts (incl. the delete-undo action) sat directly on top of 2 of the
      5 bottom-nav links (found live 2026-09-19 mobile audit) — clear the
      68px nav (body's own padding-bottom above) plus the safe-area inset. */
-  .toast-stack { bottom: calc(68px + 16px + env(safe-area-inset-bottom)) !important; right: 16px !important; left: 16px; align-items: stretch !important; }
+  .toast-stack { bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom)) !important; right: 16px !important; left: 16px; align-items: stretch !important; }
+  /* A header sheet (below) occupies the exact same strip above the nav, so a
+     toast with an action (Скасувати) covered its primary button. While a sheet
+     is open the toasts move to the top edge instead — no dependence on the
+     sheet's height. */
+  body:has(.header-dropdown) .toast-stack { bottom: auto !important; top: 16px; }
 
   .donut-row { flex-direction: column; align-items: stretch !important; }
   .donut-chart-box { width: 140px !important; height: 140px !important; align-self: center; }
@@ -352,7 +367,15 @@ select.input-field option {
      scrolled viewport with no way to reach it. Narrower column first;
      popover becomes a plain centered fixed sheet instead of a cell-relative
      one, so its position no longer depends on scroll offset. */
-  .plan-cat-col { width: 90px !important; padding-left: 10px !important; padding-right: 6px !important; }
+  /* table-layout: fixed is what makes the 90px actually hold: with auto
+     layout the column grew to its longest label ("Фінансова подушка" =
+     158px, "Сума збереження" forced 120px). Month columns keep their th
+     widths (72px); the table still scrolls sideways inside its card. */
+  .plan-table { table-layout: fixed; }
+  .plan-cat-col {
+    width: 90px !important; padding-left: 10px !important; padding-right: 6px !important;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   .plan-edit-popover {
     position: fixed !important; top: 50% !important; left: 50% !important;
     transform: translate(-50%, -50%) !important; width: 220px;
@@ -368,12 +391,23 @@ select.input-field option {
      sheet since these all open from header buttons, not a mid-page cell. */
   .header-dropdown {
     position: fixed !important; top: auto !important;
-    bottom: calc(68px + 16px + env(safe-area-inset-bottom)) !important;
+    bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom)) !important;
     left: 16px !important; right: 16px !important; min-width: 0 !important;
   }
   /* Same root cause, plain text instead of a menu — let it flow normally
      under its button instead of floating off an unpredictable edge. */
   .sync-status-label { position: static !important; white-space: normal !important; margin-top: 4px !important; }
+}
+
+/* Short viewports (phone landscape 667x375, 640x320): the scope-choice panel
+   (~170px) lives in TransactionForm's non-shrinking footer and, with the
+   sheet's 28px paddings, left no room for the Save button below it. Compact
+   the chrome and give the panel its own scroll; Save stays pinned and
+   reachable. Portrait is untouched. */
+@media (max-height: 520px) {
+  .tx-modal-head { padding: 12px 20px 8px !important; }
+  .tx-modal-foot { padding: 10px 20px 14px !important; }
+  .tx-scope-panel { max-height: 132px; overflow-y: auto; margin-bottom: 10px !important; }
 }
 
 /* ── Light mode extras ── */

@@ -4,6 +4,7 @@ import {
   Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { useCurrency } from '@/lib/useCurrency';
+import { formatCompact } from '@/lib/currencies';
 
 interface MonthData {
   month: string;
@@ -49,7 +50,7 @@ export default function MonthlyBarChart({ data }: { data: MonthData[] }) {
           <CartesianGrid strokeDasharray="3 3" stroke="var(--c-border)" />
           <XAxis dataKey="month" tick={{ fill: '#475569', fontSize: 12 }} axisLine={false} tickLine={false} />
           <YAxis tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false}
-            tickFormatter={v => `${(v / 1000).toFixed(0)}к`} />
+            tickFormatter={formatCompact} />
           <Tooltip content={<CustomTooltip />} />
           <Bar dataKey="income"   name="Дохід"       fill="#22C55E" radius={[4, 4, 0, 0]} />
           <Bar dataKey="expenses" name="Витрати"     fill="#EF4444" radius={[4, 4, 0, 0]} />

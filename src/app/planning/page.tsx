@@ -3,6 +3,8 @@ import { useEffect, useState, useRef } from 'react';
 import { MessageSquare } from 'lucide-react';
 import { MONTH_SHORT, TYPE_LABELS } from '@/lib/utils';
 import { toast } from '@/lib/toast';
+import { useCurrency } from '@/lib/useCurrency';
+import { formatCompact, roundCompact } from '@/lib/currencies';
 import { isBudgetRelevant, savingsAmount } from '@/lib/budgetRules';
 
 interface Category { id: number; name: string; type: string; color: string; isActive: boolean }
@@ -10,6 +12,7 @@ interface Plan { categoryId: number; month: number; plannedAmount: number; notes
 interface Actual { categoryId: number; month: number; actual: number }
 
 export default function PlanningPage() {
+  const { suffix } = useCurrency();
   const thisYear = new Date().getFullYear();
   const [year,     setYear]     = useState(thisYear);
   const [cats,     setCats]     = useState<Category[]>([]);
@@ -150,7 +153,7 @@ export default function PlanningPage() {
       </div>
 
       <div className="card" style={{ overflow: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
+        <table className="plan-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
               <th className="plan-cat-col" style={{
@@ -201,7 +204,7 @@ export default function PlanningPage() {
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                           <div style={{ width: 7, height: 7, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />
-                          <span title={cat.isActive ? undefined : 'Категорію видалено, але її транзакції ще враховуються'} style={{ fontSize: 13, color: 'var(--c-text-sec)', fontStyle: cat.isActive ? undefined : 'italic', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</span>
+                          <span title={cat.isActive ? cat.name : `${cat.name} — категорію видалено, але її транзакції ще враховуються`} style={{ fontSize: 13, color: 'var(--c-text-sec)', fontStyle: cat.isActive ? undefined : 'italic', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</span>
                         </div>
                       </td>
                       {MONTH_SHORT.map((_, i) => {
@@ -211,8 +214,10 @@ export default function PlanningPage() {
                         const notes   = getNotes(cat.id, m);
                         const isEdit  = editCell?.catId === cat.id && editCell?.month === m;
                         const hasData = actual !== 0 || planned > 0;
-                        const over    = type !== 'income' && actual > planned && planned > 0;
-                        const under   = type !== 'income' && actual > 0 && actual <= planned;
+                        // Compared at the precision the cell shows ("2,5к" vs "/2,5к"),
+                        // so two identical-looking numbers never get different colours.
+                        const over    = type !== 'income' && roundCompact(actual) > roundCompact(planned) && planned > 0;
+                        const under   = type !== 'income' && actual > 0 && roundCompact(actual) <= roundCompact(planned);
 
                         return (
                           <td key={m} style={{ padding: '4px', textAlign: 'center', position: 'relative' }}>
@@ -228,23 +233,15 @@ export default function PlanningPage() {
                                   type="number" value={editVal}
                                   onChange={e => setEditVal(e.target.value)}
                                   onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditCell(null); }}
-                                  placeholder="Сума (kr)"
-                                  style={{
-                                    width: '100%', background: '#0A0A0F', border: '1px solid rgba(255,255,255,0.1)',
-                                    borderRadius: 6, padding: '5px 8px', color: 'var(--c-text)',
-                                    fontSize: 13, outline: 'none', fontFamily: 'inherit',
-                                  }}
+                                  placeholder={`Сума (${suffix})`}
+                                  className="input-field" style={{ padding: '6px 10px' }}
                                 />
                                 <input
                                   type="text" value={editNote}
                                   onChange={e => setEditNote(e.target.value)}
                                   onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditCell(null); }}
                                   placeholder="Коментар…"
-                                  style={{
-                                    width: '100%', background: '#0A0A0F', border: '1px solid rgba(255,255,255,0.1)',
-                                    borderRadius: 6, padding: '5px 8px', color: '#94A3B8',
-                                    fontSize: 12, outline: 'none', fontFamily: 'inherit',
-                                  }}
+                                  className="input-field" style={{ padding: '6px 10px' }}
                                 />
                                 <div style={{ display: 'flex', gap: 6 }}>
                                   <button
@@ -285,12 +282,12 @@ export default function PlanningPage() {
                                   fontSize: 12, fontWeight: 600, fontVariantNumeric: 'tabular-nums',
                                   color: over ? '#FCA5A5' : under ? '#4ADE80' : 'var(--c-text-sec)',
                                 }}>
-                                  {Math.round(actual / 1000)}к
+                                  {formatCompact(actual)}
                                 </span>
                               )}
                               {planned > 0 && (
                                 <span style={{ fontSize: 10, color: '#475569', fontVariantNumeric: 'tabular-nums' }}>
-                                  /{Math.round(planned / 1000)}к
+                                  /{formatCompact(planned)}
                                 </span>
                               )}
                               {!hasData && (
@@ -308,11 +305,11 @@ export default function PlanningPage() {
                       })}
                       <td style={{ padding: '10px 8px', textAlign: 'right' }}>
                         <div style={{ fontSize: 12, fontWeight: 700, color: typeColor, fontVariantNumeric: 'tabular-nums' }}>
-                          {yearActual !== 0 ? Math.round(yearActual / 1000) + 'к' : '—'}
+                          {yearActual !== 0 ? formatCompact(yearActual) : '—'}
                         </div>
                         {yearPlanned > 0 && (
                           <div style={{ fontSize: 10, color: '#475569', fontVariantNumeric: 'tabular-nums' }}>
-                            /{Math.round(yearPlanned / 1000)}к
+                            /{formatCompact(yearPlanned)}
                           </div>
                         )}
                       </td>
@@ -320,18 +317,23 @@ export default function PlanningPage() {
                   );
                 }),
                 <tr key={`tot-${type}`} style={{ background: 'var(--c-hover)', borderTop: '1px solid var(--c-border)' }}>
-                  <td style={{
+                  <td className="plan-cat-col" style={{
                     padding: '10px 20px', fontSize: 13, fontWeight: 700, color: 'var(--c-text-muted)',
-                    position: 'sticky', left: 0, zIndex: 1, background: 'var(--c-hover)',
+                    // Opaque: --c-hover is translucent, so figures scrolling
+                    // under this sticky cell showed through it. Tint layered
+                    // over the solid surface instead.
+                    position: 'sticky', left: 0, zIndex: 1,
+                    backgroundColor: 'var(--c-elevated)',
+                    backgroundImage: 'linear-gradient(var(--c-hover), var(--c-hover))',
                     boxShadow: '1px 0 0 var(--c-border)',
                   }}>
-                    Сума {label.toLowerCase()}
+                    <span title={`Сума ${label.toLowerCase()}`}>Сума {label.toLowerCase()}</span>
                   </td>
                   {sectionTotalByMonth.map((tot, i) => (
                     <td key={i} style={{ padding: '10px 4px', textAlign: 'center' }}>
                       {tot.actual !== 0 ? (
                         <span style={{ fontSize: 12, fontWeight: 700, color: typeColor, fontVariantNumeric: 'tabular-nums' }}>
-                          {Math.round(tot.actual / 1000)}к
+                          {formatCompact(tot.actual)}
                         </span>
                       ) : (
                         <span style={{ fontSize: 11, color: 'var(--c-text-sub)' }}>—</span>
@@ -343,7 +345,7 @@ export default function PlanningPage() {
                         this column (including each category row above) uses
                         the same abbreviated format; the full currency string
                         here was the one inconsistent cell in the table. */}
-                    {yearTotalActual !== 0 ? Math.round(yearTotalActual / 1000) + 'к' : '—'}
+                    {yearTotalActual !== 0 ? formatCompact(yearTotalActual) : '—'}
                   </td>
                 </tr>,
               ];

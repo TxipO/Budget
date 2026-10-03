@@ -41,13 +41,40 @@ export function numericForCurrency(code: string): number {
   return getCurrencyInfo(code).numeric;
 }
 
+// U+00A0 between number and suffix: with a plain space "kr" wrapped alone onto
+// the next line in narrow cells (found 2026-10 mobile audit).
 export function formatMoney(amount: number, currencyCode: string = DEFAULT_CODE): string {
   const info = getCurrencyInfo(currencyCode);
-  return new Intl.NumberFormat(info.locale, { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.abs(amount)) + ' ' + info.suffix;
+  return new Intl.NumberFormat(info.locale, { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.abs(amount)) + ' ' + info.suffix;
 }
 
 export function formatMoneySign(amount: number, currencyCode: string = DEFAULT_CODE): string {
   const info = getCurrencyInfo(currencyCode);
   const abs = new Intl.NumberFormat(info.locale, { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.abs(amount));
-  return (amount >= 0 ? '+' : '-') + abs + ' ' + info.suffix;
+  // Zero after rounding carries no sign ("+0 kr" / "-0 kr" both read as a lie).
+  const sign = Math.round(Math.abs(amount)) === 0 ? '' : amount > 0 ? '+' : '-';
+  return sign + abs + ' ' + info.suffix;
+}
+
+// Short axis/cell label shared by planning, analytics and the charts: the
+// exact number below 1000 ("300"), one decimal of thousands above ("2,5к",
+// "9,8к", "10к"), "М" for millions. The old Math.round(n / 1000) + 'к' turned
+// 300 into "0к" and a 9 800 axis into "0к 3к 5к 8к 10к".
+// The value formatCompact(n) actually displays, as a number — lets callers
+// compare "what the user sees" (e.g. over/under-plan colouring) so two cells
+// that read the same never get different colours.
+export function roundCompact(n: number): number {
+  const a = Math.abs(n);
+  const step = a < 999.5 ? 1 : a < 1e7 ? 100 : 1e5;
+  return Math.round(n / step) * step;
+}
+
+export function formatCompact(n: number): string {
+  const a = Math.abs(n);
+  if (Math.round(a) === 0) return '0';
+  const sign = n < 0 ? '-' : '';
+  const trim = (x: number) => String(Math.round(x * 10) / 10).replace('.', ',');
+  if (a < 999.5) return sign + Math.round(a);
+  if (Math.round(a / 100) < 10000) return sign + trim(a / 1000) + 'к';
+  return sign + trim(a / 1e6) + 'М';
 }

@@ -34,7 +34,12 @@ interface TxForm {
   isTransfer: boolean;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Local calendar date, not toISOString() (UTC): after local midnight in Oslo
+// the UTC date is still "yesterday", so new entries defaulted to the wrong day.
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 export default function TransactionForm({ onClose, onSaved, initial, editId }: Props) {
   const [form, setForm] = useState<TxForm>({
@@ -44,7 +49,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
   const [cats, setCats] = useState<Category[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [saving, setSaving] = useState(false);
-  const { formatMoney } = useCurrency();
+  const { formatMoney, suffix } = useCurrency();
 
   // "Лише ця / Усі від мерчанта" — see GET /api/transactions/[id]/sweep-preview.
   // Set when saving an edited synced transaction's changed category would
@@ -210,7 +215,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
         style={{ width: '100%', maxWidth: 460, maxHeight: '90%', display: 'flex', flexDirection: 'column' }}
         onClick={e => e.stopPropagation()}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '28px 28px 20px', flexShrink: 0 }}>
+        <div className="tx-modal-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '28px 28px 20px', flexShrink: 0 }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--c-text)' }}>
             {editId ? 'Редагувати' : 'Нова транзакція'}
           </h2>
@@ -315,7 +320,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
           {/* Amount */}
           <div>
             <label style={{ fontSize: 12, color: '#64748B', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Сума (kr){amountParts.length > 0 ? ` — усього ${formatMoney(totalAmount)}` : ''}
+              Сума ({suffix}){amountParts.length > 0 ? ` — усього ${formatMoney(totalAmount)}` : ''}
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
@@ -417,12 +422,14 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
           </div>
         </form>
 
-        <div style={{ padding: '20px 28px 28px', flexShrink: 0 }}>
+        <div className="tx-modal-foot" style={{ padding: '20px 28px 28px', flexShrink: 0 }}>
           {/* Lives in the footer (not the scrolling form) so it can never be
               off-screen when Save is pressed — the modal is a bottom sheet
-              on mobile with the form area shrinking to fit. */}
+              on mobile with the form area shrinking to fit. In short
+              (landscape) viewports .tx-scope-panel gets its own max-height +
+              scroll (globals.css) so Save is never pushed out of the sheet. */}
           {scopeChoice && (
-            <div role="radiogroup" aria-label="Як застосувати зміну категорії" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+            <div className="tx-scope-panel" role="radiogroup" aria-label="Як застосувати зміну категорії" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
               <div style={{ fontSize: 13, color: 'var(--c-text-sec)', fontWeight: 600 }}>
                 {scopeChoice.merchantLabel ? `«${scopeChoice.merchantLabel}»` : 'Цей мерчант'} — як застосувати?
               </div>

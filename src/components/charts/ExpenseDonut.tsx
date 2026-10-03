@@ -30,7 +30,7 @@ export default function ExpenseDonut({ data, total }: Props) {
   const { formatMoney } = useCurrency();
   if (!data.length) return (
     <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: 14 }}>
-      Немає витрат за цей місяць
+      Немає витрат за цей період
     </div>
   );
 

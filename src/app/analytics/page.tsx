@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, PiggyBank, Wallet } from 'lucide-react';
 import { MONTH_SHORT } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
+import { formatCompact, roundCompact } from '@/lib/currencies';
 import { toast } from '@/lib/toast';
 import CategoryIcon from '@/components/CategoryIcon';
 
@@ -51,7 +52,7 @@ export default function AnalyticsPage() {
 
   return (
     <div style={{ maxWidth: 1000 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Аналітика</h1>
           <p style={{ color: 'var(--c-text-sub)', fontSize: 14 }}>Річна статистика</p>
@@ -80,7 +81,9 @@ export default function AnalyticsPage() {
           // positive number. Found live 2026-09-07 on the dashboard's own
           // matching card, which had the same bug.
           { label: 'Всього збереження', value: totalSavings,  color: '#F59E0B', icon: PiggyBank,    bg: 'rgba(245,158,11,0.08)', signed: true },
-          { label: 'Чистий залишок',    value: totalBalance,  color: totalBalance >= 0 ? '#FB923C' : '#EF4444', icon: Wallet, bg: 'rgba(249,115,22,0.08)', signed: true },
+          // Same number and name as Головна's "Вільний залишок" card, same
+          // semantic colour (green >= 0, red < 0) — it used to be orange here.
+          { label: 'Вільний залишок',   value: totalBalance,  color: totalBalance >= 0 ? '#22C55E' : '#EF4444', icon: Wallet, bg: 'rgba(249,115,22,0.08)', signed: true },
         ].map(c => (
           <div key={c.label} className="stat-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
@@ -175,19 +178,24 @@ export default function AnalyticsPage() {
       <div className="card" style={{ padding: 24 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Вільний залишок по місяцях</h3>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {data.map(d => (
-            <div key={d.month} style={{
-              flex: '1 1 60px', minWidth: 60,
-              background: d.balance >= 0 ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
-              border: `1px solid ${d.balance >= 0 ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
-              borderRadius: 10, padding: '12px 8px', textAlign: 'center',
-            }}>
-              <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginBottom: 6 }}>{d.month}</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: d.balance >= 0 ? '#4ADE80' : '#FCA5A5', fontVariantNumeric: 'tabular-nums' }}>
-                {d.balance !== 0 ? `${d.balance >= 0 ? '+' : ''}${Math.round(d.balance / 1000)}к` : '—'}
+          {data.map(d => {
+            // Colour follows the rounded figure that's shown, so "0" is never red.
+            const shown = roundCompact(d.balance);
+            const good = shown >= 0;
+            return (
+              <div key={d.month} style={{
+                flex: '1 1 60px', minWidth: 60,
+                background: good ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+                border: `1px solid ${good ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                borderRadius: 10, padding: '12px 8px', textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginBottom: 6 }}>{d.month}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: good ? '#4ADE80' : '#FCA5A5', fontVariantNumeric: 'tabular-nums' }}>
+                  {d.balance !== 0 ? `${shown > 0 ? '+' : ''}${formatCompact(d.balance)}` : '—'}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

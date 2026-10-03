@@ -27,7 +27,7 @@ function amountSign(tx: Tx): 1 | -1 {
 }
 
 export default function TransactionsPage() {
-  const { formatMoney, formatMoneySign } = useCurrency();
+  const { formatMoney, formatMoneySign, currency } = useCurrency();
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -76,13 +76,19 @@ export default function TransactionsPage() {
   }, []);
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
+    function handleClick(e: Event) {
       if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
         setShowExport(false);
       }
     }
+    // touchstart too: on phones the menu is a bottom sheet, and iOS doesn't
+    // always synthesize mousedown for a tap on a non-interactive area.
     document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener('touchstart', handleClick);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('touchstart', handleClick);
+    };
   }, []);
 
   useEffect(() => {
@@ -153,9 +159,9 @@ export default function TransactionsPage() {
 
   function exportCSV() {
     // Includes rows excluded from totals (hidden in the list) so the file can be reconciled; they're marked.
-    const header = ['Дата', 'Категорія', 'Тип', 'Сума (kr)', 'Деталі', 'Хто', 'Не враховано'];
+    const header = ['Дата', 'Категорія', 'Тип', `Сума (${currency})`, 'Деталі', 'Хто', 'Не враховано'];
     const rows = txs.filter(matchesFilters).map(tx => [
-      new Date(tx.date).toLocaleDateString('uk-UA'),
+      new Date(tx.date).toLocaleDateString('uk-UA', { timeZone: 'UTC' }),
       tx.category.name,
       TYPE_LABELS[tx.category.type],
       String(amountSign(tx) * tx.amount),
@@ -264,6 +270,7 @@ export default function TransactionsPage() {
             <button
               className="btn-ghost"
               onClick={() => setShowExport(v => !v)}
+              title="Експорт" aria-label="Експорт"
               style={{ gap: 6 }}
             >
               <Download size={15} /> <span className="hide-on-xs">Експорт</span>
@@ -358,7 +365,7 @@ export default function TransactionsPage() {
             {/* Separates the type filter's "Всі" from this group's own
                 "Всі" — two identical labels sitting flush against each
                 other read as one ambiguous control without it. */}
-            <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--c-border-mid)' }} />
+            <div className="hide-on-xs" style={{ width: 1, alignSelf: 'stretch', background: 'var(--c-border-mid)' }} />
             <div style={{ display: 'flex', gap: 6 }}>
             {[['', 'Всі'], ...users.map(u => [String(u.id), u.name])].map(([val, label]) => (
               <button
@@ -437,8 +444,8 @@ export default function TransactionsPage() {
 
         {paged.map(tx => {
           const dateStr = new Date(tx.date).toLocaleDateString('uk-UA', globalSearch
-            ? { day: '2-digit', month: '2-digit', year: '2-digit' }
-            : { day: '2-digit', month: '2-digit' });
+            ? { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'UTC' }
+            : { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
           // A savings row's sign is the POT's perspective, not the wallet's.
           // The row is labelled with the pot's own category name, and both
           // the "Збереження" tile above and the dashboard's sum it into

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, Landmark, Pencil, UserPlus, AlertTriangle } from 'lucide-react';
 import { CATEGORY_PALETTE } from '@/lib/utils';
 import { toast } from '@/lib/toast';
+import { CURRENCIES, formatMoney as formatMoneyIn } from '@/lib/currencies';
 import { useTheme } from '@/lib/theme';
 import { useDashboardPrefs, PREF_LABELS, type DashboardPrefs } from '@/lib/dashboardPrefs';
 import { ICON_KEYS } from '@/lib/icons';
@@ -930,7 +931,12 @@ export default function SettingsPage() {
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                             <span style={{ color: '#64748B' }}>
-                              {a.balanceAmount !== null ? `${new Intl.NumberFormat('nb-NO', { maximumFractionDigits: 0 }).format(a.balanceAmount)} ${a.balanceCurrency ?? ''}` : '—'}
+                              {a.balanceAmount === null ? '—'
+                                // Same formatter as the rest of the app (grouping, NBSP, suffix) in the
+                                // account's own currency; a currency the app doesn't know keeps the raw code.
+                                : CURRENCIES.some(c => c.code === a.balanceCurrency)
+                                  ? (a.balanceAmount < 0 ? '-' : '') + formatMoneyIn(a.balanceAmount, a.balanceCurrency!)
+                                  : `${Math.round(a.balanceAmount).toLocaleString('uk-UA')} ${a.balanceCurrency ?? ''}`}
                             </span>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                               <input

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { formatMoney as formatMoneyFor, formatMoneySign as formatMoneySignFor } from '@/lib/currencies';
+import { formatMoney as formatMoneyFor, formatMoneySign as formatMoneySignFor, getCurrencyInfo } from '@/lib/currencies';
 
 // Module-level, not React state at the module scope — shared across every
 // component that calls useCurrency() on the same page load, so N components
@@ -39,6 +39,7 @@ export function useCurrency() {
   }, []);
   return {
     currency,
+    suffix: getCurrencyInfo(currency).suffix, // for labels like "Сума (kr)"
     formatMoney: (amount: number) => formatMoneyFor(amount, currency),
     formatMoneySign: (amount: number) => formatMoneySignFor(amount, currency),
   };
