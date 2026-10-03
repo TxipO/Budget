@@ -3,13 +3,15 @@ import { useEffect, useState, useRef } from 'react';
 import { MessageSquare } from 'lucide-react';
 import { MONTH_SHORT, TYPE_LABELS } from '@/lib/utils';
 import { toast } from '@/lib/toast';
+import { isBudgetRelevant, savingsAmount } from '@/lib/budgetRules';
 
-interface Category { id: number; name: string; type: string; color: string }
+interface Category { id: number; name: string; type: string; color: string; isActive: boolean }
 interface Plan { categoryId: number; month: number; plannedAmount: number; notes: string }
 interface Actual { categoryId: number; month: number; actual: number }
 
 export default function PlanningPage() {
-  const [year,     setYear]     = useState(2026);
+  const thisYear = new Date().getFullYear();
+  const [year,     setYear]     = useState(thisYear);
   const [cats,     setCats]     = useState<Category[]>([]);
   const [plans,    setPlans]    = useState<Plan[]>([]);
   const [actuals,  setActuals]  = useState<Actual[]>([]);
@@ -19,9 +21,10 @@ export default function PlanningPage() {
   const amountRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch('/api/categories')
+    // includeInactive: a deleted category keeps its transactions, which stats still count.
+    fetch('/api/categories?includeInactive=1')
       .then(r => r.ok ? r.json() : Promise.reject())
-      .then(setCats)
+      .then((all: Category[]) => setCats(all))
       .catch(() => toast('Помилка завантаження категорій', 'error'));
   }, []);
 
@@ -39,24 +42,14 @@ export default function PlanningPage() {
       )
       .catch(() => toast('Помилка завантаження планів', 'error'));
 
-    fetch(`/api/transactions?year=${year}&limit=9999`)
+    fetch(`/api/transactions?year=${year}`)
       .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
       .then((txs: { date: string; amount: number; isTransfer: boolean; savingsWithdrawal: boolean; category: { id: number; type: string } }[]) => {
         const map: Record<string, number> = {};
         txs.forEach(tx => {
-          // Same exclusion+sign rule as lib/validate.ts's isBudgetRelevant/
-          // savingsAmount (stats.ts, analytics.ts) — reimplemented inline,
-          // not imported, because that module pulls in next/server and this
-          // is a client component (same reason transactions/page.tsx
-          // reimplements it instead of importing). Found live 2026-09-18:
-          // this page counted every isTransfer row as "actual" regardless
-          // of category — 3 real same-person-transfer rows (Женя, income,
-          // isTransfer:true) were inflating "факт" against a plan for
-          // Aug/Sep 2026. A savings withdrawal would double-add instead of
-          // subtracting for the same reason, though no live row had hit
-          // that combination yet.
-          if (tx.isTransfer || tx.category.type === 'transfer') return;
-          const signedAmount = tx.category.type === 'savings' && tx.savingsWithdrawal ? -tx.amount : tx.amount;
+          // Found live 2026-09-18: counting isTransfer rows inflated "факт" vs plan.
+          if (!isBudgetRelevant(tx)) return;
+          const signedAmount = tx.category.type === 'savings' ? savingsAmount(tx) : tx.amount;
           // getUTCMonth, not getMonth — tx.date is a UTC-midnight-truncated
           // date string from the API (matches this app's own convention, see
           // e.g. verify-data-integrity.mjs's timezone-residue check). Reading
@@ -143,7 +136,7 @@ export default function PlanningPage() {
           <p style={{ color: '#475569', fontSize: 14 }}>Клікніть на клітинку, щоб задати план та коментар</p>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {[2025, 2026, 2027, 2028].map(y => (
+          {[thisYear - 1, thisYear, thisYear + 1, thisYear + 2].map(y => (
             <button
               key={y} onClick={() => setYear(y)} className="btn-ghost"
               style={{
@@ -173,7 +166,9 @@ export default function PlanningPage() {
           </thead>
           <tbody>
             {sections.map(({ type, label }) => {
-              const sectionCats = cats.filter(c => c.type === type);
+              // Inactive (deleted) categories only appear where they still hold this year's numbers.
+              const sectionCats = cats.filter(c => c.type === type
+                && (c.isActive || actuals.some(a => a.categoryId === c.id && a.actual !== 0)));
               if (!sectionCats.length) return null;
 
               const sectionTotalByMonth = MONTH_SHORT.map((_, i) => {
@@ -206,7 +201,7 @@ export default function PlanningPage() {
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                           <div style={{ width: 7, height: 7, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />
-                          <span style={{ fontSize: 13, color: 'var(--c-text-sec)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</span>
+                          <span title={cat.isActive ? undefined : 'Категорію видалено, але її транзакції ще враховуються'} style={{ fontSize: 13, color: 'var(--c-text-sec)', fontStyle: cat.isActive ? undefined : 'italic', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</span>
                         </div>
                       </td>
                       {MONTH_SHORT.map((_, i) => {
@@ -215,7 +210,7 @@ export default function PlanningPage() {
                         const actual  = getActual(cat.id, m);
                         const notes   = getNotes(cat.id, m);
                         const isEdit  = editCell?.catId === cat.id && editCell?.month === m;
-                        const hasData = actual > 0 || planned > 0;
+                        const hasData = actual !== 0 || planned > 0;
                         const over    = type !== 'income' && actual > planned && planned > 0;
                         const under   = type !== 'income' && actual > 0 && actual <= planned;
 
@@ -285,7 +280,7 @@ export default function PlanningPage() {
                               onMouseEnter={e => (e.currentTarget.style.background = 'var(--c-hover)')}
                               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                             >
-                              {actual > 0 && (
+                              {actual !== 0 && (
                                 <span style={{
                                   fontSize: 12, fontWeight: 600, fontVariantNumeric: 'tabular-nums',
                                   color: over ? '#FCA5A5' : under ? '#4ADE80' : 'var(--c-text-sec)',
@@ -313,7 +308,7 @@ export default function PlanningPage() {
                       })}
                       <td style={{ padding: '10px 8px', textAlign: 'right' }}>
                         <div style={{ fontSize: 12, fontWeight: 700, color: typeColor, fontVariantNumeric: 'tabular-nums' }}>
-                          {yearActual > 0 ? Math.round(yearActual / 1000) + 'к' : '—'}
+                          {yearActual !== 0 ? Math.round(yearActual / 1000) + 'к' : '—'}
                         </div>
                         {yearPlanned > 0 && (
                           <div style={{ fontSize: 10, color: '#475569', fontVariantNumeric: 'tabular-nums' }}>
@@ -334,7 +329,7 @@ export default function PlanningPage() {
                   </td>
                   {sectionTotalByMonth.map((tot, i) => (
                     <td key={i} style={{ padding: '10px 4px', textAlign: 'center' }}>
-                      {tot.actual > 0 ? (
+                      {tot.actual !== 0 ? (
                         <span style={{ fontSize: 12, fontWeight: 700, color: typeColor, fontVariantNumeric: 'tabular-nums' }}>
                           {Math.round(tot.actual / 1000)}к
                         </span>
@@ -348,7 +343,7 @@ export default function PlanningPage() {
                         this column (including each category row above) uses
                         the same abbreviated format; the full currency string
                         here was the one inconsistent cell in the table. */}
-                    {yearTotalActual > 0 ? Math.round(yearTotalActual / 1000) + 'к' : '—'}
+                    {yearTotalActual !== 0 ? Math.round(yearTotalActual / 1000) + 'к' : '—'}
                   </td>
                 </tr>,
               ];

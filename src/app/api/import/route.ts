@@ -198,15 +198,20 @@ export async function POST(req: NextRequest) {
         const rawDate = row.getCell(3).value;
         const type    = cellText(row.getCell(4).value);
         const catName = cellText(row.getCell(5).value);
-        const amount  = cellNumber(row.getCell(6).value);
+        const signedAmount = cellNumber(row.getCell(6).value);
         const details = cellText(row.getCell(7).value);
 
-        if (!rawDate || !type || !catName || amount === null || amount <= 0) continue;
+        if (!rawDate || !type || !catName || signedAmount === null || signedAmount === 0) continue;
 
         const typeLower = type === 'Витрати' ? 'expense'
                          : type === 'Дохід'   ? 'income'
                          : type === 'Збереження' ? 'savings' : null;
         if (!typeLower) continue;
+        // The export writes a savings withdrawal as a NEGATIVE amount (the
+        // sheet has no other column for direction); only savings can be one.
+        if (signedAmount < 0 && typeLower !== 'savings') continue;
+        const savingsWithdrawal = signedAmount < 0;
+        const amount = Math.abs(signedAmount);
 
         const date = cellDate(rawDate);
         if (!date) continue;
@@ -219,16 +224,16 @@ export async function POST(req: NextRequest) {
         });
 
         const detailsStr = details ?? '';
-        const signature = `${date.getTime()}|${cat.id}|${amount}|${detailsStr}`;
+        const signature = `${date.getTime()}|${cat.id}|${signedAmount}|${detailsStr}`;
         const occurrence = (occurrenceBySignature.get(signature) ?? 0) + 1;
         occurrenceBySignature.set(signature, occurrence);
 
         const existingCount = await prisma.transaction.count({
-          where: { date, categoryId: cat.id, amount, details: detailsStr, householdId },
+          where: { date, categoryId: cat.id, amount, savingsWithdrawal, details: detailsStr, householdId },
         });
         if (existingCount < occurrence) {
           await prisma.transaction.create({
-            data: { date, categoryId: cat.id, amount, details: detailsStr, householdId },
+            data: { date, categoryId: cat.id, amount, savingsWithdrawal, details: detailsStr, householdId },
           });
         }
       }

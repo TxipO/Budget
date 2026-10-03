@@ -28,7 +28,7 @@ const INSIGHT_STYLE: Record<Insight['tone'], { bg: string; border: string; color
 
 export default function AnalyticsPage() {
   const { formatMoney, formatMoneySign } = useCurrency();
-  const [year, setYear] = useState(2026);
+  const [year, setYear] = useState(new Date().getFullYear());
   const [data, setData] = useState<MonthData[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [savingsByCategory, setSavingsByCategory] = useState<SavingsCategoryBalance[]>([]);
@@ -57,7 +57,7 @@ export default function AnalyticsPage() {
           <p style={{ color: 'var(--c-text-sub)', fontSize: 14 }}>Річна статистика</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {[2025, 2026, 2027].map(y => (
+          {[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map(y => (
             <button key={y} onClick={() => setYear(y)} className="btn-ghost"
               style={{ background: year === y ? 'rgba(249,115,22,0.2)' : undefined, color: year === y ? '#FB923C' : undefined }}>
               {y}

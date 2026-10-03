@@ -5,7 +5,7 @@ import JSZip from 'jszip';
 import path from 'path';
 import { readFile } from 'fs/promises';
 import { requireHouseholdId } from '@/lib/household';
-import { isBudgetRelevant, savingsAmount } from '@/lib/validate';
+import { isBudgetRelevant, savingsAmount } from '@/lib/budgetRules';
 import { PLANNING_YEARS, planningMonthCol } from '@/lib/planningLayout';
 
 const TYPE_UA: Record<string, string> = {
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 
   // ── Fetch all data ──────────────────────────────────────────────────────
   const [categoriesRaw, allTxs, allPlans] = await Promise.all([
-    prisma.category.findMany({ where: { isActive: true, householdId }, orderBy: { id: 'asc' } }),
+    prisma.category.findMany({ where: { householdId }, orderBy: { id: 'asc' } }),
     prisma.transaction.findMany({
       where: { householdId },
       include: { category: true, user: { select: { id: true, name: true } } },
@@ -51,18 +51,22 @@ export async function GET(req: NextRequest) {
     prisma.monthlyPlan.findMany({ where: { notes: { not: '' }, householdId } }),
   ]);
 
-  // "Враховано деінде" — every transaction filed under it already has
-  // isTransfer:true (that's the category's whole purpose: "this money moved
-  // but was already counted somewhere else, don't double-count it"), so it
-  // never contributes to actuals/comments below anyway (see
-  // isBudgetRelevant's own comment) — it would only ever occupy an empty
-  // row in the template. Excluded from export by explicit request
-  // (2026-09-15) rather than expanding the fixed-row template. Name-matched
-  // like the other semantic category names already hardcoded in this
-  // codebase (TRANSFER_CATEGORY_NAME, the Незрозуміло/Додаткове fallbacks
-  // in categoryGuess.ts) — if this category is ever renamed, the capacity
-  // check below will fail loudly again rather than silently reappearing.
-  const categories = categoriesRaw.filter(c => c.name !== 'Враховано деінде');
+  // Which categories get a template row, decided by data rather than name:
+  // - an inactive (soft-deleted) category stays if it still has budget-relevant
+  //   transactions — stats/analytics keep counting them, so dropping the row
+  //   made the sheet disagree with the app;
+  // - an active category whose every transaction is excluded from totals
+  //   ("Враховано деінде", all isTransfer) is skipped: it can never show a
+  //   number and the fixed-row template has no spare row for it.
+  const catsWithTx = new Set<number>();
+  const catsWithRelevantTx = new Set<number>();
+  for (const tx of allTxs) {
+    catsWithTx.add(tx.categoryId);
+    if (isBudgetRelevant(tx)) catsWithRelevantTx.add(tx.categoryId);
+  }
+  const categories = categoriesRaw.filter(c => c.isActive
+    ? catsWithRelevantTx.has(c.id) || !catsWithTx.has(c.id)
+    : catsWithRelevantTx.has(c.id));
 
   // The Планування sheet has a fixed number of category rows per section
   // (template constraint, see SECTIONS above). If a section ever has more
@@ -119,7 +123,7 @@ export async function GET(req: NextRequest) {
     const d = new Date(tx.date);
     const key = `${tx.categoryId}:${d.getUTCFullYear()}:${d.getUTCMonth() + 1}`;
     txDetails[key] ??= [];
-    txDetails[key].push(`${Math.round(tx.amount)} - ${det}`);
+    txDetails[key].push(`${Math.round(tx.category.type === 'savings' ? savingsAmount(tx) : tx.amount)} - ${det}`);
   }
 
   // ── Also keep manual plan notes as fallback for cells with no tx details ─
@@ -225,12 +229,14 @@ export async function GET(req: NextRequest) {
   const wsVed = wb.getWorksheet('Ведення')!;
 
   // Filter transactions for Ведення sheet
-  const txsForVed = filterYear ? allTxs.filter(tx => {
+  // Excluded rows (transfers) stay out so the sheet's totals match the app, and
+  // a savings withdrawal is written NEGATIVE (import/route.ts reads that back).
+  const txsForVed = (filterYear ? allTxs.filter(tx => {
     const d = new Date(tx.date);
     if (d.getUTCFullYear() !== filterYear) return false;
     if (filterMonth && d.getUTCMonth() + 1 !== filterMonth) return false;
     return true;
-  }) : allTxs;
+  }) : allTxs).filter(isBudgetRelevant);
 
   // Clear existing data rows (12..1000)
   for (let r = 12; r <= 1000; r++) {
@@ -270,7 +276,7 @@ export async function GET(req: NextRequest) {
     catCell.fill  = noFill;
 
     const amtCell = row.getCell('F');
-    amtCell.value = tx.amount;
+    amtCell.value = tx.category.type === 'savings' ? savingsAmount(tx) : tx.amount;
     amtCell.fill  = noFill;
 
     const detCell = row.getCell('G');

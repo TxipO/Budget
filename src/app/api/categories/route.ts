@@ -8,8 +8,10 @@ export async function GET(req: NextRequest) {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const type = req.nextUrl.searchParams.get('type');
+    // Deleting a category only sets isActive=false; its transactions stay and still count in totals.
+    const includeInactive = req.nextUrl.searchParams.get('includeInactive') === '1';
     const cats = await prisma.category.findMany({
-      where: { householdId, isActive: true, ...(type ? { type } : {}) },
+      where: { householdId, ...(includeInactive ? {} : { isActive: true }), ...(type ? { type } : {}) },
       orderBy: { id: 'asc' },
     });
     return NextResponse.json(cats);

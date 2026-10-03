@@ -448,7 +448,7 @@ export default function Dashboard() {
 
         {period === 'year' && (
           <div style={{ display: 'flex', gap: 6 }}>
-            {[2025, 2026, 2027].map(y => (
+            {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(y => (
               <button
                 key={y}
                 onClick={() => setYear(y)}
@@ -625,10 +625,11 @@ export default function Dashboard() {
                 // reference can't do — safe to hardcode here specifically
                 // because --c-text-muted is #64748B in both themes.
                 const uColor = u.name === 'Спільні' ? '#64748B' : USER_COLORS[i % USER_COLORS.length];
-                const flow = u.income + u.expenses + u.savings;
-                const incPct = flow > 0 ? (u.income   / flow) * 100 : 0;
-                const expPct = flow > 0 ? (u.expenses / flow) * 100 : 0;
-                const savPct = flow > 0 ? (u.savings  / flow) * 100 : 0;
+                // Absolute values: a net savings withdrawal is negative and would push the bar past 100%.
+                const flow = Math.abs(u.income) + Math.abs(u.expenses) + Math.abs(u.savings);
+                const incPct = flow > 0 ? (Math.abs(u.income)   / flow) * 100 : 0;
+                const expPct = flow > 0 ? (Math.abs(u.expenses) / flow) * 100 : 0;
+                const savPct = flow > 0 ? (Math.abs(u.savings)  / flow) * 100 : 0;
                 return (
                   <div key={u.name} style={{
                     border: '1px solid var(--c-border)', borderRadius: 14, padding: 16,
@@ -657,10 +658,10 @@ export default function Dashboard() {
                         { label: 'Дохід',      val: u.income,   c: '#4ADE80' },
                         { label: 'Витрати',    val: u.expenses, c: '#FCA5A5' },
                         { label: 'Збереження', val: u.savings,  c: '#FCD34D' },
-                      ].filter(r => r.val > 0).map(r => (
+                      ].filter(r => r.val !== 0).map(r => (
                         <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                           <span style={{ color: 'var(--c-text-muted)' }}>{r.label}</span>
-                          <span style={{ color: r.c, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{formatMoney(r.val)}</span>
+                          <span style={{ color: r.c, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{r.val < 0 ? formatMoneySign(r.val) : formatMoney(r.val)}</span>
                         </div>
                       ))}
                     </div>

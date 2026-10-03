@@ -7,6 +7,7 @@ import TransactionForm from '@/components/TransactionForm';
 import CategoryIcon from '@/components/CategoryIcon';
 import { toast } from '@/lib/toast';
 import { downloadExport } from '@/lib/downloadExport';
+import { isBudgetRelevant, savingsAmount } from '@/lib/budgetRules';
 
 interface Tx {
   id: number; date: string; amount: number; details: string; source: string;
@@ -18,6 +19,12 @@ interface Tx {
 }
 
 const PAGE_SIZE = 25;
+
+// Direction shown next to a row's amount; the CSV export uses the same sign.
+function amountSign(tx: Tx): 1 | -1 {
+  const isSavingsDeposit = tx.category.type === 'savings' && !tx.savingsWithdrawal;
+  return tx.category.type === 'income' || isSavingsDeposit ? 1 : -1;
+}
 
 export default function TransactionsPage() {
   const { formatMoney, formatMoneySign } = useCurrency();
@@ -145,14 +152,16 @@ export default function TransactionsPage() {
   }
 
   function exportCSV() {
-    const header = ['Дата', 'Категорія', 'Тип', 'Сума (kr)', 'Деталі', 'Хто'];
-    const rows = filtered.map(tx => [
+    // Includes rows excluded from totals (hidden in the list) so the file can be reconciled; they're marked.
+    const header = ['Дата', 'Категорія', 'Тип', 'Сума (kr)', 'Деталі', 'Хто', 'Не враховано'];
+    const rows = txs.filter(matchesFilters).map(tx => [
       new Date(tx.date).toLocaleDateString('uk-UA'),
       tx.category.name,
       TYPE_LABELS[tx.category.type],
-      String(tx.amount),
+      String(amountSign(tx) * tx.amount),
       tx.details,
       tx.user?.name ?? '',
+      isBudgetRelevant(tx) ? '' : 'так',
     ]);
     const csv = [header, ...rows]
       .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
@@ -199,25 +208,19 @@ export default function TransactionsPage() {
     // lib/validate.ts's isBudgetRelevant for why both checks matter (a
     // learned rule can file a row under "Перекази" before the automatic
     // isTransfer matcher catches up, or in cases it never does).
-    return matchesFilters(tx) && !tx.isTransfer && tx.category.type !== 'transfer';
+    return matchesFilters(tx) && isBudgetRelevant(tx);
   });
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  // Matches the server's isBudgetRelevant() + savingsAmount() exactly (see
-  // lib/validate.ts) — a transfer/pre-accounted-elsewhere row must never
-  // count here either, or these tiles would disagree with the dashboard's
-  // numbers for the same period. Not imported from lib/validate.ts directly:
-  // that module also imports next/server (route-handler-only APIs), not
-  // something a 'use client' bundle should pull in. `filtered` already
-  // excludes isTransfer rows, but keeping this explicit guards against that
-  // upstream filter ever changing without this total being re-checked.
-  const totals = filtered.filter(tx => !tx.isTransfer).reduce(
+  // `filtered` already holds only budget-relevant rows; isBudgetRelevant is kept
+  // here as a guard in case that upstream filter ever changes.
+  const totals = filtered.filter(isBudgetRelevant).reduce(
     (acc, tx) => {
       if (tx.category.type === 'income')   acc.income   += tx.amount;
       if (tx.category.type === 'expense')  acc.expenses += tx.amount;
-      if (tx.category.type === 'savings')  acc.savings  += tx.savingsWithdrawal ? -tx.amount : tx.amount;
+      if (tx.category.type === 'savings')  acc.savings  += savingsAmount(tx);
       return acc;
     },
     { income: 0, expenses: 0, savings: 0 }
@@ -446,8 +449,7 @@ export default function TransactionsPage() {
           // there. Found live 2026-08-29 on a 300 kr "Фінансова подушка"
           // withdrawal showing "+300". Savings keeps its own colour in both
           // directions — a pot growing is not income.
-          const isSavingsDeposit = tx.category.type === 'savings' && !tx.savingsWithdrawal;
-          const amountStr = `${tx.category.type === 'income' || isSavingsDeposit ? '+' : '-'}${formatMoney(tx.amount)}`;
+          const amountStr = `${amountSign(tx) > 0 ? '+' : '-'}${formatMoney(tx.amount)}`;
           // isTransfer rows never reach here — filtered out above — so no
           // dimmed "excluded" color branch is needed.
           const amountColor = tx.category.type === 'income' ? '#4ADE80'

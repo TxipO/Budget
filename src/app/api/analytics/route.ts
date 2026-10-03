@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireHouseholdId } from '@/lib/household';
-import { savingsAmount, isBudgetRelevant } from '@/lib/validate';
+import { savingsAmount, isBudgetRelevant, isCurrentMonth, comparableCutoffDay } from '@/lib/budgetRules';
 import { computeSavingsByCategory } from '@/lib/savingsBreakdown';
 
 const MONTHS_UA = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
@@ -71,6 +71,8 @@ export async function GET(req: NextRequest) {
 
     // --- Insights ---
     const insights: Insight[] = [];
+    const now = new Date();
+    const inProgressIdx = year === now.getUTCFullYear() ? now.getUTCMonth() : -1;
     const fmt = (n: number) => new Intl.NumberFormat('nb-NO', { maximumFractionDigits: 0 }).format(Math.round(n)) + ' kr';
     const active = months.map((m, i) => ({ ...m, i })).filter(m => m.income > 0 || m.expenses > 0 || m.savings > 0);
 
@@ -91,7 +93,16 @@ export async function GET(req: NextRequest) {
         let momText = '';
         let tone: Insight['tone'] = 'info';
         const prev = expActive.length > 1 ? expActive[expActive.length - 2] : null;
-        const prevSum = prev ? (catByMonth[prev.i] || {})[topName] || 0 : 0;
+        // The in-progress month is compared against the same day-of-month of
+        // the earlier one, not its full total (see comparableCutoffDay).
+        let prevSum = prev ? (catByMonth[prev.i] || {})[topName] || 0 : 0;
+        if (prev && isCurrentMonth(year, last.i + 1, now)) {
+          const cutoff = comparableCutoffDay(year, prev.i + 1, now);
+          prevSum = txs
+            .filter(t => isBudgetRelevant(t) && t.category.type === 'expense' && t.category.name === topName
+              && t.date.getUTCMonth() === prev.i && t.date.getUTCDate() <= cutoff)
+            .reduce((s, t) => s + t.amount, 0);
+        }
         if (prev && prevSum > 0) {
           const pct = Math.round(((topSum - prevSum) / prevSum) * 100);
           if (Math.abs(pct) >= 1) {
@@ -111,7 +122,8 @@ export async function GET(req: NextRequest) {
       }
 
       // Average monthly expenses
-      const expMonths = active.filter(m => m.expenses > 0);
+      // Excludes the in-progress month — a few days of spending would drag the average down.
+      const expMonths = active.filter(m => m.expenses > 0 && m.i !== inProgressIdx);
       if (expMonths.length > 1) {
         const avg = expMonths.reduce((s, m) => s + m.expenses, 0) / expMonths.length;
         insights.push({ text: `Середні витрати: ${fmt(avg)} на місяць`, tone: 'info' });

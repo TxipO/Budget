@@ -25,8 +25,10 @@ export async function GET(req: NextRequest) {
       const y = parseInt(year);
       if (!Number.isFinite(y)) return badRequest('Невалідний рік');
       where.date = { gte: new Date(Date.UTC(y, 0, 1)), lt: new Date(Date.UTC(y + 1, 0, 1)) };
-      const lim = limitParam ? parseInt(limitParam) : 500;
-      take = Number.isFinite(lim) && lim > 0 ? lim : 500;
+      // A year is already a bounded range: no default cap (an implicit 500 silently
+      // truncated busy years); an explicit limit is still honored.
+      const lim = limitParam ? parseInt(limitParam) : NaN;
+      if (Number.isFinite(lim) && lim > 0) take = lim;
     } else {
       const lim = limitParam ? parseInt(limitParam) : 100;
       take = Number.isFinite(lim) && lim > 0 ? lim : 100;
