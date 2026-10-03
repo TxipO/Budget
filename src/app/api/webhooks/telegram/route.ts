@@ -135,6 +135,7 @@ export async function POST(req: NextRequest) {
           categoryId,
           amount: roundMoney(amount),
           details: transcript,
+          merchantText: transcript, // rule-key source; details is the user-editable comment (see Transaction.merchantText)
           userId: user.id,
           source: 'voice',
           categorySource,

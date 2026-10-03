@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { roundMoney } from '@/lib/validate';
-import { normalizeMerchantKey, getCachedExchangeRate } from '@/lib/monobank';
+import { getCachedExchangeRate } from '@/lib/monobank';
+import { merchantKey as toMerchantKey } from '@/lib/merchantKey';
 import { guessCategoryId as resolveCategoryId } from '@/lib/categoryGuess';
 import { numericForCurrency } from '@/lib/currencies';
 import { looksLikeMonoTransferLeg, findCrossBankTransferMatch, NOT_MANUAL } from '@/lib/transferDetect';
@@ -131,21 +132,23 @@ function closest<T extends { id: number; date: Date; monoAmountOriginal: number 
 
 // The REVERSAL is being ingested: find the purchase it cancels.
 async function findReversalOriginal(userId: number, merchantKey: string, amountOriginal: number, date: Date): Promise<{ id: number; categoryId: number } | null> {
+  if (!merchantKey) return null; // nothing left after noise-stripping: pairing on "" would match any blank-key row
   const rows = await prisma.transaction.findMany({
     where: { ...reversalWhere(userId, amountOriginal, date), savingsWithdrawal: false },
     select: { id: true, date: true, monoAmountOriginal: true, categoryId: true, monoMerchant: true },
   });
-  return closest(rows.filter(r => normalizeMerchantKey(r.monoMerchant ?? '') === merchantKey), amountOriginal, date);
+  return closest(rows.filter(r => toMerchantKey(r.monoMerchant ?? '') === merchantKey), amountOriginal, date);
 }
 
 // The PURCHASE is being ingested (after its reversal already arrived): find
 // the still-unpaired reversal. merchantKey is the purchase's own.
 async function findUnpairedReversal(userId: number, merchantKey: string, amountOriginal: number, date: Date): Promise<{ id: number } | null> {
+  if (!merchantKey) return null;
   const rows = await prisma.transaction.findMany({
     where: { ...reversalWhere(userId, amountOriginal, date), savingsWithdrawal: true, monoMerchant: { startsWith: 'Скасування.', mode: 'insensitive' as const } },
     select: { id: true, date: true, monoAmountOriginal: true, monoMerchant: true },
   });
-  return closest(rows.filter(r => { const m = (r.monoMerchant ?? '').trim().match(REVERSAL_PREFIX); return !!m && normalizeMerchantKey(m[1]) === merchantKey; }), amountOriginal, date);
+  return closest(rows.filter(r => { const m = (r.monoMerchant ?? '').trim().match(REVERSAL_PREFIX); return !!m && toMerchantKey(m[1]) === merchantKey; }), amountOriginal, date);
 }
 
 // Single source of truth for turning one Monobank StatementItem into a
@@ -213,13 +216,13 @@ export async function ingestStatementItem(userId: number, householdId: number, i
   const raw = new Date(item.time * 1000);
   const date = new Date(Date.UTC(raw.getUTCFullYear(), raw.getUTCMonth(), raw.getUTCDate()));
 
-  const merchantKey = normalizeMerchantKey(item.description || '');
+  const merchantKey = toMerchantKey(item.description || '');
 
   // "Скасування. <merchant>" reversal arriving AFTER its purchase — see
   // findReversalOriginal. Checked before the same-bank transfer match: it is
   // the more specific signal.
   const reversalPrefix = txType === 'income' ? (item.description || '').trim().match(REVERSAL_PREFIX) : null;
-  const reversalOriginal = reversalPrefix ? await findReversalOriginal(userId, normalizeMerchantKey(reversalPrefix[1]), amountOriginal, date) : null;
+  const reversalOriginal = reversalPrefix ? await findReversalOriginal(userId, toMerchantKey(reversalPrefix[1]), amountOriginal, date) : null;
 
   // Is this the household moving money between Паша's and Женя's own
   // connected Monobank accounts? See findMonoTransferMatch's own comment.

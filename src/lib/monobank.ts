@@ -235,11 +235,3 @@ export function guessCategoryByKeyword(description: string): string | null {
   }
   return null;
 }
-
-// Consciously simple in v1 (lowercase + trim + collapse whitespace) — the
-// same merchant can appear with slightly different formatting across
-// transactions (extra spaces, trailing terminal IDs); refine only if that
-// turns out to actually fragment MonoCategoryRule matches in practice.
-export function normalizeMerchantKey(description: string): string {
-  return description.trim().toLowerCase().replace(/\s+/g, ' ');
-}

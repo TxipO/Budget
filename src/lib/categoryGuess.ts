@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { guessCategoryByMcc, guessCategoryByKeyword } from '@/lib/monobank';
+import { merchantKey as toMerchantKey, isGenericKey } from '@/lib/merchantKey';
 
 // LLM guess tier — the natural extension point this project's own memory
 // flagged when the free rule/MCC/keyword chain was built ("if they later
@@ -95,23 +96,36 @@ export type CategorySource = 'rule' | 'brand' | 'mcc' | 'keyword' | 'llm' | 'sel
 // different EXACT merchantKeys (a location suffix makes one store's rule
 // structurally unable to help at another branch of the same chain) but
 // obviously the same brand. Deliberately does NOT touch how merchantKey
-// itself is computed or matched (see normalizeMerchantKey's own "refine
-// only if it actually fragments" comment, and the entry_reference saga this
+// itself is computed or matched (see lib/merchantKey.ts's comment on why only
+// provably per-occurrence noise is stripped, and the entry_reference saga this
 // project already paid for once by normalizing a key too aggressively) —
 // this is a separate, additional, lower-confidence signal, tried only after
 // the exact key has already failed.
 //
-// Conservative on purpose: only fires when EVERY rule this user has already
-// taught for that same first word agrees on one category. If a household
-// uses one chain for two genuinely different real purposes (rare, but
-// real — e.g. a gas-station brand that also sells groceries), this stays
+// Conservative on purpose: only fires when AT LEAST TWO distinct rules of this
+// user share that first word and EVERY one of them agrees on one category. If
+// a household uses one chain for two genuinely different real purposes (rare,
+// but real — e.g. a gas-station brand that also sells groceries), this stays
 // silent rather than guess wrong; the next tier gets a turn instead.
+//
+// 2026-10 audit: with a single agreeing rule this fired on one-off
+// corrections ("kiwi 582 torgga..." -> Залежності overrode the keyword tier's
+// Їжа for every other Kiwi; "extra"/"xxl"/"circle"/"sultan" -> Подорожі from
+// one trip day) and on first words that are not brands at all ("til:" filed
+// every outgoing P2P under Подарунки, "поповнення" every top-up). One rule is
+// an anecdote; two agreeing, distinct rules are a pattern. NOT_A_BRAND holds
+// payment-type/P2P prefixes plus place/nationality words that begin many
+// unrelated merchant names.
+const NOT_A_BRAND = new Set([
+  'til:', 'fra:', 'від:', 'til', 'fra', 'nettgiro', 'mobilgiro', 'overførsel', 'поповнення', 'переказ',
+  'norsk', 'balestrand', 'sogndal', 'sogn', 'oslo', 'kid',
+]);
 async function guessCategoryByBrand(userId: number, merchantKey: string): Promise<{ categoryId: number; isTransfer: boolean } | null> {
   const brand = merchantKey.split(' ')[0];
   // Length guard — a short first "word" ("nr", "kr", a lone digit) is far
   // more likely to coincidentally prefix-match something unrelated than to
   // mean anything as a brand.
-  if (brand.length < 3) return null;
+  if (brand.length < 3 || NOT_A_BRAND.has(brand)) return null;
   const candidates = await prisma.monoCategoryRule.findMany({
     where: { userId, merchantKey: { startsWith: brand } }, // cheap DB-side prefilter
     select: { merchantKey: true, categoryId: true, category: { select: { isActive: true, type: true } } },
@@ -123,7 +137,8 @@ async function guessCategoryByBrand(userId: number, merchantKey: string): Promis
   // exactly, same word-boundary rule "joker balestrand" was built to need.
   const matches = candidates.filter(c => c.category.isActive && c.merchantKey.split(' ')[0] === brand);
   const categoryIds = new Set(matches.map(m => m.categoryId));
-  return categoryIds.size === 1 ? { categoryId: matches[0].categoryId, isTransfer: matches[0].category.type === 'transfer' } : null;
+  // >=2 rows are necessarily >=2 DISTINCT keys (userId+merchantKey is unique).
+  return matches.length >= 2 && categoryIds.size === 1 ? { categoryId: matches[0].categoryId, isTransfer: matches[0].category.type === 'transfer' } : null;
 }
 
 // Extracted out of the Monobank webhook route (was resolveCategoryId there) —
@@ -139,7 +154,15 @@ async function guessCategoryByBrand(userId: number, merchantKey: string): Promis
 // Перекази" expects the row to be excluded from totals, but the rule only
 // stored a category, so ingest left isTransfer=false (real: rules -> "Перекази"
 // rows still counted). Callers OR this into the row's own isTransfer.
-export async function guessCategoryId(householdId: number, userId: number, txType: 'expense' | 'income', merchantKey: string, mcc: number | undefined): Promise<{ categoryId: number; source: CategorySource; isTransfer: boolean }> {
+export async function guessCategoryId(householdId: number, userId: number, txType: 'expense' | 'income', rawMerchantText: string, mcc: number | undefined): Promise<{ categoryId: number; source: CategorySource; isTransfer: boolean }> {
+  // Normalized HERE (idempotent, so callers may pass raw text or an
+  // already-normalized key): rules are stored normalized, and the voice route
+  // used to look them up with the raw transcript. A bare payment-type phrase
+  // ("nettgiro") names no merchant — rule/brand tiers are skipped for it, the
+  // content tiers below still see the text.
+  const merchantKey = toMerchantKey(rawMerchantText);
+  const hasMerchant = !isGenericKey(merchantKey);
+
   // 1. Learned rule from a manual correction — highest priority, no guessing.
   // Checked against the category's current isActive, not just that the rule
   // exists — a category can be soft-deleted after a rule was learned against
@@ -148,10 +171,10 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
   // pickers even though they still count in stats. Falls through to the
   // normal guess tiers (which already filter isActive) instead. Found
   // during deep-review 2026-07-11.
-  const rule = await prisma.monoCategoryRule.findUnique({
+  const rule = hasMerchant ? await prisma.monoCategoryRule.findUnique({
     where: { userId_merchantKey: { userId, merchantKey } },
     select: { categoryId: true, category: { select: { isActive: true, type: true } } },
-  });
+  }) : null;
   if (rule?.category.isActive) return { categoryId: rule.categoryId, source: 'rule', isTransfer: rule.category.type === 'transfer' };
 
   // 1b. Brand-key guess — see guessCategoryByBrand's own comment. Still part
@@ -159,7 +182,7 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
   // nothing generic), so it stays right after the exact rule and before
   // MCC/keyword/LLM — a derived signal from the user's own history beats a
   // generic ISO code or global keyword list.
-  const brandGuess = await guessCategoryByBrand(userId, merchantKey);
+  const brandGuess = hasMerchant ? await guessCategoryByBrand(userId, merchantKey) : null;
   if (brandGuess !== null) return { categoryId: brandGuess.categoryId, source: 'brand', isTransfer: brandGuess.isTransfer };
 
   // Tiers 2-6 (MCC guess, keyword guess, LLM guess, safe fallback, last

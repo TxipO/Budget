@@ -336,6 +336,17 @@ model Transaction {
   sbTransactionId String?
   sbCounterparty  String? // debtor/creditor name, for future category-rule matching
 
+  // The text MonoCategoryRule keys are derived from (via lib/merchantKey.ts)
+  // for sparebank and voice rows: sparebank = the merchant/remittance text
+  // after card-auth-envelope stripping, voice = the transcript. Separate from
+  // `details` because details is ALSO the user-editable "Коментар": PUT used to
+  // overwrite the one column both ways, so editing a comment silently changed
+  // the row's merchant key (6 rows ended up keyed on Ukrainian comments) and
+  // the sparebank reconcile path overwrote the user's comment with bank text.
+  // Written only by ingest/reconcile, NEVER by PUT. Mono rows key off
+  // monoMerchant and leave this null. 2026-10.
+  merchantText    String?
+
   // "Doesn't count toward any budget total" — two distinct real-world cases,
   // both structural, neither a code-level guess:
   // 1. A transfer between two accounts the SAME PERSON owns (SpareBank1's

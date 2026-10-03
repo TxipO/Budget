@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
     const primary = await prisma.transaction.findUnique({
       where: { id: Number(primaryId) },
-      select: { householdId: true, userId: true, categoryId: true, source: true, monoMerchant: true, details: true },
+      select: { householdId: true, userId: true, categoryId: true, source: true, monoMerchant: true, details: true, merchantText: true, categorySource: true },
     });
     if (!primary || primary.householdId !== householdId || !primary.userId || primary.categoryId !== Number(toCategoryId)) {
       return NextResponse.json({ error: 'Транзакцію не знайдено' }, { status: 404 });
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
         id: { in: sweptIds.map(Number) }, householdId, userId: primary.userId,
         categoryId: Number(toCategoryId), categorySource: 'rule', source: { in: SWEEPABLE_SOURCES },
       },
-      select: { id: true, source: true, monoMerchant: true, details: true },
+      select: { id: true, source: true, monoMerchant: true, details: true, merchantText: true, categorySource: true },
     });
     const revertIds = candidates.filter(c => merchantKeyOf(c) === merchantKey).map(c => c.id);
 

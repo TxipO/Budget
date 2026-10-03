@@ -19,7 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
     const row = await prisma.transaction.findUnique({
       where: { id },
-      select: { source: true, monoMerchant: true, details: true, userId: true, categoryId: true, categorySource: true, householdId: true },
+      select: { source: true, monoMerchant: true, details: true, merchantText: true, userId: true, categoryId: true, categorySource: true, householdId: true },
     });
     if (!row || row.householdId !== householdId) {
       return NextResponse.json({ error: 'Транзакцію не знайдено' }, { status: 404 });
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       defaultScope,
       siblings: siblings.length,
       existingRule: conflictingRule,
-      merchantLabel: row.source === 'mono' ? row.monoMerchant : row.details,
+      merchantLabel: row.source === 'mono' ? row.monoMerchant : (row.merchantText ?? row.details),
     });
   } catch (e) {
     console.error('[transactions/[id]/sweep-preview GET]', e);

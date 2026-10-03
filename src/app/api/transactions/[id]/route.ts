@@ -30,7 +30,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     // household edit another's transaction just by guessing its id.
     const before = await prisma.transaction.findUnique({
       where: { id },
-      select: { source: true, monoMerchant: true, details: true, userId: true, categoryId: true, householdId: true, isTransfer: true, savingsWithdrawal: true },
+      select: { source: true, monoMerchant: true, details: true, merchantText: true, categorySource: true, userId: true, categoryId: true, householdId: true, isTransfer: true, savingsWithdrawal: true },
     });
     if (!before || before.householdId !== householdId) {
       return NextResponse.json({ error: 'Транзакцію не знайдено' }, { status: 404 });

@@ -3,6 +3,7 @@ import { roundMoney } from '@/lib/validate';
 import { guessCategoryId } from '@/lib/categoryGuess';
 import { SbTransaction, SbAccountId } from '@/lib/enableBanking';
 import { getCachedExchangeRate, ISO_4217 } from '@/lib/monobank';
+import { merchantKey as toMerchantKey } from '@/lib/merchantKey';
 import { numericForCurrency } from '@/lib/currencies';
 import { looksLikeTransferIntermediary, findCrossBankTransferMatch, looksLikeUnresolvedInternalTransfer, findUnresolvedInternalTransferMatch, NOT_MANUAL } from '@/lib/transferDetect';
 
@@ -260,7 +261,11 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // punctuation string is never a description, so counterparty wins then.
   const remittanceIsReference = remittance !== '' && !/[a-z]/i.test(remittance);
   const details = (remittanceIsReference ? '' : remittance) || counterparty || remittance || '';
-  const merchantKey = ((remittanceIsReference ? '' : remittance) || counterparty || remittance || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  // merchantText = the text rule keys derive from. Equal to details at ingest,
+  // but stored separately so a later edit of the user's comment (details)
+  // can't change the key — see Transaction.merchantText.
+  const merchantText = details;
+  const merchantKey = toMerchantKey(merchantText);
 
   const dateStr = item.booking_date || item.value_date || item.transaction_date;
   if (!dateStr) return { status: 'skipped_malformed' };
@@ -300,7 +305,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
 
   const existing = await prisma.transaction.findFirst({
     where: { userId, sbTransactionId: storageKey },
-    select: { id: true, isTransfer: true, categoryId: true, savingsWithdrawal: true, categorySource: true },
+    select: { id: true, isTransfer: true, categoryId: true, savingsWithdrawal: true, categorySource: true, details: true, merchantText: true },
   });
   // Reconciliation, not just a duplicate skip. FOUND LIVE 2026-08-28: a
   // same-person Основний<->Подушка transfer's FIRST sync recorded
@@ -440,7 +445,15 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     if (!changed) return { status: 'skipped_duplicate' };
     await prisma.transaction.update({
       where: { id: existing.id },
-      data: { categoryId, categorySource, isTransfer, savingsWithdrawal, details, sbCounterparty: counterparty || null },
+      data: {
+        categoryId, categorySource, isTransfer, savingsWithdrawal, sbCounterparty: counterparty || null,
+        // merchantText is always refreshed. details is also the user's editable
+        // comment, so the bank's text replaces it only while it still equals
+        // the previous merchantText (never edited) — otherwise a sync would
+        // clobber the user's comment.
+        merchantText,
+        ...(existing.merchantText !== null && existing.details === existing.merchantText ? { details } : {}),
+      },
     });
     if (crossBankMatchId) {
       await flipPartner(crossBankMatchId);
@@ -475,6 +488,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
         categorySource,
         amount,
         details,
+        merchantText,
         userId,
         source: 'sparebank',
         possibleDuplicateOf: possibleDup?.id ?? null,
