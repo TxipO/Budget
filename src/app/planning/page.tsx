@@ -4,7 +4,7 @@ import { MessageSquare } from 'lucide-react';
 import { MONTH_SHORT, TYPE_LABELS } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { useCurrency } from '@/lib/useCurrency';
-import { formatCompact, roundCompact } from '@/lib/currencies';
+import { formatCompact } from '@/lib/currencies';
 import { isBudgetRelevant, savingsAmount } from '@/lib/budgetRules';
 
 interface Category { id: number; name: string; type: string; color: string; isActive: boolean }
@@ -216,8 +216,8 @@ export default function PlanningPage() {
                         const hasData = actual !== 0 || planned > 0;
                         // Compared at the precision the cell shows ("2,5к" vs "/2,5к"),
                         // so two identical-looking numbers never get different colours.
-                        const over    = type !== 'income' && roundCompact(actual) > roundCompact(planned) && planned > 0;
-                        const under   = type !== 'income' && actual > 0 && roundCompact(actual) <= roundCompact(planned);
+                        const over    = type !== 'income' && actual > planned && planned > 0; // exact, not the rounded figure shown — a small real overspend must still read as over
+                        const under   = type !== 'income' && actual > 0 && actual <= planned;
 
                         return (
                           <td key={m} style={{ padding: '4px', textAlign: 'center', position: 'relative' }}>
