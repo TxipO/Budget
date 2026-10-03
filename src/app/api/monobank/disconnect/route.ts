@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     await prisma.user.update({
       where: { id: Number(userId) },
-      data: { monoTokenEnc: null, monoWebhookSecret: null, monoAccountId: null },
+      data: { monoTokenEnc: null, monoWebhookSecret: null, monoAccountId: null, monoClientId: null },
     });
 
     return NextResponse.json({ ok: true });

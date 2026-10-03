@@ -80,6 +80,8 @@ export async function POST(req: NextRequest) {
     let amount: number;
     let categoryId: number;
     let categorySource: string;
+    // A learned rule/brand can point at a 'transfer'-type category — see guessCategoryId.
+    let categoryIsTransfer = false;
 
     const llmResult = await extractWithLLM(transcript, expenseNames, incomeNames, user.name).catch(() => null);
     if (llmResult) {
@@ -95,7 +97,7 @@ export async function POST(req: NextRequest) {
       if (!resolved) {
         // Extremely unlikely given the validation above, but if it somehow
         // happens, fall through to the rule-based path rather than crash.
-        ({ categoryId, source: categorySource } = await guessCategoryId(householdId, user.id, direction, transcript, undefined));
+        ({ categoryId, source: categorySource, isTransfer: categoryIsTransfer } = await guessCategoryId(householdId, user.id, direction, transcript, undefined));
       } else {
         categoryId = resolved.id;
         categorySource = 'llm'; // extractWithLLM's own category guess, not guessCategoryId's chain
@@ -110,7 +112,7 @@ export async function POST(req: NextRequest) {
       }
       direction = parsed.direction;
       amount = parsed.amount;
-      ({ categoryId, source: categorySource } = await guessCategoryId(householdId, user.id, direction, transcript, undefined));
+      ({ categoryId, source: categorySource, isTransfer: categoryIsTransfer } = await guessCategoryId(householdId, user.id, direction, transcript, undefined));
     }
 
     const category = await prisma.category.findUnique({ where: { id: categoryId }, select: { name: true } });
@@ -136,6 +138,7 @@ export async function POST(req: NextRequest) {
           userId: user.id,
           source: 'voice',
           categorySource,
+          isTransfer: categoryIsTransfer,
           telegramMessageId: voice.file_unique_id,
         },
       });

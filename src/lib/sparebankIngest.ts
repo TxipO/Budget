@@ -4,7 +4,7 @@ import { guessCategoryId } from '@/lib/categoryGuess';
 import { SbTransaction, SbAccountId } from '@/lib/enableBanking';
 import { getCachedExchangeRate, ISO_4217 } from '@/lib/monobank';
 import { numericForCurrency } from '@/lib/currencies';
-import { looksLikeTransferIntermediary, findCrossBankTransferMatch, looksLikeUnresolvedInternalTransfer, findUnresolvedInternalTransferMatch } from '@/lib/transferDetect';
+import { looksLikeTransferIntermediary, findCrossBankTransferMatch, looksLikeUnresolvedInternalTransfer, findUnresolvedInternalTransferMatch, NOT_MANUAL } from '@/lib/transferDetect';
 
 // See monoIngest.ts's own comment on the 2026-08-24 rename/retype from
 // 'Переказ між рахунками' (type 'savings') to a dedicated 'transfer' type.
@@ -92,8 +92,6 @@ async function findTransferCounterpartAccountId(userId: number, counterpart: SbA
   return match?.id ?? null;
 }
 
-const MIRROR_WINDOW_DAYS = 3; // generous — matches RECONCILIATION_OVERLAP_DAYS-ish tolerance for late settlement
-
 // entry_reference ("<date>-<sequence-within-day>") is NOT used for dedup at
 // all anymore. FIXED 2026-08-14, superseding the 2026-08-13 "recover as a
 // new row on reference collision" patch — that patch made things WORSE, not
@@ -152,46 +150,55 @@ export function buildSbContentKeyBase(accountId: number, dateStr: string, direct
 // — so without this check,
 // a single real 3464 kr checking->pillow transfer would tally as 3464+3464
 // in "Фінансова подушка". Only the SECOND leg to actually get recorded
-// should end up excluded; the first stands as the real entry. Matches by
-// amount + SAME direction within a window — same, not opposite, because the
-// caller already normalizes savingsWithdrawal to the pool's own perspective
-// before calling this (see ingestTransaction's selfIsPool flip), so
-// both legs of one real transfer share the identical corrected sign by the
-// time either reaches here. Transaction has no column recording which
-// physical SparebankAccount a row came from (see the model's own comment),
-// so amount+date+category+sign is the best available signal — this is the
-// same heuristic shape already proven empirically clean for Monobank's
-// inter-person transfers (0 false positives across 104 real transactions,
-// see project_monobank_integration memory), just scoped to one user's own
-// accounts instead of two different users.
-// excludeId: the row currently being processed, when reconciling an
-// already-stored transaction (see ingestTransaction's `needsReconciliation`
-// path) — WITHOUT this, a reconciliation re-run matches the row against
-// ITSELF (same categoryId/amount/date/sign it already has) and "finds" a
-// mirror that's really just its own row, flipping isTransfer to true on the
-// one leg that was correctly counted. FOUND LIVE 2026-08-30: exactly this
-// happened to a real withdrawal the very next sync after it was correctly
-// recorded — both legs of the transfer ended up excluded and the withdrawal
-// silently vanished from "Фінансова подушка" entirely, not just miscounted.
-// In the CREATE path this can't happen (the row doesn't exist yet when this
-// runs), so excludeId is only ever passed from the reconcile path.
-async function findSavingsTransferMirror(userId: number, categoryId: number, amount: number, date: Date, isWithdrawal: boolean, excludeId?: number): Promise<number | null> {
-  const windowStart = new Date(date.getTime() - MIRROR_WINDOW_DAYS * 24 * 3600 * 1000);
-  const windowEnd = new Date(date.getTime() + MIRROR_WINDOW_DAYS * 24 * 3600 * 1000);
+// should end up excluded; the first stands as the real entry.
+//
+// REWRITTEN 2026-10 to be deterministic. The old version matched ANY
+// sparebank row with the same category/amount/sign within +-3 days, never
+// checking it came from the counterpart ACCOUNT nor that it was still
+// unpaired. Real damage: two 200 kr Подушка->Основний transfers on 22.09 and
+// 23.09 — each 23.09 leg "found" the 22.09 row as its mirror, so both 23.09
+// legs got excluded. Now the mirror is looked up by KEY, not by search: the
+// counterpart leg of a real transfer is the row
+//   sb<counterpartAccountId>|<same booking date>|<opposite CRDT/DBIT>|<same amount>#<same occurrence>
+// (buildSbContentKeyBase + the sync-scoped occurrence counter), so repeated
+// same-amount transfers pair 1:1 by occurrence index, from the right
+// account, on the right day, in either ingest order. It must also still be
+// unpaired (isTransfer:false — an already-excluded leg is somebody's
+// partner already) and not hand-edited ('manual').
+//
+// No +-day fallback, deliberately: all 14 real pairs in the data are
+// same-booking-date on both accounts, and any date tolerance is exactly what
+// let a 22.09 row masquerade as the 23.09 mirror. The cost of a (not yet
+// seen) next-day-booked pair is a visible double count in the pool, fixable
+// by hand — the cost of the loose window was a silently vanished withdrawal.
+//
+// The key carries the ORIGINAL NOK amount, so the match is also immune to the
+// household-currency conversion drifting between two syncs (the old
+// stored-amount equality was not). Cannot match the row itself: its key has
+// its OWN account prefix, so the old excludeId workaround (FOUND LIVE
+// 2026-08-30: a reconciliation re-run matched the row against itself and
+// both legs ended up excluded) is structurally unnecessary now.
+async function findSavingsTransferMirror(userId: number, categoryId: number, isWithdrawal: boolean, mirrorKey: string): Promise<number | null> {
   const match = await prisma.transaction.findFirst({
     where: {
       userId,
       source: 'sparebank',
+      sbTransactionId: mirrorKey,
       categoryId,
       isTransfer: false,
-      amount,
       savingsWithdrawal: isWithdrawal,
-      date: { gte: windowStart, lte: windowEnd },
-      ...(excludeId !== undefined ? { id: { not: excludeId } } : {}),
+      AND: [NOT_MANUAL],
     },
     select: { id: true },
   });
   return match?.id ?? null;
+}
+
+// The only way a partner leg is ever flipped to isTransfer. The matchers
+// already exclude 'manual' rows; the guard here also covers a row edited by
+// hand in the instant between the match and this write.
+async function flipPartner(id: number): Promise<void> {
+  await prisma.transaction.updateMany({ where: { id, AND: [NOT_MANUAL] }, data: { isTransfer: true } });
 }
 
 export type IngestResult = 'created' | 'reconciled' | 'skipped_pending' | 'skipped_duplicate' | 'skipped_malformed';
@@ -293,7 +300,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
 
   const existing = await prisma.transaction.findFirst({
     where: { userId, sbTransactionId: storageKey },
-    select: { id: true, isTransfer: true, categoryId: true, savingsWithdrawal: true },
+    select: { id: true, isTransfer: true, categoryId: true, savingsWithdrawal: true, categorySource: true },
   });
   // Reconciliation, not just a duplicate skip. FOUND LIVE 2026-08-28: a
   // same-person Основний<->Подушка transfer's FIRST sync recorded
@@ -323,7 +330,13 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // text and still isTransfer:false deserves the same re-check chance,
   // bounded the exact same way (only re-fetched while still within the
   // sync's own overlap window).
-  const needsReconciliation = existing !== null && !existing.isTransfer &&
+  //
+  // A hand-edited row ('manual', set by the PUT route on ANY manual change —
+  // category, transfer flag, direction or text) is never reconsidered: this
+  // path rewrites category/isTransfer/direction/details, i.e. exactly what a
+  // person may have just fixed, and it re-fires on every sync inside the
+  // overlap window. Treated as a plain duplicate.
+  const needsReconciliation = existing !== null && existing.categorySource !== 'manual' && !existing.isTransfer &&
     (transferAccountId !== null || looksLikeUnresolvedInternalTransfer(details));
   if (existing && !needsReconciliation) return { status: 'skipped_duplicate' };
 
@@ -355,11 +368,9 @@ export async function ingestTransaction(userId: number, householdId: number, ite
 
     if (poolCategoryId !== null) {
       if (selfIsPool) savingsWithdrawal = !savingsWithdrawal;
-      // excludeId: when reconciling, this row itself already sits in the DB
-      // with these exact categoryId/amount/date/sign — without excluding
-      // it, the query below finds itself as its own "mirror" (see this
-      // function's own comment for the real incident this caused).
-      const mirrorId = await findSavingsTransferMirror(userId, poolCategoryId, amount, date, savingsWithdrawal, existing?.id);
+      const oppositeIndicator = item.credit_debit_indicator === 'CRDT' ? 'DBIT' : 'CRDT';
+      const mirrorKey = `${buildSbContentKeyBase(transferAccountId, dateStr, oppositeIndicator, amountOriginal)}#${occurrence}`;
+      const mirrorId = await findSavingsTransferMirror(userId, poolCategoryId, savingsWithdrawal, mirrorKey);
       categoryId = poolCategoryId;
       // Only the SECOND leg to actually sync gets excluded — see
       // findSavingsTransferMirror's own comment on why blindly excluding
@@ -380,8 +391,9 @@ export async function ingestTransaction(userId: number, householdId: number, ite
       })).id;
     }
   } else {
-    isTransfer = false;
-    ({ categoryId, source: categorySource } = await guessCategoryId(householdId, userId, txType, merchantKey, undefined));
+    // A learned rule can resolve to a 'transfer'-type category — then the row
+    // must be excluded from totals too (guessCategoryId's own isTransfer).
+    ({ categoryId, source: categorySource, isTransfer } = await guessCategoryId(householdId, userId, txType, merchantKey, undefined));
   }
 
   // Cross-bank same-person transfer (e.g. a Paysend top-up landing on the
@@ -403,10 +415,15 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // reconcile path: `existing` already sits in the DB with this exact
   // amount/date/text, so without excluding it, a stuck row with no real
   // sibling yet would "match" itself.
+  // The sibling is NEVER flipped when it is the counted savings-pool leg (and
+  // this row isn't flipped when IT is) — see findUnresolvedInternalTransferMatch.
   let unresolvedInternalMatchId: number | null = null;
   if (!isTransfer && looksLikeUnresolvedInternalTransfer(details)) {
-    unresolvedInternalMatchId = await findUnresolvedInternalTransferMatch(userId, amount, date, existing?.id);
-    if (unresolvedInternalMatchId) isTransfer = true;
+    const m = await findUnresolvedInternalTransferMatch(userId, amount, date, categoryId, existing?.id);
+    if (m) {
+      if (m.flipSelf) isTransfer = true;
+      if (m.flipSibling) unresolvedInternalMatchId = m.siblingId;
+    }
   }
 
   if (existing) {
@@ -426,10 +443,10 @@ export async function ingestTransaction(userId: number, householdId: number, ite
       data: { categoryId, categorySource, isTransfer, savingsWithdrawal, details, sbCounterparty: counterparty || null },
     });
     if (crossBankMatchId) {
-      await prisma.transaction.update({ where: { id: crossBankMatchId }, data: { isTransfer: true } });
+      await flipPartner(crossBankMatchId);
     }
     if (unresolvedInternalMatchId) {
-      await prisma.transaction.update({ where: { id: unresolvedInternalMatchId }, data: { isTransfer: true } });
+      await flipPartner(unresolvedInternalMatchId);
     }
     return { status: 'reconciled', id: existing.id };
   }
@@ -479,20 +496,14 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // Cross-bank match: only flip isTransfer on the other leg (Monobank side),
   // never its category — see transferDetect.ts's own comment on why.
   if (crossBankMatchId) {
-    await prisma.transaction.update({
-      where: { id: crossBankMatchId },
-      data: { isTransfer: true },
-    });
+    await flipPartner(crossBankMatchId);
   }
   // Same-bank unresolved-account match — same "only flip isTransfer, never
   // touch categoryId" rule, for the same reason: the sibling already
   // resolved to whatever it resolved to, and this fix's whole job is to
   // stop excluding it from being a transfer, not to relitigate its category.
   if (unresolvedInternalMatchId) {
-    await prisma.transaction.update({
-      where: { id: unresolvedInternalMatchId },
-      data: { isTransfer: true },
-    });
+    await flipPartner(unresolvedInternalMatchId);
   }
 
   return { status: 'created', id: created.id };

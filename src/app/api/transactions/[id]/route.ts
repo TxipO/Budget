@@ -30,13 +30,20 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     // household edit another's transaction just by guessing its id.
     const before = await prisma.transaction.findUnique({
       where: { id },
-      select: { source: true, monoMerchant: true, details: true, userId: true, categoryId: true, householdId: true },
+      select: { source: true, monoMerchant: true, details: true, userId: true, categoryId: true, householdId: true, isTransfer: true, savingsWithdrawal: true },
     });
     if (!before || before.householdId !== householdId) {
       return NextResponse.json({ error: 'Транзакцію не знайдено' }, { status: 404 });
     }
     if (!(await isOwnedCategory(householdId, newCategoryId))) return badRequest('Невалідна категорія');
-    if (body.userId && !(await isOwnedUser(householdId, parseInt(body.userId)))) return badRequest('Невалідний користувач');
+    // Owner of a bank-synced row is a fact about the bank account, not
+    // something to edit: body.userId is IGNORED for mono/sparebank rows and the
+    // stored owner kept. Root cause of repeated wrong-user attribution
+    // (proven): the transactions page used to open the edit form without the
+    // row's userId, so the form pre-filled the LOGGED-IN person and this PUT
+    // saved it. Still editable for manual/voice/import rows.
+    const isBankRow = before.source === 'mono' || before.source === 'sparebank';
+    if (!isBankRow && body.userId && !(await isOwnedUser(householdId, parseInt(body.userId)))) return badRequest('Невалідний користувач');
 
     // Truncate to a clean UTC calendar-day boundary — see the matching
     // comment in transactions/route.ts POST. Found during deep-review
@@ -63,27 +70,41 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     const merchantKey = before.userId && categoryChanged ? merchantKeyOf(before) : null;
     const shouldLearnRule = scope === 'merchant' && merchantKey !== null;
 
+    // Any hand edit of a bank-sourced row (mono/sparebank/voice) that the
+    // automation could otherwise silently undo on the next sync or match —
+    // transfer flag, savings direction or text — marks the row 'manual'
+    // (like a one-off category change already did), so reconciliation, the
+    // transfer matchers and merchant sweeps all leave it alone. 'rule' only
+    // when the SOLE change is a category change learned for the merchant.
+    const isBankSourced = before.source === 'mono' || before.source === 'sparebank' || before.source === 'voice';
+    const newDetails = body.details || '';
+    const newIsTransfer = body.isTransfer === true;
+    const newSavingsWithdrawal = body.savingsWithdrawal === true;
+    const handEditedFlagsOrText = isBankSourced &&
+      (newIsTransfer !== before.isTransfer || newSavingsWithdrawal !== before.savingsWithdrawal || newDetails !== before.details);
+    const markManual = handEditedFlagsOrText || (categoryChanged && !shouldLearnRule);
+
     const tx = await prisma.transaction.update({
       where: { id },
       data: {
         date:       truncatedDate,
         categoryId: newCategoryId,
         amount:     roundMoney(parseFloat(body.amount)),
-        details:    body.details || '',
-        userId:     body.userId ? parseInt(body.userId) : null,
-        savingsWithdrawal: body.savingsWithdrawal === true,
+        details:    newDetails,
+        ...(isBankRow ? {} : { userId: body.userId ? parseInt(body.userId) : null }),
+        savingsWithdrawal: newSavingsWithdrawal,
         // Manual "не рахувати в загальний баланс" toggle — see the create
         // route's matching comment and Transaction.isTransfer's schema
         // comment. Editable both ways: turning it back off un-hides a row
         // that was flagged by mistake, no separate "undo" flow needed.
-        isTransfer: body.isTransfer === true,
+        isTransfer: newIsTransfer,
         // As of this write, this row's category IS explained by a learned
         // rule for its merchant (the upsert below makes that literally
         // true) — record that instead of leaving whatever categorySource
         // it had before the correction (often null/stale). A one-off
         // change is 'manual' instead: findSweepSiblings never sweeps those,
         // so a later "apply to all" can't flip the exception back.
-        ...(shouldLearnRule ? { categorySource: 'rule' } : categoryChanged ? { categorySource: 'manual' } : {}),
+        ...(markManual ? { categorySource: 'manual' } : shouldLearnRule ? { categorySource: 'rule' } : {}),
       },
       include: { category: true, user: { select: { id: true, name: true } } },
     });

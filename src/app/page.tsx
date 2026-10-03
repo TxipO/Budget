@@ -814,6 +814,7 @@ export default function Dashboard() {
           onClose={() => { setShowForm(false); setEditing(null); }}
           onSaved={loadStats}
           editId={editing?.id}
+          source={editing?.source}
           initial={editing ? {
             date: editing.date.slice(0, 10),
             type: editing.category.type,

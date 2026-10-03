@@ -63,6 +63,11 @@ model User {
   monoTokenEnc      String? @unique
   monoWebhookSecret String? @unique
   monoAccountId     String?
+  // Monobank own client id (clientInfo.clientId), recorded on connect so the same
+  // physical Monobank client can never be bound to two different users (found
+  // 2026-10: repeated wrong-user attribution). Null for users connected before
+  // this field existed — no backfill (would need a live API call).
+  monoClientId      String? @unique
   monoCategoryRules MonoCategoryRule[]
   // Hard floor for monobank/sync's LOOKBACK_DAYS window, same idea as
   // sbSyncFloor below for SpareBank 1 — sync will never fetch a transaction
@@ -276,6 +281,10 @@ model Transaction {
   // "self-named" | "fallback" | "manual" ("manual" = set by hand as a
   // one-off exception, 2026-09-29 — lib/sweepSiblings.ts never sweeps these
   // along with a merchant-wide correction). See lib/categoryGuess.ts's own comment.
+  // 2026-10: 'manual' is now set on ANY hand edit of a bank-sourced row's
+  // category (scope one), transfer flag, savings direction or text — every
+  // automatic writer (reconcile, transfer matchers, sweeps) skips it. "reversal"
+  // = a Monobank "Скасування." refund paired with its purchase (monoIngest.ts).
   categorySource String?
 
   // Only meaningful when category.type === "savings" — see

@@ -15,15 +15,29 @@ import { prisma } from '@/lib/prisma';
 //
 // Two signals stand in for that missing structural link, and BOTH are
 // required before this ever fires:
-// 1. A content gate (looksLikeTransferIntermediary) — MCC 6012 (Monobank's
-//    own "financial institutions / quasi-cash" code, exactly what a
-//    card-to-card transfer service reports) or a known intermediary name in
-//    the description. Without this gate, amount+date alone on two
-//    unrelated same-day transactions would be a real false-positive risk
-//    given how many transactions this household makes.
+// 1. A content gate on EACH leg (2026-10 tightening — it used to be checked
+//    only on whichever leg happened to be ingesting, so the other leg could
+//    be ANY row of a similar amount; real near-miss: an Airbnb booking #1040
+//    (1380 kr) sat inside the window of the Paysend pair #1029/#1023):
+//    - SpareBank leg: a known intermediary keyword (Paysend/Wise/...) in its
+//      text. Enable Banking has no MCC, so the keyword is the only signal.
+//    - Monobank leg: MCC 6012 (card-to-card / quasi-cash) AND either an
+//      intermediary keyword or a sender name that is the user's OWN name.
+//      MCC 6012 alone is NOT enough: 22 of the household's mono rows carry it
+//      and all but the user's own top-ups are ordinary "Від: <stranger>" P2P.
+//      "Own name" is LEARNED, not compared with User.name: the app's
+//      User.name is a Cyrillic nickname ("Женя") while the bank prints the
+//      legal Latin name ("Від: Romanenko, Yevheniia"), so no string rule can
+//      relate them. Instead a sender counts as the user's own once ANY of
+//      this user's MCC-6012 mono rows from that exact sender is already an
+//      isTransfer row (a prior matched pair or a hand flag) — see
+//      ownMonoSenders. The very first top-up of a brand-new user therefore
+//      needs a keyword or a hand flag; every later one matches by itself.
 // 2. Amount + date alignment on the OTHER bank source, opposite direction,
-//    same user, isTransfer:false — see findCrossBankTransferMatch below for
-//    the actual tolerance/window.
+//    same user, isTransfer:false, never a hand-edited ('manual') row — see
+//    findCrossBankTransferMatch below. Among several qualifying rows the
+//    choice is deterministic: closest amount ratio, then closest date, then
+//    lowest id (it used to be an unordered findFirst).
 //
 // Deliberately does NOT touch either side's category when it fires — unlike
 // the other two mechanisms, which reclassify both legs into a shared
@@ -38,13 +52,41 @@ import { prisma } from '@/lib/prisma';
 // "Враховано деінде" from doing what its name already promised.
 const TRANSFER_INTERMEDIARY_KEYWORDS = /paysend|\bwise\b|transferwise|revolut|western union|moneygram|payoneer|transfergo/i;
 
-// mcc undefined for every SpareBank item (Enable Banking's SbTransaction has
-// no MCC-equivalent field) — the keyword check is the only gate available
-// on that side. Extend the keyword list only once a new intermediary is
-// actually seen live, same convention as monobank.ts's own keyword lists.
-export function looksLikeTransferIntermediary(text: string, mcc?: number): boolean {
-  if (mcc === 6012) return true;
+// Prisma's `not: 'manual'` silently drops NULL categorySource rows too (SQL
+// three-valued logic), so "anything but manual" has to spell the NULL out.
+// Every automatic writer must exclude a hand-edited row from the rows it may
+// flip or rewrite — AND it into the where: `AND: [NOT_MANUAL]`.
+export const NOT_MANUAL = { OR: [{ categorySource: null }, { categorySource: { not: 'manual' } }] };
+
+export function hasIntermediaryKeyword(text: string): boolean {
   return TRANSFER_INTERMEDIARY_KEYWORDS.test(text);
+}
+
+// SpareBank-leg gate (see header). Kept under its old name for the ingest
+// call site; there is no MCC parameter any more — the MCC rule is a
+// mono-only concept and lives in looksLikeMonoTransferLeg.
+export function looksLikeTransferIntermediary(text: string): boolean {
+  return hasIntermediaryKeyword(text);
+}
+
+const normSender = (s: string | null | undefined) => (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+// Senders (normalized monoMerchant) that are provably this user's OWN name —
+// see the header. Reads only isTransfer rows, so a not-yet-paired candidate
+// can never vouch for itself.
+async function ownMonoSenders(userId: number): Promise<Set<string>> {
+  const rows = await prisma.transaction.findMany({
+    where: { userId, source: 'mono', monoMcc: 6012, isTransfer: true, monoMerchant: { not: null } },
+    select: { monoMerchant: true },
+  });
+  return new Set(rows.map(r => normSender(r.monoMerchant)));
+}
+
+// Monobank-leg gate for the row currently being ingested (see header).
+export async function looksLikeMonoTransferLeg(userId: number, description: string, mcc?: number): Promise<boolean> {
+  if (mcc !== 6012) return false;
+  if (hasIntermediaryKeyword(description)) return true;
+  return (await ownMonoSenders(userId)).has(normSender(description));
 }
 
 // Wider than either in-bank mechanism's window (2-3 days) — this crosses two
@@ -63,35 +105,48 @@ const CROSS_BANK_WINDOW_DAYS = 5;
 // ~4% gap. 12% leaves real margin above that for a worse-priced transfer
 // (fixed fees bite harder on smaller amounts) while still requiring a
 // genuine order-of-magnitude match, not just "some income happened that
-// week" — combined with the content gate above, coincidental false
-// positives would need an unrelated transaction to ALSO name a known
-// transfer service, which real purchases essentially never do.
+// week" — combined with the per-leg content gates above, coincidental false
+// positives would need an unrelated transaction to ALSO carry the signals.
 const CROSS_BANK_AMOUNT_TOLERANCE = 0.12;
 
+const DAY_MS = 24 * 3600 * 1000;
+
+// ingestSource = the leg being ingested NOW (already passed its own gate in
+// the caller); the partner is on the other bank and must pass THAT bank's
+// gate here.
 export async function findCrossBankTransferMatch(
   userId: number,
-  excludeSource: 'mono' | 'sparebank',
+  ingestSource: 'mono' | 'sparebank',
   txType: 'income' | 'expense',
   amount: number,
   date: Date,
 ): Promise<number | null> {
   const oppositeType = txType === 'income' ? 'expense' : 'income';
-  const windowStart = new Date(date.getTime() - CROSS_BANK_WINDOW_DAYS * 24 * 3600 * 1000);
-  const windowEnd = new Date(date.getTime() + CROSS_BANK_WINDOW_DAYS * 24 * 3600 * 1000);
-  const lo = amount * (1 - CROSS_BANK_AMOUNT_TOLERANCE);
-  const hi = amount * (1 + CROSS_BANK_AMOUNT_TOLERANCE);
-  const match = await prisma.transaction.findFirst({
+  const partnerIsMono = ingestSource === 'sparebank';
+  const candidates = await prisma.transaction.findMany({
     where: {
       userId,
-      source: excludeSource === 'mono' ? 'sparebank' : 'mono',
+      source: partnerIsMono ? 'mono' : 'sparebank',
+      ...(partnerIsMono ? { monoMcc: 6012 } : {}),
       isTransfer: false,
-      amount: { gte: lo, lte: hi },
-      date: { gte: windowStart, lte: windowEnd },
+      AND: [NOT_MANUAL],
+      amount: { gte: amount * (1 - CROSS_BANK_AMOUNT_TOLERANCE), lte: amount * (1 + CROSS_BANK_AMOUNT_TOLERANCE) },
+      date: { gte: new Date(date.getTime() - CROSS_BANK_WINDOW_DAYS * DAY_MS), lte: new Date(date.getTime() + CROSS_BANK_WINDOW_DAYS * DAY_MS) },
       category: { type: oppositeType },
     },
-    select: { id: true },
+    select: { id: true, amount: true, date: true, details: true, monoMerchant: true, sbCounterparty: true },
   });
-  return match?.id ?? null;
+  if (candidates.length === 0) return null;
+  const own = partnerIsMono ? await ownMonoSenders(userId) : null;
+  const qualifying = candidates.filter(c => partnerIsMono
+    ? hasIntermediaryKeyword(`${c.monoMerchant ?? ''} ${c.details}`) || own!.has(normSender(c.monoMerchant))
+    : hasIntermediaryKeyword(`${c.details} ${c.sbCounterparty ?? ''}`));
+  if (qualifying.length === 0) return null;
+  const ratio = (c: { amount: number }) => Math.abs(Math.log(c.amount / amount));
+  qualifying.sort((a, b) => ratio(a) - ratio(b)
+    || Math.abs(a.date.getTime() - date.getTime()) - Math.abs(b.date.getTime() - date.getTime())
+    || a.id - b.id);
+  return qualifying[0].id;
 }
 
 // Fourth variant, same family as the two above — a same-BANK, same-person
@@ -133,25 +188,59 @@ export function looksLikeUnresolvedInternalTransfer(text: string): boolean {
 // could appear on an unrelated real purchase.
 const SAME_BANK_TRANSFER_WINDOW_DAYS = 3;
 
+export interface UnresolvedInternalMatch {
+  siblingId: number;
+  // Which legs to flip to isTransfer. Never both when one of them is the
+  // counted savings-pool leg (2026-10, found live on the 5 kr pair #992/#994:
+  // flipping BOTH made a real pool withdrawal vanish). A pair must end with
+  // exactly one counted pool leg, the same shape the account-resolved path
+  // (findSavingsTransferMirror) produces.
+  flipSelf: boolean;
+  flipSibling: boolean;
+}
+
+// selfCategoryId: the category the row being ingested resolved to — decides
+// whether IT is the counted pool leg. A "pool leg" is a row filed under a
+// category some SparebankAccount of this user is mapped to
+// (SparebankAccount.categoryId), the same explicit fact the account-resolved
+// path uses. Never matches a 'manual' sibling.
 export async function findUnresolvedInternalTransferMatch(
   userId: number,
   amount: number,
   date: Date,
+  selfCategoryId: number,
   excludeId?: number,
-): Promise<number | null> {
-  const windowStart = new Date(date.getTime() - SAME_BANK_TRANSFER_WINDOW_DAYS * 24 * 3600 * 1000);
-  const windowEnd = new Date(date.getTime() + SAME_BANK_TRANSFER_WINDOW_DAYS * 24 * 3600 * 1000);
-  const match = await prisma.transaction.findFirst({
+): Promise<UnresolvedInternalMatch | null> {
+  const windowStart = new Date(date.getTime() - SAME_BANK_TRANSFER_WINDOW_DAYS * DAY_MS);
+  const windowEnd = new Date(date.getTime() + SAME_BANK_TRANSFER_WINDOW_DAYS * DAY_MS);
+  const candidates = await prisma.transaction.findMany({
     where: {
       userId,
       source: 'sparebank',
       isTransfer: false,
+      AND: [NOT_MANUAL],
       amount,
       date: { gte: windowStart, lte: windowEnd },
       details: { contains: 'Overførsel mellom egne konti', mode: 'insensitive' },
       ...(excludeId !== undefined ? { id: { not: excludeId } } : {}),
     },
-    select: { id: true },
+    select: { id: true, date: true, categoryId: true },
   });
-  return match?.id ?? null;
+  if (candidates.length === 0) return null;
+  // Deterministic: closest date, then lowest id (was an unordered findFirst).
+  candidates.sort((a, b) => Math.abs(a.date.getTime() - date.getTime()) - Math.abs(b.date.getTime() - date.getTime()) || a.id - b.id);
+  const sibling = candidates[0];
+
+  const poolRows = await prisma.sparebankAccount.findMany({ where: { userId, categoryId: { not: null } }, select: { categoryId: true } });
+  const poolIds = new Set(poolRows.map(r => r.categoryId));
+  const siblingIsPool = poolIds.has(sibling.categoryId);
+  const selfIsPool = poolIds.has(selfCategoryId);
+  // The pool leg stays counted. Both in a pool (odd setup): the already-
+  // stored sibling stays counted, the later leg is the excluded one — same
+  // "second leg to sync is excluded" rule as the account-resolved path.
+  return {
+    siblingId: sibling.id,
+    flipSelf: !(selfIsPool && !siblingIsPool),
+    flipSibling: !siblingIsPool,
+  };
 }

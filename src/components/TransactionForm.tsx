@@ -13,6 +13,10 @@ interface Props {
   onSaved: () => void;
   initial?: Partial<TxForm>;
   editId?: number;
+  // The edited row's Transaction.source. A bank-synced row (mono/sparebank)
+  // belongs to whoever owns that bank account — the owner is shown but locked,
+  // and the server ignores a userId sent for it anyway.
+  source?: string;
 }
 
 interface TxForm {
@@ -41,7 +45,8 @@ const today = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-export default function TransactionForm({ onClose, onSaved, initial, editId }: Props) {
+export default function TransactionForm({ onClose, onSaved, initial, editId, source }: Props) {
+  const ownerLocked = !!editId && (source === 'mono' || source === 'sparebank');
   const [form, setForm] = useState<TxForm>({
     date: today(), type: 'expense', categoryId: '', amount: '',
     details: '', userId: '', savingsWithdrawal: false, isTransfer: false, ...initial,
@@ -70,13 +75,13 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
   }, []);
 
   useEffect(() => {
-    if (initial?.userId) return; // keep original user when editing
+    if (initial?.userId || editId) return; // keep original user when editing — never pre-fill the logged-in person onto an existing row
     const currentUser = localStorage.getItem('currentUser');
     if (currentUser && users.length) {
       const u = users.find(u => u.name === currentUser);
       if (u) setForm(f => ({ ...f, userId: String(u.id) }));
     }
-  }, [users, initial?.userId]);
+  }, [users, initial?.userId, editId]);
 
   const filteredCats = cats.filter(c => c.type === form.type);
 
@@ -388,10 +393,14 @@ export default function TransactionForm({ onClose, onSaved, initial, editId }: P
                 className="input-field"
                 value={form.userId}
                 onChange={e => setForm(f => ({ ...f, userId: e.target.value }))}
+                disabled={ownerLocked}
               >
                 <option value="">— не вказано —</option>
                 {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
+              {ownerLocked && (
+                <p style={{ fontSize: 11, color: '#64748B', marginTop: 6 }}>з банку — власник рахунку</p>
+              )}
             </div>
           )}
 

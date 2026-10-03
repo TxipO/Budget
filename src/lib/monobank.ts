@@ -53,6 +53,17 @@ export interface MonoClientInfo {
   accounts: MonoAccount[];
 }
 
+// One physical Monobank client must never be bound to two users: statement
+// ids are global, so the second user's ingest would file the first person's
+// transactions under the wrong owner (the repeated wrong-user attribution,
+// 2026-10). Returns the user id already holding this clientId, or null.
+// Users connected before the column existed have monoClientId null and are
+// simply not checked (no backfill — it would need a live API call per user).
+export async function findMonoClientConflict(clientId: string, userId: number): Promise<number | null> {
+  const other = await prisma.user.findFirst({ where: { monoClientId: clientId, id: { not: userId } }, select: { id: true } });
+  return other?.id ?? null;
+}
+
 export function getClientInfo(token: string): Promise<MonoClientInfo> {
   return call('/personal/client-info', token);
 }

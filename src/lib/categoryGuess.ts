@@ -106,7 +106,7 @@ export type CategorySource = 'rule' | 'brand' | 'mcc' | 'keyword' | 'llm' | 'sel
 // uses one chain for two genuinely different real purposes (rare, but
 // real — e.g. a gas-station brand that also sells groceries), this stays
 // silent rather than guess wrong; the next tier gets a turn instead.
-async function guessCategoryByBrand(userId: number, merchantKey: string): Promise<number | null> {
+async function guessCategoryByBrand(userId: number, merchantKey: string): Promise<{ categoryId: number; isTransfer: boolean } | null> {
   const brand = merchantKey.split(' ')[0];
   // Length guard — a short first "word" ("nr", "kr", a lone digit) is far
   // more likely to coincidentally prefix-match something unrelated than to
@@ -114,7 +114,7 @@ async function guessCategoryByBrand(userId: number, merchantKey: string): Promis
   if (brand.length < 3) return null;
   const candidates = await prisma.monoCategoryRule.findMany({
     where: { userId, merchantKey: { startsWith: brand } }, // cheap DB-side prefilter
-    select: { merchantKey: true, categoryId: true, category: { select: { isActive: true } } },
+    select: { merchantKey: true, categoryId: true, category: { select: { isActive: true, type: true } } },
   });
   // The DB prefilter is a raw string startsWith, which would also match an
   // unrelated key that merely happens to start with the same characters
@@ -123,7 +123,7 @@ async function guessCategoryByBrand(userId: number, merchantKey: string): Promis
   // exactly, same word-boundary rule "joker balestrand" was built to need.
   const matches = candidates.filter(c => c.category.isActive && c.merchantKey.split(' ')[0] === brand);
   const categoryIds = new Set(matches.map(m => m.categoryId));
-  return categoryIds.size === 1 ? matches[0].categoryId : null;
+  return categoryIds.size === 1 ? { categoryId: matches[0].categoryId, isTransfer: matches[0].category.type === 'transfer' } : null;
 }
 
 // Extracted out of the Monobank webhook route (was resolveCategoryId there) —
@@ -132,7 +132,14 @@ async function guessCategoryByBrand(userId: number, merchantKey: string): Promis
 // MCC, only free text). Two callers now; sharing this instead of duplicating
 // it is the fix for the "same concept, two independent implementations" bug
 // class this project's /fullreview already watches for.
-export async function guessCategoryId(householdId: number, userId: number, txType: 'expense' | 'income', merchantKey: string, mcc: number | undefined): Promise<{ categoryId: number; source: CategorySource }> {
+//
+// isTransfer (2026-10): true when the resolved category is of type 'transfer'.
+// Only the rule/brand tiers can land there (every other tier picks from
+// expense/income categories only) — a user who teaches "this merchant ->
+// Перекази" expects the row to be excluded from totals, but the rule only
+// stored a category, so ingest left isTransfer=false (real: rules -> "Перекази"
+// rows still counted). Callers OR this into the row's own isTransfer.
+export async function guessCategoryId(householdId: number, userId: number, txType: 'expense' | 'income', merchantKey: string, mcc: number | undefined): Promise<{ categoryId: number; source: CategorySource; isTransfer: boolean }> {
   // 1. Learned rule from a manual correction — highest priority, no guessing.
   // Checked against the category's current isActive, not just that the rule
   // exists — a category can be soft-deleted after a rule was learned against
@@ -143,9 +150,9 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
   // during deep-review 2026-07-11.
   const rule = await prisma.monoCategoryRule.findUnique({
     where: { userId_merchantKey: { userId, merchantKey } },
-    select: { categoryId: true, category: { select: { isActive: true } } },
+    select: { categoryId: true, category: { select: { isActive: true, type: true } } },
   });
-  if (rule?.category.isActive) return { categoryId: rule.categoryId, source: 'rule' };
+  if (rule?.category.isActive) return { categoryId: rule.categoryId, source: 'rule', isTransfer: rule.category.type === 'transfer' };
 
   // 1b. Brand-key guess — see guessCategoryByBrand's own comment. Still part
   // of the "rule" family (reuses only this user's own taught corrections,
@@ -153,7 +160,7 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
   // MCC/keyword/LLM — a derived signal from the user's own history beats a
   // generic ISO code or global keyword list.
   const brandGuess = await guessCategoryByBrand(userId, merchantKey);
-  if (brandGuess !== null) return { categoryId: brandGuess, source: 'brand' };
+  if (brandGuess !== null) return { categoryId: brandGuess.categoryId, source: 'brand', isTransfer: brandGuess.isTransfer };
 
   // Tiers 2-6 (MCC guess, keyword guess, LLM guess, safe fallback, last
   // resort) are all just "find an active category of this type by name"
@@ -166,19 +173,19 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
   // 2. MCC guess — free, no external call (standard ISO 18245 codes). Skipped
   // entirely when mcc is undefined (voice transcripts have none).
   const mccGuess = guessCategoryByMcc(mcc);
-  if (mccGuess && idByName.has(mccGuess)) return { categoryId: idByName.get(mccGuess)!, source: 'mcc' };
+  if (mccGuess && idByName.has(mccGuess)) return { categoryId: idByName.get(mccGuess)!, source: 'mcc', isTransfer: false };
 
   // 3. Keyword guess — also free. Works against a merchant description
   // (Monobank) or a voice transcript (voice logging) equally well.
   const keywordGuess = guessCategoryByKeyword(merchantKey);
-  if (keywordGuess && idByName.has(keywordGuess)) return { categoryId: idByName.get(keywordGuess)!, source: 'keyword' };
+  if (keywordGuess && idByName.has(keywordGuess)) return { categoryId: idByName.get(keywordGuess)!, source: 'keyword', isTransfer: false };
 
   // 4. LLM guess — only reached once every free/instant tier above has
   // already refused. Handles merchant text no keyword list will ever fully
   // cover (foreign-language stores, one-off purchases, truncated terminal
   // codes) without hardcoding an ever-growing list of brand names.
   const llmGuess = await guessCategoryByLLM(merchantKey, categories.map(c => c.name));
-  if (llmGuess && idByName.has(llmGuess)) return { categoryId: idByName.get(llmGuess)!, source: 'llm' };
+  if (llmGuess && idByName.has(llmGuess)) return { categoryId: idByName.get(llmGuess)!, source: 'llm', isTransfer: false };
 
   // 5. Self-named category — for unclear INCOME only, if the household has
   // a category literally named after the account that actually received
@@ -194,16 +201,16 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
   // principled version of what that rule was trying to do.
   if (txType === 'income') {
     const owner = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
-    if (owner?.name && idByName.has(owner.name)) return { categoryId: idByName.get(owner.name)!, source: 'self-named' };
+    if (owner?.name && idByName.has(owner.name)) return { categoryId: idByName.get(owner.name)!, source: 'self-named', isTransfer: false };
   }
 
   // 6. Safe fallback — a bucket that always exists for the type.
   const fallbackName = txType === 'expense' ? 'Незрозуміло' : 'Додаткове';
-  if (idByName.has(fallbackName)) return { categoryId: idByName.get(fallbackName)!, source: 'fallback' };
+  if (idByName.has(fallbackName)) return { categoryId: idByName.get(fallbackName)!, source: 'fallback', isTransfer: false };
 
   // 7. Absolute last resort — any active category of the right type, so a
   // write never crashes even if the expected fallback category was renamed
   // or deleted.
-  if (categories[0]) return { categoryId: categories[0].id, source: 'fallback' };
+  if (categories[0]) return { categoryId: categories[0].id, source: 'fallback', isTransfer: false };
   throw new Error(`No active ${txType} category exists to file a transaction under`);
 }

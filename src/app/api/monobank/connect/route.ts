@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isPositiveInt, isValidDate } from '@/lib/validate';
 import { encrypt } from '@/lib/crypto';
-import { getClientInfo, setWebhook, getStatement, getAppOrigin, MonobankError } from '@/lib/monobank';
+import { getClientInfo, setWebhook, getStatement, getAppOrigin, findMonoClientConflict, MonobankError } from '@/lib/monobank';
 import { ingestStatementItem, MonoStatementItem } from '@/lib/monoIngest';
 import { requireHouseholdId } from '@/lib/household';
 
@@ -55,6 +55,13 @@ export async function POST(req: NextRequest) {
     const account = clientInfo.accounts.find(a => a.type === 'black') ?? clientInfo.accounts[0];
     if (!account) return badRequest('У цього токена немає жодного рахунку');
 
+    // Refuse a token whose Monobank client is already bound to a DIFFERENT
+    // user — before registering any webhook (nothing to undo). See
+    // findMonoClientConflict for why.
+    if (clientInfo.clientId && await findMonoClientConflict(clientInfo.clientId, Number(userId)) !== null) {
+      return badRequest('Цей акаунт Monobank уже підключений до іншого користувача');
+    }
+
     // Generated before persisting anything — if webhook registration below
     // fails, nothing gets written to the DB, so a failed connect attempt
     // never leaves a half-connected user behind.
@@ -76,6 +83,7 @@ export async function POST(req: NextRequest) {
         monoTokenEnc: encrypt(trimmedToken),
         monoWebhookSecret: webhookSecret,
         monoAccountId: account.id,
+        monoClientId: clientInfo.clientId || null,
       },
     });
 

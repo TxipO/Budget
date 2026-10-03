@@ -607,6 +607,7 @@ export default function TransactionsPage() {
           onClose={() => { setShowForm(false); setEditing(null); }}
           onSaved={load}
           editId={editing?.id}
+          source={editing?.source}
           initial={editing ? {
             date: editing.date.slice(0, 10),
             type: editing.category.type,
