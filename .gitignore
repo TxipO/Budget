@@ -23,3 +23,6 @@ dist/
 # Impeccable detector cache (transient)
 .impeccable/hook.cache.json
 graphify-out/
+
+# DB backups (contain financial data)
+backups/
