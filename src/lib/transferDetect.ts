@@ -244,3 +244,59 @@ export async function findUnresolvedInternalTransferMatch(
     flipSibling: !siblingIsPool,
   };
 }
+
+// Fee for a confirmed cross-bank pair. Both legs are excluded from totals
+// (isTransfer), so the intermediary's cut — outgoing NOK minus incoming NOK —
+// would be counted nowhere (real: Paysend 1650 out / 1585.56 in = 64.44).
+// Booked as ONE ordinary expense row, source 'fee'. Nothing in lists, sweeps
+// (SWEEPABLE_SOURCES) or exports special-cases an unknown source; budgetRules
+// treats it like any expense.
+//
+// Category: the Excel export template has exactly 13 expense rows, all used,
+// so no new category is created — first existing active expense category of
+// the household from this list (same 'Незрозуміло' fallback as categoryGuess.ts).
+const FEE_CATEGORY_NAMES = ['Комісії', 'Кредит', 'Незрозуміло'];
+const MAX_FEE_RATIO = CROSS_BANK_AMOUNT_TOLERANCE;
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// Call after BOTH legs are persisted and flipped. Safe to call repeatedly and
+// from either ingest order: idempotent via the `(#<outId> →` marker in details.
+// Returns the created fee row id, or null (nothing to do / already booked).
+export async function ensureCrossBankFee(legAId: number, legBId: number): Promise<number | null> {
+  const legs = await prisma.transaction.findMany({
+    where: { id: { in: [legAId, legBId] } },
+    select: { id: true, date: true, amount: true, details: true, monoMerchant: true, sbCounterparty: true, userId: true, householdId: true, isTransfer: true, category: { select: { type: true } } },
+  });
+  const out = legs.find(l => l.category.type === 'expense');
+  const inc = legs.find(l => l.category.type === 'income');
+  // Both legs must really be excluded: a hand-edited partner is never flipped,
+  // and then there is no pair to charge a fee for.
+  if (legs.length !== 2 || !out || !inc || !out.isTransfer || !inc.isTransfer || out.householdId === null) return null;
+  const fee = round2(out.amount - inc.amount);
+  if (fee <= 0 || fee > out.amount * MAX_FEE_RATIO) return null;
+
+  const marker = `(#${out.id} →`;
+  const existing = await prisma.transaction.findFirst({ where: { householdId: out.householdId, source: 'fee', details: { contains: marker } }, select: { id: true } });
+  if (existing) return null;
+
+  const cats = await prisma.category.findMany({ where: { householdId: out.householdId, type: 'expense', isActive: true, name: { in: FEE_CATEGORY_NAMES } }, select: { id: true, name: true } });
+  const cat = FEE_CATEGORY_NAMES.map(n => cats.find(c => c.name === n)).find(Boolean);
+  if (!cat) return null;
+
+  const word = TRANSFER_INTERMEDIARY_KEYWORDS.exec(legs.map(l => `${l.details} ${l.sbCounterparty ?? ''} ${l.monoMerchant ?? ''}`).join(' '))?.[0];
+  const created = await prisma.transaction.create({
+    data: {
+      householdId: out.householdId,
+      date: out.date,
+      categoryId: cat.id,
+      categorySource: 'fee',
+      amount: fee,
+      details: `Комісія ${word ? word.toUpperCase() : 'переказу'} ${marker} #${inc.id})`,
+      userId: out.userId,
+      source: 'fee',
+    },
+    select: { id: true },
+  });
+  return created.id;
+}

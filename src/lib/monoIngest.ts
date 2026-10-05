@@ -4,7 +4,7 @@ import { getCachedExchangeRate } from '@/lib/monobank';
 import { merchantKey as toMerchantKey } from '@/lib/merchantKey';
 import { guessCategoryId as resolveCategoryId } from '@/lib/categoryGuess';
 import { numericForCurrency } from '@/lib/currencies';
-import { looksLikeMonoTransferLeg, findCrossBankTransferMatch, NOT_MANUAL } from '@/lib/transferDetect';
+import { looksLikeMonoTransferLeg, findCrossBankTransferMatch, ensureCrossBankFee, NOT_MANUAL } from '@/lib/transferDetect';
 
 export interface MonoStatementItem {
   id: string;
@@ -297,8 +297,9 @@ export async function ingestStatementItem(userId: number, householdId: number, i
     },
   });
 
+  let createdId: number;
   try {
-    await prisma.transaction.create({
+    createdId = (await prisma.transaction.create({
       data: {
         householdId,
         date,
@@ -318,7 +319,8 @@ export async function ingestStatementItem(userId: number, householdId: number, i
         savingsWithdrawal,
         isTransfer,
       },
-    });
+      select: { id: true },
+    })).id;
   } catch (e: any) {
     // The webhook and a manual /monobank/sync (or two overlapping syncs) can
     // both reach this function for the same never-before-seen item — the
@@ -367,6 +369,7 @@ export async function ingestStatementItem(userId: number, householdId: number, i
       where: { id: crossBankMatchId, AND: [NOT_MANUAL] },
       data: { isTransfer: true },
     });
+    await ensureCrossBankFee(createdId, crossBankMatchId);
   }
 
   return 'created';

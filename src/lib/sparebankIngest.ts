@@ -5,7 +5,7 @@ import { SbTransaction, SbAccountId } from '@/lib/enableBanking';
 import { getCachedExchangeRate, ISO_4217 } from '@/lib/monobank';
 import { merchantKey as toMerchantKey } from '@/lib/merchantKey';
 import { numericForCurrency } from '@/lib/currencies';
-import { looksLikeTransferIntermediary, findCrossBankTransferMatch, looksLikeUnresolvedInternalTransfer, findUnresolvedInternalTransferMatch, NOT_MANUAL } from '@/lib/transferDetect';
+import { looksLikeTransferIntermediary, findCrossBankTransferMatch, ensureCrossBankFee, looksLikeUnresolvedInternalTransfer, findUnresolvedInternalTransferMatch, NOT_MANUAL } from '@/lib/transferDetect';
 
 // See monoIngest.ts's own comment on the 2026-08-24 rename/retype from
 // 'Переказ між рахунками' (type 'savings') to a dedicated 'transfer' type.
@@ -457,6 +457,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     });
     if (crossBankMatchId) {
       await flipPartner(crossBankMatchId);
+      await ensureCrossBankFee(existing.id, crossBankMatchId);
     }
     if (unresolvedInternalMatchId) {
       await flipPartner(unresolvedInternalMatchId);
@@ -511,6 +512,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // never its category — see transferDetect.ts's own comment on why.
   if (crossBankMatchId) {
     await flipPartner(crossBankMatchId);
+    await ensureCrossBankFee(created.id, crossBankMatchId);
   }
   // Same-bank unresolved-account match — same "only flip isTransfer, never
   // touch categoryId" rule, for the same reason: the sibling already
