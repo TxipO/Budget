@@ -5,7 +5,7 @@ import { SbTransaction, SbAccountId } from '@/lib/enableBanking';
 import { getCachedExchangeRate, ISO_4217 } from '@/lib/monobank';
 import { merchantKey as toMerchantKey } from '@/lib/merchantKey';
 import { numericForCurrency } from '@/lib/currencies';
-import { looksLikeTransferIntermediary, findCrossBankTransferMatch, ensureCrossBankFee, looksLikeUnresolvedInternalTransfer, findUnresolvedInternalTransferMatch, NOT_MANUAL } from '@/lib/transferDetect';
+import { looksLikeTransferIntermediary, findCrossBankTransferMatch, ensureCrossBankFee, looksLikeUnresolvedInternalTransfer, findUnresolvedInternalTransferMatch, poolCategoryIdOf, NOT_MANUAL } from '@/lib/transferDetect';
 
 // See monoIngest.ts's own comment on the 2026-08-24 rename/retype from
 // 'Переказ між рахунками' (type 'savings') to a dedicated 'transfer' type.
@@ -195,6 +195,64 @@ async function findSavingsTransferMirror(userId: number, categoryId: number, isW
   return match?.id ?? null;
 }
 
+// A same-bank transfer whose account numbers never resolve (placeholder text
+// "Overførsel mellom egne konti...") between the pool account and another of
+// the user's own accounts. FOUND LIVE 2026-10-10/11: three Подушка->Основний
+// transfers (500, 500, 200) went through guessCategoryId — the LLM filed the
+// pool legs under "Враховано деінде" (isTransfer) and the Основний legs
+// became income "Женя" (isTransfer) — so BOTH legs were excluded and the pool
+// never went down by 1200; reconcile skipped them because they were already
+// isTransfer. The syncing account is always known, so no guessing is needed:
+//  - self is a pool account -> this row IS the counted pool leg (DBIT =
+//    withdrawal, CRDT = deposit) and the same-day opposite leg on the user's
+//    other own account is its excluded mirror;
+//  - self is NOT a pool and the pool leg is already stored and counted -> this
+//    row is the excluded mirror, filed in the same pool category with the
+//    same savingsWithdrawal (the #1146/#1153 convention).
+// The mirror is found by KEY (account + date + opposite direction + amount +
+// occurrence index), exactly like findSavingsTransferMirror, so several equal
+// amounts on one day pair 1:1 in either ingest order. Returns null when no pool
+// is involved — the caller then keeps the old guess + sibling-match behaviour.
+interface UnresolvedPoolLeg { categoryId: number; savingsWithdrawal: boolean; isTransfer: boolean; mirrorId: number | null }
+
+async function resolveUnresolvedPoolLeg(userId: number, selfAccountId: number, indicator: string, dateStr: string, amountOriginal: number, occurrence: number): Promise<UnresolvedPoolLeg | null> {
+  const accts = await prisma.sparebankAccount.findMany({
+    where: { userId },
+    select: { id: true, categoryId: true, category: { select: { isActive: true, type: true } } },
+  });
+  const poolOf = (a: (typeof accts)[number]) => (a.categoryId && a.category?.isActive && a.category.type === 'savings' ? a.categoryId : null);
+  const self = accts.find(a => a.id === selfAccountId);
+  const selfPool = self ? poolOf(self) : null;
+  const opposite = indicator === 'CRDT' ? 'DBIT' : 'CRDT';
+  // Self pool -> its mirror lives on a NON-pool account; self non-pool -> the
+  // counted leg lives on a pool account. (Two pools: not modeled, see the
+  // resolved path's own note.)
+  const others = accts.filter(a => a.id !== selfAccountId && (selfPool !== null ? poolOf(a) === null : poolOf(a) !== null));
+  const keys = others.map(a => `${buildSbContentKeyBase(a.id, dateStr, opposite, amountOriginal)}#${occurrence}`);
+  if (selfPool !== null) {
+    const mirror = keys.length ? await prisma.transaction.findFirst({
+      where: { userId, source: 'sparebank', sbTransactionId: { in: keys }, AND: [NOT_MANUAL] },
+      select: { id: true },
+    }) : null;
+    return { categoryId: selfPool, savingsWithdrawal: indicator === 'DBIT', isTransfer: false, mirrorId: mirror?.id ?? null };
+  }
+  if (keys.length === 0) return null;
+  const poolLeg = await prisma.transaction.findFirst({
+    where: { userId, source: 'sparebank', sbTransactionId: { in: keys }, isTransfer: false, categoryId: { in: others.map(poolOf).filter((c): c is number => c !== null) } },
+    select: { categoryId: true, savingsWithdrawal: true },
+  });
+  return poolLeg ? { categoryId: poolLeg.categoryId, savingsWithdrawal: poolLeg.savingsWithdrawal, isTransfer: true, mirrorId: null } : null;
+}
+
+// Files the stored mirror leg into the pool category as the excluded half.
+// Idempotent (no write when already so) and never touches a hand-edited row.
+async function mirrorPoolSibling(id: number, categoryId: number, savingsWithdrawal: boolean): Promise<void> {
+  await prisma.transaction.updateMany({
+    where: { id, AND: [NOT_MANUAL], OR: [{ categoryId: { not: categoryId } }, { isTransfer: false }, { savingsWithdrawal: !savingsWithdrawal }] },
+    data: { categoryId, categorySource: null, savingsWithdrawal, isTransfer: true },
+  });
+}
+
 // The only way a partner leg is ever flipped to isTransfer. The matchers
 // already exclude 'manual' rows; the guard here also covers a row edited by
 // hand in the instant between the match and this write.
@@ -341,8 +399,18 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // path rewrites category/isTransfer/direction/details, i.e. exactly what a
   // person may have just fixed, and it re-fires on every sync inside the
   // overlap window. Treated as a plain duplicate.
-  const needsReconciliation = existing !== null && existing.categorySource !== 'manual' && !existing.isTransfer &&
-    (transferAccountId !== null || looksLikeUnresolvedInternalTransfer(details));
+  //
+  // 2026-10: a placeholder row whose pool leg is now decidable (see
+  // resolveUnresolvedPoolLeg) is reconsidered EVEN when it is already
+  // isTransfer — the live bug left both legs excluded, which the check above
+  // would never revisit. Safe against the "re-processed and corrupted" class:
+  // that branch never reaches guessCategoryId/LLM, and the 'changed' check
+  // below still turns an unchanged result into a plain duplicate.
+  const unresolvedPoolLeg = transferAccountId === null && looksLikeUnresolvedInternalTransfer(details)
+    ? await resolveUnresolvedPoolLeg(userId, selfAccountId, item.credit_debit_indicator, dateStr, amountOriginal, occurrence)
+    : null;
+  const needsReconciliation = existing !== null && existing.categorySource !== 'manual' &&
+    (unresolvedPoolLeg !== null || (!existing.isTransfer && (transferAccountId !== null || looksLikeUnresolvedInternalTransfer(details))));
   if (existing && !needsReconciliation) return { status: 'skipped_duplicate' };
 
   let isTransfer: boolean;
@@ -395,6 +463,11 @@ export async function ingestTransaction(userId: number, householdId: number, ite
         select: { id: true },
       })).id;
     }
+  } else if (unresolvedPoolLeg) {
+    // Pool placeholder transfer — decided structurally, never guessed.
+    categoryId = unresolvedPoolLeg.categoryId;
+    isTransfer = unresolvedPoolLeg.isTransfer;
+    savingsWithdrawal = unresolvedPoolLeg.savingsWithdrawal;
   } else {
     // A learned rule can resolve to a 'transfer'-type category — then the row
     // must be excluded from totals too (guessCategoryId's own isTransfer).
@@ -410,7 +483,20 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   let crossBankMatchId: number | null = null;
   if (!isTransfer && looksLikeTransferIntermediary(merchantKey)) {
     crossBankMatchId = await findCrossBankTransferMatch(userId, 'sparebank', txType, amount, date);
-    if (crossBankMatchId) isTransfer = true;
+    if (crossBankMatchId) {
+      // The outgoing leg on a POOL account is the real pool withdrawal: it
+      // stays counted in the pool category and the incoming Monobank leg is the
+      // excluded one (settleCrossBankPartner does the same from the Mono side).
+      // Ordinary account -> both legs excluded, as before.
+      const poolCategoryId = txType === 'expense' ? await poolCategoryIdOf(selfAccountId) : null;
+      if (poolCategoryId !== null) {
+        categoryId = poolCategoryId;
+        categorySource = null;
+        savingsWithdrawal = true;
+      } else {
+        isTransfer = true;
+      }
+    }
   }
 
   // Same-bank internal transfer whose account numbers never arrived at all
@@ -423,7 +509,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // The sibling is NEVER flipped when it is the counted savings-pool leg (and
   // this row isn't flipped when IT is) — see findUnresolvedInternalTransferMatch.
   let unresolvedInternalMatchId: number | null = null;
-  if (!isTransfer && looksLikeUnresolvedInternalTransfer(details)) {
+  if (!unresolvedPoolLeg && !isTransfer && looksLikeUnresolvedInternalTransfer(details)) {
     const m = await findUnresolvedInternalTransferMatch(userId, amount, date, categoryId, existing?.id);
     if (m) {
       if (m.flipSelf) isTransfer = true;
@@ -441,6 +527,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     // correctly-resolved row get re-processed and corrupted the next day
     // (see findSavingsTransferMirror's own comment on the exact incident).
     // A no-op recompute now behaves exactly like an ordinary duplicate hit.
+    if (unresolvedPoolLeg?.mirrorId) await mirrorPoolSibling(unresolvedPoolLeg.mirrorId, categoryId, savingsWithdrawal);
     const changed = existing.categoryId !== categoryId || existing.isTransfer !== isTransfer || existing.savingsWithdrawal !== savingsWithdrawal;
     if (!changed) return { status: 'skipped_duplicate' };
     await prisma.transaction.update({
@@ -521,6 +608,8 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   if (unresolvedInternalMatchId) {
     await flipPartner(unresolvedInternalMatchId);
   }
+  // Pool placeholder transfer created AFTER its mirror leg was already stored.
+  if (unresolvedPoolLeg?.mirrorId) await mirrorPoolSibling(unresolvedPoolLeg.mirrorId, categoryId, savingsWithdrawal);
 
   return { status: 'created', id: created.id };
 }

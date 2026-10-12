@@ -1,6 +1,6 @@
 import { savingsAmount, isBudgetRelevant } from '@/lib/validate';
 
-export interface SavingsCategoryBalance { name: string; color: string; icon: string; balance: number }
+export interface SavingsCategoryBalance { categoryId: number; name: string; color: string; icon: string; balance: number }
 
 // Running balance PER savings category — "скільки лежить у подушці, скільки
 // в Dual Invest" is a running-total question, not a this-period-flow one,
@@ -26,7 +26,7 @@ export function computeSavingsByCategory(
   for (const t of txs) {
     if (!isBudgetRelevant(t) || t.category.type !== 'savings') continue;
     if (!byCategory[t.categoryId]) {
-      byCategory[t.categoryId] = { name: t.category.name, color: t.category.color, icon: t.category.icon, balance: 0 };
+      byCategory[t.categoryId] = { categoryId: t.categoryId, name: t.category.name, color: t.category.color, icon: t.category.icon, balance: 0 };
     }
     byCategory[t.categoryId].balance += savingsAmount(t);
   }

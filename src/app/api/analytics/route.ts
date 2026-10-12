@@ -39,6 +39,29 @@ export async function GET(req: NextRequest) {
     });
     const savingsByCategory = computeSavingsByCategory(savingsTxs);
 
+    // The bank's own last-fetched balance of every SpareBank account mapped to
+    // one of these pools — shown under the chip as a cross-check against the
+    // app's tracked balance (a drift like the 2026-10 vanished 1 200 kr
+    // withdrawal is then visible at a glance). Stored values only, no bank
+    // call. Summed per pool; the oldest fetch time is reported (honest about
+    // staleness); a pool whose accounts report mixed currencies is skipped.
+    const sbAccounts = await prisma.sparebankAccount.findMany({
+      where: { categoryId: { in: savingsByCategory.map(s => s.categoryId) }, user: { householdId }, balanceAmount: { not: null }, balanceFetchedAt: { not: null } },
+      select: { categoryId: true, balanceAmount: true, balanceCurrency: true, balanceFetchedAt: true },
+    });
+    const bankByCategory = new Map<number, { amount: number; currency: string; fetchedAt: Date } | null>();
+    for (const a of sbAccounts) {
+      const prev = bankByCategory.get(a.categoryId!);
+      const currency = a.balanceCurrency ?? 'NOK';
+      if (prev === null || (prev && prev.currency !== currency)) { bankByCategory.set(a.categoryId!, null); continue; }
+      bankByCategory.set(a.categoryId!, {
+        amount: (prev?.amount ?? 0) + a.balanceAmount!,
+        currency,
+        fetchedAt: prev && prev.fetchedAt < a.balanceFetchedAt! ? prev.fetchedAt : a.balanceFetchedAt!,
+      });
+    }
+    const savingsWithBank = savingsByCategory.map(s => ({ ...s, bank: bankByCategory.get(s.categoryId) ?? null }));
+
     const months = Array.from({ length: 12 }, () => ({
       income: 0, expenses: 0, savings: 0, balance: 0,
     }));
@@ -138,7 +161,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ months, insights, savingsByCategory });
+    return NextResponse.json({ months, insights, savingsByCategory: savingsWithBank });
   } catch (e) {
     console.error('[analytics GET]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

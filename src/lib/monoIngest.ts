@@ -4,7 +4,7 @@ import { getCachedExchangeRate } from '@/lib/monobank';
 import { merchantKey as toMerchantKey } from '@/lib/merchantKey';
 import { guessCategoryId as resolveCategoryId } from '@/lib/categoryGuess';
 import { numericForCurrency } from '@/lib/currencies';
-import { looksLikeMonoTransferLeg, findCrossBankTransferMatch, ensureCrossBankFee, NOT_MANUAL } from '@/lib/transferDetect';
+import { looksLikeMonoTransferLeg, findCrossBankTransferMatch, ensureCrossBankFee, settleCrossBankPartner, NOT_MANUAL } from '@/lib/transferDetect';
 
 export interface MonoStatementItem {
   id: string;
@@ -363,12 +363,11 @@ export async function ingestStatementItem(userId: number, householdId: number, i
     });
   }
   // Cross-bank match: only flip isTransfer on the other leg, never its
-  // category — see transferDetect.ts's own comment on why.
+  // category — see transferDetect.ts's own comment on why. (Exception inside
+  // settleCrossBankPartner: an outgoing leg on a SpareBank pool account
+  // becomes the counted pool withdrawal instead.)
   if (crossBankMatchId) {
-    await prisma.transaction.updateMany({
-      where: { id: crossBankMatchId, AND: [NOT_MANUAL] },
-      data: { isTransfer: true },
-    });
+    await settleCrossBankPartner(crossBankMatchId);
     await ensureCrossBankFee(createdId, crossBankMatchId);
   }
 

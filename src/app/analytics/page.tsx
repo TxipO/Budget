@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, PiggyBank, Wallet } from 'lucide-react';
 import { MONTH_SHORT } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
-import { formatCompact, roundCompact } from '@/lib/currencies';
+import { formatCompact, roundCompact, formatMoney as formatMoneyIn } from '@/lib/currencies';
 import { toast } from '@/lib/toast';
 import CategoryIcon from '@/components/CategoryIcon';
 
@@ -19,12 +19,18 @@ interface MonthData {
 }
 
 interface Insight { text: string; tone: 'good' | 'warn' | 'info' }
-interface SavingsCategoryBalance { name: string; color: string; icon: string; balance: number }
+interface SavingsCategoryBalance { name: string; color: string; icon: string; balance: number; bank: { amount: number; currency: string; fetchedAt: string } | null }
 
 const INSIGHT_STYLE: Record<Insight['tone'], { bg: string; border: string; color: string }> = {
   good: { bg: 'rgba(34,197,94,0.08)',  border: 'rgba(34,197,94,0.2)',  color: '#4ADE80' },
   warn: { bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.2)',  color: '#FCA5A5' },
   info: { bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.2)', color: '#FB923C' },
+};
+
+// "DD.MM" of the UTC calendar day (balanceFetchedAt is a UTC instant).
+const formatDdMm = (iso: string) => {
+  const d = new Date(iso);
+  return `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 };
 
 export default function AnalyticsPage() {
@@ -115,12 +121,9 @@ export default function AnalyticsPage() {
                 {savingsByCategory.map(s => (
                   <div
                     key={s.name}
-                    style={{
-                      display: 'flex', alignItems: 'flex-start', gap: 6, justifyContent: 'space-between',
-                      background: `${s.color}20`, borderRadius: 6,
-                      padding: '5px 9px',
-                    }}
+                    style={{ background: `${s.color}20`, borderRadius: 6, padding: '5px 9px' }}
                   >
+                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5, minWidth: 0 }}>
                       <div style={{ marginTop: 1, flexShrink: 0 }}>
                         <CategoryIcon name={s.icon} color={s.color} size={12} />
@@ -139,6 +142,16 @@ export default function AnalyticsPage() {
                     <span style={{ fontSize: 11, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums', flexShrink: 0, whiteSpace: 'nowrap' }}>
                       {formatMoneySign(s.balance)}
                     </span>
+                   </div>
+                   {s.bank && (
+                    // Secondary line: the bank's own stored balance for the
+                    // account(s) mapped to this pool, in the bank's currency,
+                    // dated by the (UTC) fetch day. Muted micro text (DESIGN.md
+                    // micro 10px), wraps instead of overflowing at 375px.
+                    <div style={{ marginTop: 2, paddingLeft: 17, fontSize: 10, fontWeight: 500, color: 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.35 }}>
+                      з них SpareBank: {formatMoneyIn(s.bank.amount, s.bank.currency)} · {formatDdMm(s.bank.fetchedAt)}
+                    </div>
+                   )}
                   </div>
                 ))}
               </div>

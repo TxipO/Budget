@@ -245,6 +245,42 @@ export async function findUnresolvedInternalTransferMatch(
   };
 }
 
+// The savings category a SpareBank account is mapped to as its tracked pool
+// (SparebankAccount.categoryId, set once in Settings), or null for an ordinary
+// account / an inactive or non-savings mapping. The explicit fact every pool
+// decision in the ingest path is built on.
+export async function poolCategoryIdOf(sparebankAccountId: number): Promise<number | null> {
+  const a = await prisma.sparebankAccount.findUnique({
+    where: { id: sparebankAccountId },
+    select: { categoryId: true, category: { select: { isActive: true, type: true } } },
+  });
+  return a?.categoryId && a.category?.isActive && a.category.type === 'savings' ? a.categoryId : null;
+}
+
+// Flips the partner leg of a freshly matched cross-bank pair (see header).
+// Normally just isTransfer. EXCEPTION (2026-10, same principle as the
+// same-bank pool pair): when the partner is the OUTGOING SpareBank leg and it
+// sits on a pool-mapped account, that row is the real pool withdrawal — the
+// pool must go down by what left it — so it is moved INTO the pool category as
+// the counted leg and it is the incoming Monobank leg that stays excluded.
+// Excluding the pool leg instead made a pool Paysend vanish from the pool's
+// balance. Never touches a hand-edited row.
+export async function settleCrossBankPartner(partnerId: number): Promise<void> {
+  const p = await prisma.transaction.findFirst({
+    where: { id: partnerId, AND: [NOT_MANUAL] },
+    select: { source: true, sbTransactionId: true, category: { select: { type: true } } },
+  });
+  if (!p) return;
+  const acctId = p.source === 'sparebank' && p.category.type === 'expense' ? Number(p.sbTransactionId?.match(/^sb(\d+)\|/)?.[1]) : NaN;
+  const poolCategoryId = Number.isFinite(acctId) ? await poolCategoryIdOf(acctId) : null;
+  await prisma.transaction.updateMany({
+    where: { id: partnerId, AND: [NOT_MANUAL] },
+    data: poolCategoryId !== null
+      ? { categoryId: poolCategoryId, categorySource: null, savingsWithdrawal: true, isTransfer: false }
+      : { isTransfer: true },
+  });
+}
+
 // Fee for a confirmed cross-bank pair. Both legs are excluded from totals
 // (isTransfer), so the intermediary's cut — outgoing NOK minus incoming NOK —
 // would be counted nowhere (real: Paysend 1650 out / 1585.56 in = 64.44).
@@ -266,13 +302,19 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 export async function ensureCrossBankFee(legAId: number, legBId: number): Promise<number | null> {
   const legs = await prisma.transaction.findMany({
     where: { id: { in: [legAId, legBId] } },
-    select: { id: true, date: true, amount: true, details: true, monoMerchant: true, sbCounterparty: true, userId: true, householdId: true, isTransfer: true, category: { select: { type: true } } },
+    select: { id: true, date: true, amount: true, details: true, monoMerchant: true, sbCounterparty: true, userId: true, householdId: true, isTransfer: true, source: true, savingsWithdrawal: true, category: { select: { type: true } } },
   });
-  const out = legs.find(l => l.category.type === 'expense');
+  // The outgoing leg is either an excluded expense-shaped row (ordinary pair)
+  // or the COUNTED pool withdrawal (the SpareBank leg sat on a pool account —
+  // see settleCrossBankPartner). Budget-wise the withdrawal releases the full
+  // outgoing amount while only the incoming amount arrived, so the fee is
+  // still the real loss in both shapes.
+  const isPoolOut = (l: (typeof legs)[number]) => l.source === 'sparebank' && l.category.type === 'savings' && l.savingsWithdrawal && !l.isTransfer;
+  const out = legs.find(l => l.category.type === 'expense' || isPoolOut(l));
   const inc = legs.find(l => l.category.type === 'income');
-  // Both legs must really be excluded: a hand-edited partner is never flipped,
+  // Both legs must really be settled: a hand-edited partner is never flipped,
   // and then there is no pair to charge a fee for.
-  if (legs.length !== 2 || !out || !inc || !out.isTransfer || !inc.isTransfer || out.householdId === null) return null;
+  if (legs.length !== 2 || !out || !inc || !(out.isTransfer || isPoolOut(out)) || !inc.isTransfer || out.householdId === null) return null;
   const fee = round2(out.amount - inc.amount);
   if (fee <= 0 || fee > out.amount * MAX_FEE_RATIO) return null;
 
