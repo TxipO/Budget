@@ -11,6 +11,30 @@ import CategoryIcon from '@/components/CategoryIcon';
 
 interface Category { id: number; name: string; type: string; color: string; icon: string; isActive: boolean }
 
+// A stored bank balance older than this missed its automatic refreshes (the
+// cron refreshes roughly daily) — shown as a warning instead of a quiet number
+// that looks current. Same 1.5-day idea as the weekly check's 3-day alert.
+const BALANCE_STALE_MS = 36 * 3600 * 1000;
+
+// Same formatter as the rest of the app (grouping, NBSP, suffix) in the
+// account's own currency; a currency the app doesn't know keeps the raw code.
+function fmtBalance(amount: number, currency: string | null): string {
+  if (CURRENCIES.some(c => c.code === currency)) return (amount < 0 ? '-' : '') + formatMoneyIn(amount, currency!);
+  return `${Math.round(amount).toLocaleString('uk-UA')} ${currency ?? ''}`;
+}
+
+function BalanceAge({ fetchedAt }: { fetchedAt: string | null }) {
+  if (!fetchedAt) return null;
+  const t = new Date(fetchedAt);
+  const stale = Date.now() - t.getTime() > BALANCE_STALE_MS;
+  const when = t.toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
+  return (
+    <span style={{ fontSize: 11, color: stale ? 'var(--c-warn-text)' : 'var(--c-text-muted)' }}>
+      {stale ? 'застарілий · ' : ''}оновлено {when}
+    </span>
+  );
+}
+
 export default function SettingsPage() {
   const [cats, setCats] = useState<Category[]>([]);
   const [form, setForm] = useState({ name: '', type: 'expense', color: CATEGORY_PALETTE[0], icon: 'circle' });
@@ -21,7 +45,7 @@ export default function SettingsPage() {
 
   const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
 
-  const [monoStatus, setMonoStatus] = useState<{ userId: number; name: string; connected: boolean; accountId: string | null }[]>([]);
+  const [monoStatus, setMonoStatus] = useState<{ userId: number; name: string; connected: boolean; accountId: string | null; balanceAmount: number | null; balanceCurrency: string | null; balanceFetchedAt: string | null }[]>([]);
   const [llmStatus, setLlmStatus] = useState<{ status: 'alive' | 'dead' | 'unknown'; llmCount: number; fallbackCount: number; lookbackDays: number } | null>(null);
   const [monoTokenInput, setMonoTokenInput] = useState<Record<number, string>>({});
   const [monoConnecting, setMonoConnecting] = useState<number | null>(null);
@@ -134,6 +158,7 @@ export default function SettingsPage() {
       const data = await res.json().catch(() => null);
       if (!res.ok) { toast(data?.error || 'Помилка синхронізації', 'error'); return; }
       toast(data.created > 0 ? `Додано транзакцій: ${data.created}` : 'Нових транзакцій немає');
+      loadMonoStatus(); // the sync also refreshed the stored balance
     } catch {
       toast('Помилка з’єднання', 'error');
     } finally {
@@ -857,6 +882,20 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 )}
+                {monoConnected && (
+                  // Account currency (UAH), not the household's — own line so it
+                  // wraps under the buttons instead of widening the row at 360px.
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '2px 8px', marginTop: 4, fontSize: 12 }}>
+                    {mono?.balanceAmount != null ? (
+                      <>
+                        <span style={{ color: 'var(--c-text-sec)' }}>Баланс: {fmtBalance(mono.balanceAmount, mono.balanceCurrency)}</span>
+                        <BalanceAge fetchedAt={mono.balanceFetchedAt} />
+                      </>
+                    ) : (
+                      <span style={{ color: 'var(--c-text-muted)' }}>Баланс: ще не завантажено</span>
+                    )}
+                  </div>
+                )}
 
                 {sbConnected && sb && (
                   <div>
@@ -907,7 +946,7 @@ export default function SettingsPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
                       {sb.accounts.map(a => (
                         <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, fontSize: 12, background: 'rgba(100,116,139,0.08)', borderRadius: 8, padding: '6px 10px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, minWidth: 0 }}>
                             {sbEditingLabelId === a.id ? (
                               <>
                                 <input
@@ -929,15 +968,13 @@ export default function SettingsPage() {
                             )}
                             {a.iban && <span style={{ color: '#94A3B8' }}>{a.iban}</span>}
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span style={{ color: '#64748B' }}>
-                              {a.balanceAmount === null ? '—'
-                                // Same formatter as the rest of the app (grouping, NBSP, suffix) in the
-                                // account's own currency; a currency the app doesn't know keeps the raw code.
-                                : CURRENCIES.some(c => c.code === a.balanceCurrency)
-                                  ? (a.balanceAmount < 0 ? '-' : '') + formatMoneyIn(a.balanceAmount, a.balanceCurrency!)
-                                  : `${Math.round(a.balanceAmount).toLocaleString('uk-UA')} ${a.balanceCurrency ?? ''}`}
-                            </span>
+                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 10px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ color: 'var(--c-text-sec)' }}>
+                                {a.balanceAmount === null ? '—' : fmtBalance(a.balanceAmount, a.balanceCurrency)}
+                              </span>
+                              <BalanceAge fetchedAt={a.balanceFetchedAt} />
+                            </div>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                               <input
                                 type="checkbox" checked={a.syncEnabled}
@@ -980,7 +1017,7 @@ export default function SettingsPage() {
                         disabled={sbAutoSyncToggling === u.id}
                         onChange={e => toggleSbAutoSync(u.id, e.target.checked)}
                       />
-                      Автосинхронізація (раз на добу, опівночі за Осло)
+                      Автосинхронізація (двічі на добу: опівночі й опівдні за Осло)
                     </label>
                     {sb.autoSync && (
                       <span style={{ fontSize: 11, color: sb.autoSyncFailCount > 0 ? 'var(--c-accent-text)' : 'var(--c-text-muted)' }}>

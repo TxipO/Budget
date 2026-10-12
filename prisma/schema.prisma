@@ -76,6 +76,12 @@ model User {
   // UI, same convention as sbSyncFloor) after the user has manually
   // reconciled everything through a given date.
   monoSyncFloor DateTime?
+  // Last balance read from Monobank's client-info (lib/monoBalance.ts), in the
+  // ACCOUNT's own currency (UAH for a normal card) — not the household's. Same
+  // three-field shape as SparebankAccount.balance*; null until first refresh.
+  monoBalanceAmount    Float?
+  monoBalanceCurrency  String?
+  monoBalanceFetchedAt DateTime?
 
   // SpareBank 1 (via Enable Banking, PSD2/Berlin Group AISP) integration.
   // sbSessionEnc is the Enable Banking session_id, AES-256-GCM encrypted

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { badRequest, isPositiveInt } from '@/lib/validate';
 import { EnableBankingError } from '@/lib/enableBanking';
 import { syncSparebankAccount } from '@/lib/sparebankSync';
+import { refreshSparebankBalances } from '@/lib/sparebankBalances';
 import { requireHouseholdId } from '@/lib/household';
 
 // Manual (attended) sync — a real button click in a live browser. The actual
@@ -68,6 +69,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Best-effort, after the sync fully succeeded: the same real PSU makes
+    // this an attended (exempt-from-quota) call, and the helper never throws,
+    // so a balance hiccup can't turn a good sync into an error response.
+    const balances = await refreshSparebankBalances(user.sparebankAccounts, { ipAddress: psuIp, userAgent: psuUserAgent });
+
     return NextResponse.json({
       ok: true,
       created: createdIds.length,
@@ -83,6 +89,7 @@ export async function POST(req: NextRequest) {
       skippedExisting,
       skippedError,
       checked,
+      balances,
     });
   } catch (e) {
     console.error('[sparebank/sync POST]', e);

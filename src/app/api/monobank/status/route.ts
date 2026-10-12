@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     // Settings page.
     const users = await prisma.user.findMany({
       where: { householdId },
-      select: { id: true, name: true, monoAccountId: true, monoTokenEnc: true, monoWebhookSecret: true },
+      select: { id: true, name: true, monoAccountId: true, monoTokenEnc: true, monoWebhookSecret: true, monoBalanceAmount: true, monoBalanceCurrency: true, monoBalanceFetchedAt: true },
       orderBy: { id: 'asc' },
     });
     return NextResponse.json(users.map(u => ({
@@ -27,6 +27,11 @@ export async function GET(req: NextRequest) {
       // because this route only checked monoTokenEnc.
       connected: u.monoTokenEnc !== null && u.monoWebhookSecret !== null,
       accountId: u.monoAccountId,
+      // Last balance the cron / a manual sync stored (never a live Monobank
+      // call — see the header comment), in the account's own currency.
+      balanceAmount: u.monoBalanceAmount,
+      balanceCurrency: u.monoBalanceCurrency,
+      balanceFetchedAt: u.monoBalanceFetchedAt,
     })));
   } catch (e) {
     console.error('[monobank/status GET]', e);

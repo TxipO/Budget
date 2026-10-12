@@ -196,7 +196,7 @@ export interface TransactionsPage {
 // into the small unattended quota bucket instead of pretending to be
 // attended; it's an intentional, honest choice, not a fallback for a missing
 // value.
-type Psu = { ipAddress: string; userAgent?: string } | null;
+export type Psu = { ipAddress: string; userAgent?: string } | null;
 
 function psuHeaders(psu: Psu): Record<string, string> {
   const headers: Record<string, string> = {};

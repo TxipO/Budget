@@ -68,6 +68,14 @@ export function getClientInfo(token: string): Promise<MonoClientInfo> {
   return call('/personal/client-info', token);
 }
 
+// Which of a token's accounts this app tracks: "black" is Monobank's primary
+// UAH card type; falls back to the token's first account (FOP/business tokens
+// use other types). One rule for connect and for the balance refresh, so the
+// balance shown is always for the same card whose statement gets synced.
+export function pickMonoAccount(accounts: MonoAccount[]): MonoAccount | undefined {
+  return accounts.find(a => a.type === 'black') ?? accounts[0];
+}
+
 // Registers (or replaces) the webhook URL Monobank pushes new-transaction
 // events to. Calling this again with a new URL overwrites the previous one —
 // there's no separate "unregister"; disconnect.ts points it at a dead value.

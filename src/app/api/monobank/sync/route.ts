@@ -5,6 +5,7 @@ import { decrypt } from '@/lib/crypto';
 import { getStatement, MonobankError } from '@/lib/monobank';
 import { ingestStatementItem, MonoStatementItem } from '@/lib/monoIngest';
 import { requireHouseholdId } from '@/lib/household';
+import { refreshMonoBalance } from '@/lib/monoBalance';
 
 // Push delivery has no guarantee of arriving — Monobank's webhook is
 // best-effort, and there is no dashboard or API to inspect missed/failed
@@ -81,7 +82,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, created, skippedHold, skippedExisting, skippedError, checked: items.length });
+    // Best-effort and last (the statement call above is the one that matters;
+    // never throws). A 429 here just means the 60s window hasn't reopened.
+    const balance = await refreshMonoBalance(user.id);
+
+    return NextResponse.json({ ok: true, created, skippedHold, skippedExisting, skippedError, checked: items.length, balance: { ok: balance.ok, ...(balance.status ? { status: balance.status } : {}) } });
   } catch (e) {
     console.error('[monobank/sync POST]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

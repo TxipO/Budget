@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { safeEqual } from '@/lib/pin';
 import { syncSparebankAccount, EnableBankingError } from '@/lib/sparebankSync';
 import { sendMessage } from '@/lib/telegramBot';
+import { refreshSparebankBalances } from '@/lib/sparebankBalances';
+import { refreshStaleMonoBalances } from '@/lib/monoBalance';
 
 // Unattended background sync, opt-in per user (User.sbAutoSync) — the cron
 // counterpart to api/sparebank/sync's manual button. No end-user request
@@ -54,6 +56,20 @@ const TARGET_HOURS_OSLO = [23, 0, 1, 2, 11, 12, 13, 14];
 // still clears same-window double-fires without also blocking the noon run.
 const MIN_GAP_HOURS = 6;
 
+// Balance refresh (added 2026-10-12, after a stored balance sat 2.5 months stale
+// because only a manual button ever updated it). Rides on the same unattended
+// quota as the sync, so it is rationed: per syncEnabled account at most ONE
+// balance call per ~day, and only right after that user's sync succeeded. The
+// windows fire every 12h; the sync itself already spends 1 call/account/window
+// (2/day) against a ~4/day cap, and balance-on-every-window would sit exactly
+// on that cap — with GitHub's 55-70 min jitter a rolling 24h window then
+// catches a 5th call and the TRANSACTION sync (the thing that matters) gets
+// the 429. 18h < 24h so the same window slot recurs daily; > 12h so the other
+// window of the day skips. A failed balance call never touches userFailed /
+// sbSyncFailCount / Telegram — console only — and (not stored) leaves
+// balanceFetchedAt old, so the next window retries.
+const BALANCE_MIN_AGE_MS = 18 * 3600 * 1000;
+
 // Reminders at exactly these thresholds, not every day of the final week —
 // a person doesn't need "expires in 6 days", "5 days", "4 days"... daily.
 const CONSENT_WARN_DAYS = [7, 3, 1];
@@ -83,7 +99,7 @@ export async function GET(req: NextRequest) {
     select: {
       id: true, name: true, householdId: true, telegramId: true, sbValidUntil: true,
       sbLastAutoSyncAt: true, sbSyncFailCount: true,
-      sparebankAccounts: { where: { syncEnabled: true }, select: { id: true, userId: true, accountUid: true, lastSyncedAt: true, syncFloor: true } },
+      sparebankAccounts: { where: { syncEnabled: true }, select: { id: true, userId: true, accountUid: true, lastSyncedAt: true, syncFloor: true, balanceFetchedAt: true } },
     },
   });
 
@@ -130,7 +146,10 @@ export async function GET(req: NextRequest) {
 
     if (!userFailed) {
       await prisma.user.update({ where: { id: user.id }, data: { sbLastAutoSyncAt: new Date(), sbSyncFailCount: 0 } });
-      results.push({ userId: user.id, created: userCreated, checked: userChecked });
+      // Never throws, never feeds the failure bookkeeping above — see
+      // BALANCE_MIN_AGE_MS. psu=null: same unattended bucket as the sync.
+      const balances = await refreshSparebankBalances(user.sparebankAccounts, null, { minAgeMs: BALANCE_MIN_AGE_MS });
+      results.push({ userId: user.id, created: userCreated, checked: userChecked, balances });
     } else {
       const newFailCount = user.sbSyncFailCount + 1;
       await prisma.user.update({ where: { id: user.id }, data: { sbLastAutoSyncAt: new Date(), sbSyncFailCount: newFailCount } });
@@ -144,5 +163,16 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, results });
+  // Monobank balances: no bank quota concern (token-based, ~1 req/60s), and
+  // independent of SpareBank — a Monobank-only user isn't in the query above.
+  // Runs only inside a target-hour window (the gate at the top), so ~2
+  // attempts/day, each skipped while the stored balance is under 5h old.
+  let monoBalances: Awaited<ReturnType<typeof refreshStaleMonoBalances>> = [];
+  try {
+    monoBalances = await refreshStaleMonoBalances();
+  } catch (e) {
+    console.error('[cron/sparebank-sync] mono balance refresh failed', e);
+  }
+
+  return NextResponse.json({ ok: true, results, monoBalances });
 }

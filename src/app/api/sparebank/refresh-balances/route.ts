@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isPositiveInt } from '@/lib/validate';
-import { getBalances, EnableBankingError } from '@/lib/enableBanking';
+import { refreshSparebankBalance } from '@/lib/sparebankBalances';
 import { requireHouseholdId } from '@/lib/household';
 
 // User-triggered (a button click in Settings), so a real PSU is genuinely
@@ -31,27 +31,9 @@ export async function POST(req: NextRequest) {
 
     const results: Array<{ accountId: number; amount: number | null; currency: string | null }> = [];
     for (const account of user.sparebankAccounts) {
-      try {
-        const data = await getBalances(account.accountUid, psu);
-        // "CLBD" (closing booked) is the settled balance, not "expected"
-        // (XPCD, which includes still-pending holds) — see SbBalance's own
-        // comment. Falls back to whatever the bank returned first if it
-        // doesn't label a CLBD entry, rather than showing nothing.
-        const chosen = data.balances?.find(b => b.balance_type === 'CLBD') ?? data.balances?.[0];
-        const amount = chosen ? Number(chosen.balance_amount.amount) : null;
-        const currency = chosen?.balance_amount.currency ?? null;
-        await prisma.sparebankAccount.update({
-          where: { id: account.id },
-          data: { balanceAmount: Number.isFinite(amount) ? amount : null, balanceCurrency: currency, balanceFetchedAt: new Date() },
-        });
-        results.push({ accountId: account.id, amount: Number.isFinite(amount) ? amount : null, currency });
-      } catch (e) {
-        console.error('[sparebank/refresh-balances] failed for account', account.id, e);
-        if (e instanceof EnableBankingError && e.status === 429) {
-          return NextResponse.json({ error: e.message }, { status: 429 });
-        }
-        results.push({ accountId: account.id, amount: null, currency: null });
-      }
+      const r = await refreshSparebankBalance(account, psu);
+      if (r.status === 429) return NextResponse.json({ error: r.error }, { status: 429 });
+      results.push({ accountId: account.id, amount: r.amount, currency: r.currency });
     }
 
     return NextResponse.json({ ok: true, results });

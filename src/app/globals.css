@@ -82,6 +82,9 @@ img, video { max-width: 100%; height: auto; }
      (already 6.6–7:1 there), light drops to the same darker ramp step
      the fill uses (4.7–5.2:1). */
   --c-accent-text: #F97316;
+  /* Warning text (a stale bank balance): amber-light on dark, amber-700 on
+     light where #FCD34D would be ~1.5:1. */
+  --c-warn-text:   #FCD34D;
 }
 
 [data-theme="light"] {
@@ -100,6 +103,7 @@ img, video { max-width: 100%; height: auto; }
   --c-scrollbar:   #E2E8F0;
   --c-scrollthumb: #CBD5E1;
   --c-accent-text: #C2410C;
+  --c-warn-text:   #B45309;
 }
 
 @keyframes pulse {
