@@ -15,46 +15,21 @@ import { refreshStaleMonoBalances } from '@/lib/monoBalance';
 // quota, a separate bucket from what manual clicks use, by design.
 //
 // The scheduled trigger (.github/workflows/sparebank-sync.yml — Vercel
-// Hobby's Cron Jobs hard-cap the whole config at one fire per day, which a
-// two-candidate-per-day schedule violates, so GitHub Actions carries the
-// schedule instead) always fires in UTC. Europe/Oslo's UTC offset flips
-// between +1 (CET) and +2 (CEST) twice a year, so a single fixed UTC time
-// would silently drift an hour off "Oslo midnight" across the DST boundary.
-// The workflow fires at BOTH UTC candidate hours for each Oslo target; this
-// handler is the real gate — it only does anything when the current Oslo
-// wall-clock hour actually matches TARGET_HOURS_OSLO.
-//
-// A single exact hour (just [0]) turned out to be too narrow: confirmed live
-// 2026-07-31, after 6 days of daily runs, that EVERY run had silently no-op'd
-// — `gh run list` showed all of them "success", but every response body was
-// {"skipped":"not a target hour"}. GitHub Actions' own scheduled-workflow
-// docs warn triggers are best-effort and "may be delayed during periods of
-// high load"; both daily fires were consistently landing 55–70 minutes after
-// their nominal time (the 22:00 UTC entry executing around 22:55–23:12, the
-// 23:00 UTC entry around 00:01–00:07 the next day) — just far enough past
-// midnight in Oslo that neither ever matched hour 0 exactly. Widened to a
-// window rather than a point; MIN_GAP_HOURS below already stops the other
-// daily fire (they land about an hour apart) from double-triggering once one
-// of them lands inside it.
-//
-// Week 1 (2026-07-25) ran a single midnight window only, to watch how Enable
-// Banking's undocumented unattended quota behaves in practice. Held up clean
-// (0 failures), so a second (noon) window was added 2026-08-19 — each window
-// is its own 4-hour band for the same reason the midnight one is: GitHub
-// Actions' scheduled triggers land 55-70 min late (see the dated comment
-// above), so a single exact hour would silently never match.
-const TARGET_HOURS_OSLO = [23, 0, 1, 2, 11, 12, 13, 14];
-
-// Guards against the same window's two DST-candidate cron fires both
-// matching (a stray manual re-trigger or Vercel retry could still
-// double-fire) while still letting the midnight and noon windows both run —
-// must clear the ~2-3h worst-case gap between two candidates in the SAME
-// window, but stay under the shortest gap BETWEEN windows (a run landing at
-// the very end of the midnight window, e.g. 02:59 Oslo, and the next firing
-// at the very start of noon's, e.g. 11:00 Oslo, are only ~8h01m apart). 12h
-// used to be safe when there was only one window a day; halved to 6h so it
-// still clears same-window double-fires without also blocking the noon run.
-const MIN_GAP_HOURS = 6;
+// Hobby's Cron Jobs hard-cap the whole config at one fire per day, so GitHub
+// Actions carries the schedule) fires up to four times a day, each possibly
+// hours late. This handler is the real gate: see MIN_GAP_HOURS below — it only
+// syncs a user whose last auto-sync is old enough, whatever time it is.
+// No wall-clock window any more (2026-10-12). GitHub Actions' scheduled
+// triggers drift far more than any fixed band could absorb: the "noon" runs
+// began landing at ~16:00 UTC and the "midnight" ones at ~01:00-02:00 UTC
+// (Oslo hours 18 and 3-4), all of which the old hour gate skipped as "not a
+// target hour" — auto-sync silently produced nothing for ~36 hours (the
+// 07-31 widening had hit the same wall once already). What actually has to be
+// protected is the small unattended bank quota, which is a rate, not a time of
+// day — so the gate is the time since this user's last auto-sync: about two real
+// syncs a day no matter when GitHub gets around to firing, and the two DST
+// candidate fires per window are harmless (the second finds the user "too soon").
+const MIN_GAP_HOURS = 10;
 
 // Balance refresh (added 2026-10-12, after a stored balance sat 2.5 months stale
 // because only a manual button ever updated it). Rides on the same unattended
@@ -74,11 +49,6 @@ const BALANCE_MIN_AGE_MS = 18 * 3600 * 1000;
 // a person doesn't need "expires in 6 days", "5 days", "4 days"... daily.
 const CONSENT_WARN_DAYS = [7, 3, 1];
 
-function osloHourNow(): number {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Oslo', hour: 'numeric', hourCycle: 'h23' }).formatToParts(new Date());
-  return Number(parts.find(p => p.type === 'hour')?.value);
-}
-
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
@@ -88,10 +58,6 @@ export async function GET(req: NextRequest) {
   const auth = req.headers.get('authorization') ?? '';
   if (!safeEqual(auth, `Bearer ${secret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  if (!TARGET_HOURS_OSLO.includes(osloHourNow())) {
-    return NextResponse.json({ ok: true, skipped: 'not a target hour in Europe/Oslo' });
   }
 
   const users = await prisma.user.findMany({
