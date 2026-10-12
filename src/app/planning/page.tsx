@@ -11,9 +11,23 @@ interface Category { id: number; name: string; type: string; color: string; isAc
 interface Plan { categoryId: number; month: number; plannedAmount: number; notes: string }
 interface Actual { categoryId: number; month: number; actual: number }
 
+// Is this figure keeping up with its plan? Exact amounts, not the rounded
+// "2,5к" shown — a small real overspend must still read as over. Expenses are
+// a ceiling (over = bad); income and savings are a target (reached = good, short
+// = bad, but only once the period is over — a half-finished month is not "short").
+function planStatus(type: string, actual: number, planned: number, periodDone: boolean): 'good' | 'bad' | null {
+  if (planned <= 0) return null;
+  if (type === 'expense') return actual > planned ? 'bad' : actual > 0 ? 'good' : null;
+  if (actual >= planned) return 'good';
+  return periodDone && actual !== 0 ? 'bad' : null;
+}
+const STATUS_COLOR = { good: '#4ADE80', bad: '#FCA5A5' } as const;
+
 export default function PlanningPage() {
   const { suffix } = useCurrency();
-  const thisYear = new Date().getFullYear();
+  const now = new Date();
+  const thisYear = now.getUTCFullYear();
+  const thisMonth = now.getUTCMonth() + 1;
   const [year,     setYear]     = useState(thisYear);
   const [cats,     setCats]     = useState<Category[]>([]);
   const [plans,    setPlans]    = useState<Plan[]>([]);
@@ -119,6 +133,9 @@ export default function PlanningPage() {
     }
   }
 
+  const monthDone = (m: number) => year < thisYear || (year === thisYear && m < thisMonth);
+  const yearDone  = year < thisYear;
+
   const sections = [
     { type: 'income',  label: 'Дохід' },
     { type: 'expense', label: 'Витрати' },
@@ -182,6 +199,7 @@ export default function PlanningPage() {
               });
               const yearTotalPlanned = sectionTotalByMonth.reduce((s, m) => s + m.planned, 0);
               const yearTotalActual  = sectionTotalByMonth.reduce((s, m) => s + m.actual, 0);
+              const yearTotalStatus  = planStatus(type, yearTotalActual, yearTotalPlanned, yearDone);
               const typeColor = type === 'income' ? '#22C55E' : type === 'expense' ? '#EF4444' : '#F59E0B';
 
               return [
@@ -195,6 +213,7 @@ export default function PlanningPage() {
                 ...sectionCats.map(cat => {
                   const yearActual  = MONTH_SHORT.reduce((s, _, i) => s + getActual(cat.id,  i + 1), 0);
                   const yearPlanned = MONTH_SHORT.reduce((s, _, i) => s + getPlanned(cat.id, i + 1), 0);
+                  const yearStatus  = planStatus(type, yearActual, yearPlanned, yearDone);
                   return (
                     <tr key={cat.id} className="table-row">
                       <td className="plan-cat-col" style={{
@@ -214,10 +233,7 @@ export default function PlanningPage() {
                         const notes   = getNotes(cat.id, m);
                         const isEdit  = editCell?.catId === cat.id && editCell?.month === m;
                         const hasData = actual !== 0 || planned > 0;
-                        // Compared at the precision the cell shows ("2,5к" vs "/2,5к"),
-                        // so two identical-looking numbers never get different colours.
-                        const over    = type !== 'income' && actual > planned && planned > 0; // exact, not the rounded figure shown — a small real overspend must still read as over
-                        const under   = type !== 'income' && actual > 0 && actual <= planned;
+                        const status = planStatus(type, actual, planned, monthDone(m));
 
                         return (
                           <td key={m} style={{ padding: '4px', textAlign: 'center', position: 'relative' }}>
@@ -280,7 +296,7 @@ export default function PlanningPage() {
                               {actual !== 0 && (
                                 <span style={{
                                   fontSize: 12, fontWeight: 600, fontVariantNumeric: 'tabular-nums',
-                                  color: over ? '#FCA5A5' : under ? '#4ADE80' : 'var(--c-text-sec)',
+                                  color: status ? STATUS_COLOR[status] : 'var(--c-text-sec)',
                                 }}>
                                   {formatCompact(actual)}
                                 </span>
@@ -304,7 +320,7 @@ export default function PlanningPage() {
                         );
                       })}
                       <td style={{ padding: '10px 8px', textAlign: 'right' }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: typeColor, fontVariantNumeric: 'tabular-nums' }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: yearStatus ? STATUS_COLOR[yearStatus] : typeColor, fontVariantNumeric: 'tabular-nums' }}>
                           {yearActual !== 0 ? formatCompact(yearActual) : '—'}
                         </div>
                         {yearPlanned > 0 && (
@@ -329,23 +345,35 @@ export default function PlanningPage() {
                   }}>
                     <span title={`Сума ${label.toLowerCase()}`}>Сума {label.toLowerCase()}</span>
                   </td>
-                  {sectionTotalByMonth.map((tot, i) => (
-                    <td key={i} style={{ padding: '10px 4px', textAlign: 'center' }}>
-                      {tot.actual !== 0 ? (
-                        <span style={{ fontSize: 12, fontWeight: 700, color: typeColor, fontVariantNumeric: 'tabular-nums' }}>
-                          {formatCompact(tot.actual)}
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: 11, color: 'var(--c-text-sub)' }}>—</span>
-                      )}
-                    </td>
-                  ))}
-                  <td style={{ padding: '10px 8px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: typeColor, fontVariantNumeric: 'tabular-nums' }}>
-                    {/* "к" shorthand, not formatMoney — every other cell in
-                        this column (including each category row above) uses
-                        the same abbreviated format; the full currency string
-                        here was the one inconsistent cell in the table. */}
-                    {yearTotalActual !== 0 ? formatCompact(yearTotalActual) : '—'}
+                  {sectionTotalByMonth.map((tot, i) => {
+                    const st = planStatus(type, tot.actual, tot.planned, monthDone(i + 1));
+                    return (
+                      <td key={i} style={{ padding: '10px 4px', textAlign: 'center' }}>
+                        {tot.actual !== 0 ? (
+                          <div style={{ fontSize: 12, fontWeight: 700, color: st ? STATUS_COLOR[st] : typeColor, fontVariantNumeric: 'tabular-nums' }}>
+                            {formatCompact(tot.actual)}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 11, color: 'var(--c-text-sub)' }}>—</div>
+                        )}
+                        {tot.planned > 0 && (
+                          <div style={{ fontSize: 10, color: '#475569', fontVariantNumeric: 'tabular-nums' }}>
+                            /{formatCompact(tot.planned)}
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td style={{ padding: '10px 8px', textAlign: 'right' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: yearTotalStatus ? STATUS_COLOR[yearTotalStatus] : typeColor, fontVariantNumeric: 'tabular-nums' }}>
+                      {/* "к" shorthand, not formatMoney — same abbreviated format as every other cell. */}
+                      {yearTotalActual !== 0 ? formatCompact(yearTotalActual) : '—'}
+                    </div>
+                    {yearTotalPlanned > 0 && (
+                      <div style={{ fontSize: 10, color: '#475569', fontVariantNumeric: 'tabular-nums' }}>
+                        /{formatCompact(yearTotalPlanned)}
+                      </div>
+                    )}
                   </td>
                 </tr>,
               ];
