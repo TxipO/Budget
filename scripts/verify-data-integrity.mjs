@@ -123,6 +123,61 @@ async function main() {
     }
   } else pass('no undetected same-person SpareBank transfer pairs (opposite direction, same amount, same user, within 3 days)');
 
+  // ── Step 4e2: date-shifted re-delivery of a placeholder transfer ────────
+  step('4e2', 'SpareBank date-shifted duplicate (placeholder row + booked copy, both counted)');
+  // FOUND LIVE 2026-10-13: weekend transfers arrive as "Overførsel mellom egne
+  // konti ..." dated Sat/Sun and are re-delivered Monday as booked items with a
+  // new date and the real name. The dedup key holds the date, so the copy used
+  // to land as a SECOND counted row (pool 1 200 too high). The ingest guard
+  // (findRebookedPlaceholder) now merges these for weekend-dated placeholders;
+  // this check catches what it deliberately doesn't (a Friday/holiday-dated
+  // placeholder, or rows that predate the guard): a counted placeholder-text
+  // row and a counted resolved-text row on the SAME account/direction/amount,
+  // the resolved one dated 1-3 days LATER. A clean run finds 0; a hit is a
+  // probable double count — exclude (isTransfer) the placeholder row by hand.
+  // Ordinary repeated transfers (both resolved text) are NOT flagged: those are
+  // real and indistinguishable from this by amount alone.
+  const keyOf = t => t.sbTransactionId?.match(/^sb(\d+)\|[\d-]+\|(DBIT|CRDT)\|([\d.]+)#\d+$/);
+  const isPh = t => /overførsel mellom egne konti/i.test(t.merchantText ?? t.details);
+  const sbCounted = txs.filter(t => t.source === 'sparebank' && !t.isTransfer && keyOf(t));
+  const shifted = [];
+  for (const p of sbCounted.filter(isPh)) {
+    const [, acct, dir, amt] = keyOf(p);
+    for (const r of sbCounted) {
+      if (r.id === p.id || r.userId !== p.userId || isPh(r)) continue;
+      const k = keyOf(r);
+      if (k[1] !== acct || k[2] !== dir || k[3] !== amt) continue;
+      const days = (r.date.getTime() - p.date.getTime()) / (24 * 3600 * 1000);
+      if (days >= 1 && days <= 3) shifted.push([p, r]);
+    }
+  }
+  if (shifted.length) {
+    fail(`${shifted.length} probable date-shifted duplicate pair(s) — placeholder row and a later booked copy are BOTH counted:`);
+    for (const [p, r] of shifted) console.log(`      #${p.id} ${p.date.toISOString().slice(0, 10)} "${p.details}" / #${r.id} ${r.date.toISOString().slice(0, 10)} "${r.details}": ${p.amount} kr, ${p.sbTransactionId}`);
+  } else pass('no counted placeholder row has a counted booked copy 1-3 days later on the same account/direction/amount');
+  // Same shift, different text: a weekend Nettgiro arrives as a bare "Nettgiro"
+  // and is re-booked Monday as "Nettgiro til: X Betalt: DD.MM.YY" (found
+  // 2026-10-13: #937 22.08 + #940 24.08, 249 kr). The "Betalt:" date IS the
+  // earlier row's date, so it is strong evidence — but one side is usually
+  // hand-edited, so this only WARNs for a human decision (the ingest guard
+  // does not cover it).
+  const paidDup = [];
+  for (const r of sbCounted) {
+    const m = (r.merchantText ?? r.details).match(/Betalt:\s*(\d{2})\.(\d{2})\.(\d{2,4})/i);
+    if (!m) continue;
+    const paid = `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2]}-${m[1]}`;
+    const k = keyOf(r);
+    for (const e of sbCounted) {
+      const ke = keyOf(e);
+      if (e.id !== r.id && e.userId === r.userId && ke[1] === k[1] && ke[2] === k[2] && ke[3] === k[3]
+        && e.date.toISOString().slice(0, 10) === paid && e.date < r.date) paidDup.push([e, r]);
+    }
+  }
+  if (paidDup.length) {
+    warn(`${paidDup.length} counted row(s) carry a "Betalt: <date>" naming an earlier counted row of the same account/direction/amount — probable booking-date shift, review by hand:`);
+    for (const [e, r] of paidDup) console.log(`      #${e.id} ${e.date.toISOString().slice(0, 10)} "${e.details}" / #${r.id} ${r.date.toISOString().slice(0, 10)} "${r.details}": ${r.amount} kr`);
+  }
+
   // ── Step 4f: rendered row sign agrees with the total it rolls into ──────
   step('4f', 'Row sign vs aggregate sign consistency');
   // FOUND LIVE 2026-08-29, and every previous check missed it because they

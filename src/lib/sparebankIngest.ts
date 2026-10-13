@@ -260,6 +260,61 @@ async function flipPartner(id: number): Promise<void> {
   await prisma.transaction.updateMany({ where: { id, AND: [NOT_MANUAL] }, data: { isTransfer: true } });
 }
 
+// A weekend-dated placeholder transfer that the bank later RE-BOOKS under a new
+// date and its real text. FOUND LIVE 2026-10-13: three Подушка->Основний
+// transfers made over the weekend (500, 500, 200) arrived Sat 10-10 / Sun 10-11
+// as "Overførsel mellom egne konti i Mobilbank, forfall i dag"; on Monday 10-12
+// the bank re-delivered the SAME movements as booked items with
+// booking_date 10-12 and the real name "Yevheniia Romanenko". The content key
+// holds the date, and the text is deliberately not in it (see
+// buildSbContentKeyBase), so nothing matched and every one became a NEW row —
+// 1 200 counted twice in the pool. The 5 kr pair of 2026-09-05 -> 09-07 was the
+// same event, unnoticed because it was too small to move the pool.
+//
+// Narrow on purpose — an equal amount a day or two later is usually a REAL
+// second transfer (22.09 and 23.09, 200 kr each, must stay two rows). A stored
+// row is claimed only when ALL hold: same user, same SparebankAccount, same
+// direction, same original amount (all four read from its key); it is a
+// non-manual row still carrying the bank's placeholder text; it is dated on a
+// Saturday or Sunday (every placeholder the bank ever re-booked was; weekday
+// ones, e.g. #2194, stayed put); the incoming booking date is 1-3 days AFTER it
+// (re-booking only moves forward; 3 covers Sat -> Tuesday over a Monday
+// holiday); the incoming text is resolved (a Monday placeholder is a genuinely
+// new transfer); and the bank is not still delivering that placeholder under
+// its own key in this very fetch (occurrenceCounts). Pairing is 1:1 without any
+// extra state: a claimed row is re-keyed and gets the resolved text, so it
+// stops being a placeholder and the next incoming item takes the next one —
+// nearest date first, lowest id on ties. Three equal amounts stay three rows.
+//
+// Known ceilings: a Friday/holiday-dated placeholder is not covered (the
+// verify-data-integrity probable-duplicate check still flags it); and if the
+// bank ever delivered the placeholder AND its booked copy in the same fetch,
+// the placeholder item arriving after the claim would create a row again —
+// same count as before this guard, never worse.
+const REBOOK_MAX_DAYS = 3;
+const DAY_MS = 24 * 3600 * 1000;
+
+async function findRebookedPlaceholder(userId: number, selfAccountId: number, indicator: string, amountOriginal: number, date: Date, occurrenceCounts: Map<string, number>) {
+  const candidates = await prisma.transaction.findMany({
+    where: {
+      userId,
+      source: 'sparebank',
+      AND: [NOT_MANUAL],
+      sbTransactionId: { startsWith: `sb${selfAccountId}|`, contains: `|${indicator}|${amountOriginal.toFixed(2)}#` },
+      date: { gte: new Date(date.getTime() - REBOOK_MAX_DAYS * DAY_MS), lt: date },
+    },
+    select: { id: true, date: true, sbTransactionId: true, isTransfer: true, categoryId: true, savingsWithdrawal: true, categorySource: true, details: true, merchantText: true },
+    orderBy: [{ date: 'desc' }, { id: 'asc' }],
+  });
+  return candidates.find(c => {
+    const dow = c.date.getUTCDay();
+    if (dow !== 0 && dow !== 6) return false;
+    if (!looksLikeUnresolvedInternalTransfer(c.merchantText ?? c.details)) return false;
+    const m = c.sbTransactionId?.match(/^(.*)#(\d+)$/);
+    return !m || (occurrenceCounts.get(m[1]) ?? 0) < Number(m[2]);
+  }) ?? null;
+}
+
 export type IngestResult = 'created' | 'reconciled' | 'skipped_pending' | 'skipped_duplicate' | 'skipped_malformed';
 export interface IngestOutcome { status: IngestResult; id?: number }
 
@@ -361,10 +416,43 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   const counterpartAccount = txType === 'expense' ? item.creditor_account : item.debtor_account;
   const transferAccountId = await findTransferCounterpartAccountId(userId, counterpartAccount);
 
-  const existing = await prisma.transaction.findFirst({
+  let existing = await prisma.transaction.findFirst({
     where: { userId, sbTransactionId: storageKey },
     select: { id: true, isTransfer: true, categoryId: true, savingsWithdrawal: true, categorySource: true, details: true, merchantText: true },
   });
+  // Date-shifted re-delivery of a weekend placeholder (see
+  // findRebookedPlaceholder). The claimed row is re-keyed to this item's key —
+  // so every later re-fetch of it is an ordinary duplicate hit — and takes the
+  // bank's text. Its DATE follows the booking date only inside the same month:
+  // the row then matches the statement and its own key, but a re-booking never
+  // moves a transfer across a month boundary the person already budgeted in.
+  // Category/transfer flags are left to the ordinary reconcile logic below, so
+  // both legs of a pool pair keep exactly the counted/excluded split they had.
+  let rebooked = false;
+  if (!existing && !looksLikeUnresolvedInternalTransfer(details)) {
+    const placeholder = await findRebookedPlaceholder(userId, selfAccountId, item.credit_debit_indicator, amountOriginal, date, occurrenceCounts);
+    if (placeholder) {
+      const sameMonth = placeholder.date.getUTCFullYear() === date.getUTCFullYear() && placeholder.date.getUTCMonth() === date.getUTCMonth();
+      // details is also the person's editable comment: refreshed only while it
+      // still equals the bank text it was filed with (null merchantText = a
+      // pre-merchantText row, never hand-edited under the sync's own rules).
+      const detailsUntouched = placeholder.merchantText === null || placeholder.details === placeholder.merchantText;
+      try {
+        const { count } = await prisma.transaction.updateMany({
+          where: { id: placeholder.id, sbTransactionId: placeholder.sbTransactionId, AND: [NOT_MANUAL] },
+          data: { sbTransactionId: storageKey, ...(sameMonth ? { date } : {}), sbCounterparty: counterparty || null, merchantText, ...(detailsUntouched ? { details } : {}) },
+        });
+        if (count === 1) {
+          rebooked = true;
+          existing = { ...placeholder, details: detailsUntouched ? details : placeholder.details, merchantText };
+        }
+      } catch (e: any) {
+        // Lost a race with an overlapping sync that stored this key first.
+        if (e?.code === 'P2002') return { status: 'skipped_duplicate' };
+        throw e;
+      }
+    }
+  }
   // Reconciliation, not just a duplicate skip. FOUND LIVE 2026-08-28: a
   // same-person Основний<->Подушка transfer's FIRST sync recorded
   // creditor_account/debtor_account both empty — SpareBank 1 hadn't
@@ -411,7 +499,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     : null;
   const needsReconciliation = existing !== null && existing.categorySource !== 'manual' &&
     (unresolvedPoolLeg !== null || (!existing.isTransfer && (transferAccountId !== null || looksLikeUnresolvedInternalTransfer(details))));
-  if (existing && !needsReconciliation) return { status: 'skipped_duplicate' };
+  if (existing && !needsReconciliation) return rebooked ? { status: 'reconciled', id: existing.id } : { status: 'skipped_duplicate' };
 
   let isTransfer: boolean;
   let categoryId: number;
@@ -529,7 +617,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     // A no-op recompute now behaves exactly like an ordinary duplicate hit.
     if (unresolvedPoolLeg?.mirrorId) await mirrorPoolSibling(unresolvedPoolLeg.mirrorId, categoryId, savingsWithdrawal);
     const changed = existing.categoryId !== categoryId || existing.isTransfer !== isTransfer || existing.savingsWithdrawal !== savingsWithdrawal;
-    if (!changed) return { status: 'skipped_duplicate' };
+    if (!changed) return rebooked ? { status: 'reconciled', id: existing.id } : { status: 'skipped_duplicate' };
     await prisma.transaction.update({
       where: { id: existing.id },
       data: {
