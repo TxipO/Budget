@@ -1017,7 +1017,7 @@ export default function SettingsPage() {
                         disabled={sbAutoSyncToggling === u.id}
                         onChange={e => toggleSbAutoSync(u.id, e.target.checked)}
                       />
-                      Автосинхронізація (двічі на добу: опівночі й опівдні за Осло)
+                      Автосинхронізація (приблизно двічі на добу, коли банк і GitHub встигають)
                     </label>
                     {sb.autoSync && (
                       <span style={{ fontSize: 11, color: sb.autoSyncFailCount > 0 ? 'var(--c-accent-text)' : 'var(--c-text-muted)' }}>
