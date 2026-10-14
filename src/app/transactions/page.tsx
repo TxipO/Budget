@@ -14,6 +14,7 @@ interface Tx {
   possibleDuplicateOf: number | null;
   savingsWithdrawal: boolean;
   isTransfer: boolean;
+  poolCorrection: boolean;
   category: { id: number; name: string; type: string; color: string; icon: string };
   user: { id: number; name: string } | null;
 }
@@ -214,7 +215,9 @@ export default function TransactionsPage() {
     // lib/validate.ts's isBudgetRelevant for why both checks matter (a
     // learned rule can file a row under "Перекази" before the automatic
     // isTransfer matcher catches up, or in cases it never does).
-    return matchesFilters(tx) && isBudgetRelevant(tx);
+    // A poolCorrection row is listed (it is real, hand-entered, and the user
+    // must be able to find and edit it) but `totals` below still skips it.
+    return matchesFilters(tx) && (isBudgetRelevant(tx) || tx.poolCorrection);
   });
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);

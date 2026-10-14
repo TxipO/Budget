@@ -1,4 +1,4 @@
-import { savingsAmount, isBudgetRelevant } from '@/lib/validate';
+import { savingsAmount } from '@/lib/validate';
 
 export interface SavingsCategoryBalance { categoryId: number; name: string; color: string; icon: string; balance: number }
 
@@ -24,7 +24,9 @@ export function computeSavingsByCategory(
 ): SavingsCategoryBalance[] {
   const byCategory: Record<number, SavingsCategoryBalance> = {};
   for (const t of txs) {
-    if (!isBudgetRelevant(t) || t.category.type !== 'savings') continue;
+    // Not isBudgetRelevant: a poolCorrection row belongs in the pot's balance
+    // (that is its whole purpose), unlike in any budget sum.
+    if (t.isTransfer || t.category.type !== 'savings') continue;
     if (!byCategory[t.categoryId]) {
       byCategory[t.categoryId] = { categoryId: t.categoryId, name: t.category.name, color: t.category.color, icon: t.category.icon, balance: 0 };
     }

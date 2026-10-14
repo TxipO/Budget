@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
         householdId,
         date: { gte: new Date(Date.UTC(year, 0, 1)), lt: yearEnd },
       },
-      select: { date: true, amount: true, details: true, savingsWithdrawal: true, isTransfer: true, category: { select: { name: true, type: true } } },
+      select: { date: true, amount: true, details: true, savingsWithdrawal: true, isTransfer: true, poolCorrection: true, category: { select: { name: true, type: true } } },
     });
 
     // Per-pool running balance as of the end of the selected year — a small

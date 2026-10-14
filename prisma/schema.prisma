@@ -307,6 +307,13 @@ model Transaction {
   // double-subtracting every withdrawal from the household's balance.
   savingsWithdrawal Boolean @default(false)
 
+  // 2026-10-14: a pool BALANCE correction for money that never existed (a
+  // historical bookkeeping error left a pot 11 985 off its real bank balance).
+  // Counts toward the savings pot's running balance only (computeSavingsByCategory)
+  // and never toward any budget total — free balance (cumBalance), monthly
+  // savings/income/expense sums, planning, export — see isBudgetRelevant.
+  poolCorrection Boolean @default(false)
+
   // Monobank fields — all null for non-mono rows.
   monoStatementId    String? @unique // dedup key: Monobank's own transaction id
   monoMerchant       String?         // raw merchant description, for MonoCategoryRule matching

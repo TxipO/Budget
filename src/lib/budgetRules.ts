@@ -30,8 +30,12 @@ export function savingsAmount(t: { amount: number; savingsWithdrawal: boolean })
 // type is the one place a manual re-categorization (or a learned rule) can
 // assert "not budget activity" even when the automatic matcher's own
 // isTransfer flag didn't fire, so both must be checked, not just one.
-export function isBudgetRelevant(t: { isTransfer: boolean; category: { type: string } }): boolean {
-  return !t.isTransfer && t.category.type !== 'transfer';
+//
+// poolCorrection is a THIRD path (2026-10-14): a pot-balance fix for money that
+// never existed counts toward the pot's running balance only
+// (savingsBreakdown.ts checks isTransfer itself, not this), never a budget sum.
+export function isBudgetRelevant(t: { isTransfer: boolean; poolCorrection: boolean; category: { type: string } }): boolean {
+  return !t.isTransfer && !t.poolCorrection && t.category.type !== 'transfer';
 }
 
 export function isCurrentMonth(year: number, month1: number, now: Date): boolean {

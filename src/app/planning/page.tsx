@@ -61,7 +61,7 @@ export default function PlanningPage() {
 
     fetch(`/api/transactions?year=${year}`)
       .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
-      .then((txs: { date: string; amount: number; isTransfer: boolean; savingsWithdrawal: boolean; category: { id: number; type: string } }[]) => {
+      .then((txs: { date: string; amount: number; isTransfer: boolean; poolCorrection: boolean; savingsWithdrawal: boolean; category: { id: number; type: string } }[]) => {
         const map: Record<string, number> = {};
         txs.forEach(tx => {
           // Found live 2026-09-18: counting isTransfer rows inflated "факт" vs plan.
