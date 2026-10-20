@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, Landmark, PieChart, LineChart, ArrowLeftRight } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, AlertCircle, Landmark, PieChart, LineChart, ArrowLeftRight } from 'lucide-react';
 import { MONTH_NAMES, MONTH_SHORT, TYPE_COLORS, CATEGORY_PALETTE, BANK_SYNC_COLOR, type Period, PERIOD_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
@@ -29,6 +29,13 @@ interface Stats {
   lastByUser: { userId: number; name: string; date: string | null }[];
   prev: { income: number; expenses: number; savings: number; transfers: number; balance: number } | null;
 }
+
+// SpareBank 1 consent lapses periodically (needs BankID again); warn this far ahead.
+const CONSENT_WARN_MS = 7 * 24 * 3600 * 1000;
+// Daily cron — more than 36 h since its last attempt means it stopped running.
+const AUTOSYNC_STALE_MS = 36 * 3600 * 1000;
+// Balances refresh on every sync; 3 days old means the bank link is quietly failing.
+const BALANCE_ISSUE_MS = 3 * 24 * 3600 * 1000;
 
 const PERIODS: Period[] = ['month', 'quarter', '6m', 'year', 'all'];
 // Household member avatar colors — drawn from the documented category
@@ -104,6 +111,12 @@ export default function Dashboard() {
   const [bankConnections, setBankConnections] = useState<BankConnection[]>([]);
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
   const [quarterMenuOpen, setQuarterMenuOpen] = useState(false);
+  // Red "needs attention" badge by the sync button: hover previews, click/tap pins
+  // (touch has no hover), so the two are tracked apart.
+  const [issues, setIssues] = useState<string[]>([]);
+  const [warnHover, setWarnHover] = useState(false);
+  const [warnPinned, setWarnPinned] = useState(false);
+  const warnRef = useRef<HTMLDivElement>(null);
   const syncRef = useRef<HTMLDivElement>(null);
   const quarterRef = useRef<HTMLDivElement>(null);
 
@@ -112,19 +125,25 @@ export default function Dashboard() {
   // re-tapping the small trigger. touchstart too: iOS Safari doesn't always
   // synthesize mousedown for taps on non-interactive areas.
   useEffect(() => {
-    if (!syncMenuOpen && !quarterMenuOpen) return;
+    if (!syncMenuOpen && !quarterMenuOpen && !warnPinned) return;
     function onOutside(e: Event) {
       const t = e.target as Node;
+      if (warnPinned && !warnRef.current?.contains(t)) setWarnPinned(false);
       if (syncMenuOpen && !syncRef.current?.contains(t)) setSyncMenuOpen(false);
       if (quarterMenuOpen && !quarterRef.current?.contains(t)) setQuarterMenuOpen(false);
     }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { setWarnPinned(false); setWarnHover(false); }
+    }
     document.addEventListener('mousedown', onOutside);
     document.addEventListener('touchstart', onOutside);
+    document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('mousedown', onOutside);
       document.removeEventListener('touchstart', onOutside);
+      document.removeEventListener('keydown', onKey);
     };
-  }, [syncMenuOpen, quarterMenuOpen]);
+  }, [syncMenuOpen, quarterMenuOpen, warnPinned]);
   const [syncSelected, setSyncSelected] = useState<Record<string, boolean>>({});
   const [syncing, setSyncing] = useState(false);
   // Only visible feedback once the dropdown auto-closes at sync start
@@ -151,18 +170,39 @@ export default function Dashboard() {
   // One-click "sync all" widget in the header — same connect status this app
   // already exposes in Settings, just aggregated here so syncing doesn't
   // require a trip to Settings. Expired SpareBank 1 sessions are excluded
-  // (need reconnecting there first, syncing one would just error).
+  // (need reconnecting there first, syncing one would just error). The same
+  // two responses feed the "needs attention" badge, so no second request.
   useEffect(() => {
     Promise.all([
       fetch('/api/monobank/status').then(r => r.ok ? r.json() : []).catch(() => []),
       fetch('/api/sparebank/status').then(r => r.ok ? r.json() : []).catch(() => []),
-    ]).then(([mono, sb]: [{ userId: number; name: string; connected: boolean }[], { userId: number; name: string; connected: boolean; expired: boolean }[]]) => {
+    ]).then(([mono, sb]: [
+      { userId: number; name: string; connected: boolean; balanceFetchedAt: string | null }[],
+      { userId: number; name: string; connected: boolean; expired: boolean; validUntil: string | null; autoSync: boolean; lastAutoSyncAt: string | null; autoSyncFailCount: number; accounts: { syncEnabled: boolean; balanceFetchedAt: string | null }[] }[],
+    ]) => {
       const conns: BankConnection[] = [
         ...mono.filter(m => m.connected).map(m => ({ key: `mono-${m.userId}`, userId: m.userId, name: m.name, bank: 'mono' as const, bankLabel: 'Monobank' })),
         ...sb.filter(s => s.connected && !s.expired).map(s => ({ key: `sparebank-${s.userId}`, userId: s.userId, name: s.name, bank: 'sparebank' as const, bankLabel: 'SpareBank 1' })),
       ];
       setBankConnections(conns);
       setSyncSelected(Object.fromEntries(conns.map(c => [c.key, true])));
+
+      const t = Date.now();
+      const dm = (d: string | number) => new Date(d).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
+      const found: string[] = [];
+      for (const s of sb.filter(s => s.connected)) {
+        if (s.expired) { found.push(`${s.name}: доступ SpareBank 1 прострочено — перепідключи в Налаштуваннях (BankID)`); continue; }
+        if (s.validUntil && new Date(s.validUntil).getTime() - t < CONSENT_WARN_MS) found.push(`${s.name}: доступ SpareBank 1 спливає ${dm(s.validUntil)} — перепідключи в Налаштуваннях`);
+        // lastAutoSyncAt is the last ATTEMPT (set on failure too), so with a fail count it dates the last try.
+        if (s.autoSync && s.autoSyncFailCount > 0) found.push(`${s.name}: автосинхронізація SpareBank 1 завершується помилкою${s.lastAutoSyncAt ? ` (остання спроба ${dm(s.lastAutoSyncAt)})` : ''}`);
+        else if (s.autoSync && s.lastAutoSyncAt && t - new Date(s.lastAutoSyncAt).getTime() > AUTOSYNC_STALE_MS) found.push(`${s.name}: автосинхронізація SpareBank 1 не запускалась з ${dm(s.lastAutoSyncAt)}`);
+        const old = s.accounts.filter(a => a.syncEnabled && a.balanceFetchedAt && t - new Date(a.balanceFetchedAt).getTime() > BALANCE_ISSUE_MS).map(a => new Date(a.balanceFetchedAt!).getTime());
+        if (old.length) found.push(`${s.name}: баланс SpareBank 1 не оновлювався з ${dm(Math.min(...old))}`);
+      }
+      for (const m of mono.filter(m => m.connected && m.balanceFetchedAt && t - new Date(m.balanceFetchedAt).getTime() > BALANCE_ISSUE_MS)) {
+        found.push(`${m.name}: баланс Monobank не оновлювався з ${dm(m.balanceFetchedAt!)}`);
+      }
+      setIssues(found);
     });
   }, []);
 
@@ -333,6 +373,37 @@ export default function Dashboard() {
                   fontSize: 11, color: 'var(--c-text-muted)', whiteSpace: 'nowrap',
                 }}>
                   {syncStatus}
+                </div>
+              )}
+            </div>
+          )}
+          {/* Independent of bankConnections: an expired-only SpareBank has none. */}
+          {issues.length > 0 && (
+            <div
+              ref={warnRef} style={{ position: 'relative' }}
+              onPointerEnter={e => { if (e.pointerType === 'mouse') setWarnHover(true); }}
+              onPointerLeave={e => { if (e.pointerType === 'mouse') setWarnHover(false); }}
+            >
+              <button
+                onClick={() => setWarnPinned(p => !p)}
+                title="Потрібна увага" aria-label="Потрібна увага" aria-expanded={warnHover || warnPinned}
+                style={{
+                  width: 36, height: 36, borderRadius: '50%', border: 'none', padding: 0, background: '#EF4444', color: 'white',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}
+              >
+                <AlertCircle size={20} />
+              </button>
+              {(warnHover || warnPinned) && (
+                <div className="header-dropdown" role="status" style={{
+                  position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 20,
+                  background: 'var(--c-raised)', border: '1px solid var(--c-border-hi)', borderLeft: '3px solid #EF4444', borderRadius: 10,
+                  padding: 12, width: 300, maxWidth: 'calc(100vw - 32px)', boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+                }}>
+                  <ul style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, color: 'var(--c-text)' }}>
+                    {issues.map(i => <li key={i}>{i}</li>)}
+                  </ul>
+                  <a href="/settings" style={{ display: 'inline-block', marginTop: 10, fontSize: 13, fontWeight: 600, color: 'var(--c-accent-text)' }}>Відкрити Налаштування</a>
                 </div>
               )}
             </div>

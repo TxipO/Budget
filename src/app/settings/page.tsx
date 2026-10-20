@@ -15,6 +15,8 @@ interface Category { id: number; name: string; type: string; color: string; icon
 // cron refreshes roughly daily) — shown as a warning instead of a quiet number
 // that looks current. Same 1.5-day idea as the weekly check's 3-day alert.
 const BALANCE_STALE_MS = 36 * 3600 * 1000;
+// Same 7-day lead as the dashboard's "needs attention" badge: reconnect before the consent lapses.
+const CONSENT_WARN_MS = 7 * 24 * 3600 * 1000;
 
 // Same formatter as the rest of the app (grouping, NBSP, suffix) in the
 // account's own currency; a currency the app doesn't know keeps the raw code.
@@ -52,7 +54,7 @@ export default function SettingsPage() {
   const [monoSyncing, setMonoSyncing] = useState<number | null>(null);
 
   interface SbAccount { id: number; label: string; iban: string | null; syncEnabled: boolean; lastSyncedAt: string | null; balanceAmount: number | null; balanceCurrency: string | null; balanceFetchedAt: string | null; categoryId: number | null }
-  const [sbStatus, setSbStatus] = useState<{ userId: number; name: string; connected: boolean; expired: boolean; autoSync: boolean; lastAutoSyncAt: string | null; autoSyncFailCount: number; accounts: SbAccount[] }[]>([]);
+  const [sbStatus, setSbStatus] = useState<{ userId: number; name: string; connected: boolean; expired: boolean; validUntil: string | null; autoSync: boolean; lastAutoSyncAt: string | null; autoSyncFailCount: number; accounts: SbAccount[] }[]>([]);
   const [sbAutoSyncToggling, setSbAutoSyncToggling] = useState<number | null>(null);
   const [sbConnecting, setSbConnecting] = useState<number | null>(null);
   const [sbSyncing, setSbSyncing] = useState<number | null>(null);
@@ -918,6 +920,15 @@ export default function SettingsPage() {
                           </button>
                         ) : (
                           <>
+                            {/* Reconnect while still connected is fine (same flow as after expiry); never «Відключити» — it deletes the account rows and re-keys sbTransactionId. */}
+                            {sb.validUntil && new Date(sb.validUntil).getTime() - Date.now() < CONSENT_WARN_MS && (
+                              <button
+                                className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                                disabled={sbConnecting === u.id} onClick={() => connectSb(u.id)}
+                              >
+                                {sbConnecting === u.id ? 'Перенаправлення…' : 'Перепідключити'}
+                              </button>
+                            )}
                             <button
                               className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
                               disabled={sbBalanceRefreshing === u.id} onClick={() => refreshSbBalances(u.id)}
