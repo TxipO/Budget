@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
     const psuUserAgent = req.headers.get('user-agent') || undefined;
     const psu = { ipAddress: psuIp, userAgent: psuUserAgent };
 
-    const existingAccounts = await prisma.sparebankAccount.findMany({ where: { userId: user.id }, select: { accountUid: true, syncEnabled: true } });
+    const existingAccounts = await prisma.sparebankAccount.findMany({ where: { userId: user.id }, select: { id: true, accountUid: true, iban: true, identification: true, syncEnabled: true } });
     const alreadyHasSyncEnabled = existingAccounts.some(a => a.syncEnabled);
 
     // claimed.fromDate is the user's chosen historical-backfill start date
@@ -81,6 +81,7 @@ export async function GET(req: NextRequest) {
 
     let syncEnabledAccountRow: { id: number; userId: number; accountUid: string; lastSyncedAt: Date | null; syncFloor: Date | null } | null = null;
 
+    const matchedIds = new Set<number>();
     for (let i = 0; i < discovered.length; i++) {
       const acc = discovered[i];
       let details;
@@ -90,7 +91,19 @@ export async function GET(req: NextRequest) {
         console.error('[sparebank/callback] getAccountDetails failed for', acc.uid, e);
         details = null;
       }
-      const existing = existingAccounts.find(a => a.accountUid === acc.uid);
+      const iban = details?.account_id?.iban ?? acc.account_id?.iban ?? null;
+      const identification = details?.account_id?.other?.identification ?? null;
+      // Enable Banking issues NEW account uids for every new session (confirmed
+      // live 2026-10-20: reconnecting after the consent expired returned fresh
+      // uids for the same two accounts, and the old upsert-by-uid created
+      // duplicate rows — sync off, no category — while the real rows kept dead
+      // uids). So an unknown uid is matched to this user's existing row by
+      // IBAN (fallback: BBAN identification) and that row's uid is rotated in
+      // place: row ids must stay stable, sbTransactionId keys are prefixed
+      // `sb<accountId>|` and transfer detection compares account ids.
+      const existing = existingAccounts.find(a => a.accountUid === acc.uid)
+        ?? existingAccounts.find(a => !matchedIds.has(a.id) && ((iban && a.iban === iban) || (identification && a.identification === identification)));
+      if (existing) matchedIds.add(existing.id);
       // First-discovered account gets syncEnabled=true by default — mirrors
       // the old single-account behavior exactly when there's only one
       // account. On a RE-connect, whichever account was already syncEnabled
@@ -98,23 +111,32 @@ export async function GET(req: NextRequest) {
       // reconnecting never silently switches which account is the budget one.
       const shouldEnable = existing ? existing.syncEnabled : (!alreadyHasSyncEnabled && i === 0);
 
-      const row = await prisma.sparebankAccount.upsert({
-        where: { accountUid: acc.uid },
-        update: {
-          iban: details?.account_id?.iban ?? acc.account_id?.iban ?? undefined,
-          identification: details?.account_id?.other?.identification ?? undefined,
-        },
-        create: {
-          userId: user.id,
-          accountUid: acc.uid,
-          iban: details?.account_id?.iban ?? acc.account_id?.iban ?? null,
-          identification: details?.account_id?.other?.identification ?? null,
-          label: details?.details || details?.product || `Рахунок ${i + 1}`,
-          syncEnabled: shouldEnable,
-          lastSyncedAt: shouldEnable ? initialWatermark : null,
-        },
-        select: { id: true, userId: true, accountUid: true, lastSyncedAt: true, syncFloor: true, syncEnabled: true },
-      });
+      const select = { id: true, userId: true, accountUid: true, lastSyncedAt: true, syncFloor: true, syncEnabled: true } as const;
+      let row;
+      if (existing) {
+        // accountUid is @unique: if some other row (shouldn't exist) already
+        // holds the new uid, keep the old one rather than crash the whole connect.
+        const holder = existing.accountUid === acc.uid ? null : await prisma.sparebankAccount.findUnique({ where: { accountUid: acc.uid }, select: { id: true } });
+        if (holder) console.error('[sparebank/callback] uid already held by row', holder.id, '- not rotating row', existing.id);
+        row = await prisma.sparebankAccount.update({
+          where: { id: existing.id },
+          data: { accountUid: holder ? undefined : acc.uid, iban: iban ?? undefined, identification: identification ?? undefined },
+          select,
+        });
+      } else {
+        row = await prisma.sparebankAccount.create({
+          data: {
+            userId: user.id,
+            accountUid: acc.uid,
+            iban,
+            identification,
+            label: details?.details || details?.product || `Рахунок ${i + 1}`,
+            syncEnabled: shouldEnable,
+            lastSyncedAt: shouldEnable ? initialWatermark : null,
+          },
+          select,
+        });
+      }
       if (row.syncEnabled) syncEnabledAccountRow = row;
     }
 
