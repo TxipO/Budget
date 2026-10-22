@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { badRequest, isValidType } from '@/lib/validate';
+import { badRequest, isValidType, parseId } from '@/lib/validate';
 import { requireHouseholdId } from '@/lib/household';
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const id = parseInt(params.id);
-    if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
+    const id = parseId(params.id);
+    if (id === null) return badRequest('Невалідний ID');
     const body = await req.json();
 
     // Whitelist mutable fields — never trust arbitrary body keys
@@ -53,8 +53,12 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   try {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const id = parseInt(params.id);
-    if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
+    const id = parseId(params.id);
+    if (id === null) return badRequest('Невалідний ID');
+    // A SpareBank account still mapped to this pot would keep ingesting into a
+    // hidden category — make the user unlink it first.
+    const linked = await prisma.sparebankAccount.findFirst({ where: { categoryId: id, user: { householdId } }, select: { id: true } });
+    if (linked) return badRequest("Категорію прив'язано до банківського рахунку SpareBank — спершу відв'яжіть рахунок у Налаштуваннях");
     const result = await prisma.category.updateMany({
       where: { id, householdId },
       data: { isActive: false },

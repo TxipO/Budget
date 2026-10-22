@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { badRequest, isValidDate, isPositiveInt, isPositiveNumber, roundMoney } from '@/lib/validate';
+import { badRequest, parseDate, parseId, parseAmount } from '@/lib/validate';
 import { requireHouseholdId, isOwnedCategory, isOwnedUser } from '@/lib/household';
 
 export async function GET(req: NextRequest) {
@@ -61,9 +61,18 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { date, categoryId, amount, details, userId, savingsWithdrawal, isTransfer } = body;
 
-    if (!isValidDate(date))                  return badRequest('Невалідна дата');
-    if (!isPositiveInt(Number(categoryId)))  return badRequest('Невалідна категорія');
-    if (!isPositiveNumber(Number(amount)))   return badRequest('Сума має бути більше 0');
+    // Each field is parsed ONCE and that same value is checked AND stored —
+    // never re-parsed from the raw body (parseFloat('1e-7x') / parseInt('1e2')
+    // disagree with the Number()-based check).
+    const parsedDate = parseDate(date);
+    const catId = parseId(categoryId);
+    const amt = parseAmount(amount);
+    const hasUser = userId !== undefined && userId !== null && userId !== '';
+    const uid = hasUser ? parseId(userId) : null;
+    if (!parsedDate)                         return badRequest('Невалідна дата');
+    if (catId === null)                      return badRequest('Невалідна категорія');
+    if (amt === null)                        return badRequest('Сума має бути більше 0 і не більше 1 000 000 000');
+    if (hasUser && uid === null)             return badRequest('Невалідний користувач');
     if (savingsWithdrawal !== undefined && typeof savingsWithdrawal !== 'boolean') return badRequest('Невалідне значення напрямку');
     if (isTransfer !== undefined && typeof isTransfer !== 'boolean') return badRequest('Невалідне значення виключення з балансу');
 
@@ -73,8 +82,8 @@ export async function POST(req: NextRequest) {
     // independent of what the client sent), but it would silently link to
     // and expose a foreign category's name/type via this transaction's own
     // `include: category`.
-    if (!(await isOwnedCategory(householdId, parseInt(categoryId)))) return badRequest('Невалідна категорія');
-    if (userId && !(await isOwnedUser(householdId, parseInt(userId)))) return badRequest('Невалідний користувач');
+    if (!(await isOwnedCategory(householdId, catId))) return badRequest('Невалідна категорія');
+    if (uid !== null && !(await isOwnedUser(householdId, uid))) return badRequest('Невалідний користувач');
 
     // Truncate to a clean UTC calendar-day boundary, matching every other
     // writer (monoIngest.ts, the voice webhook, import) —
@@ -84,16 +93,15 @@ export async function POST(req: NextRequest) {
     // store a non-midnight date, breaking the timezone-residue invariant
     // verify-data-integrity.mjs checks and potentially landing the
     // transaction in the wrong month. Found during deep-review 2026-07-11.
-    const parsedDate = new Date(date);
     const truncatedDate = new Date(Date.UTC(parsedDate.getUTCFullYear(), parsedDate.getUTCMonth(), parsedDate.getUTCDate()));
 
     const tx = await prisma.transaction.create({
       data: {
         date:       truncatedDate,
-        categoryId: parseInt(categoryId),
-        amount:     roundMoney(parseFloat(amount)),
+        categoryId: catId,
+        amount:     amt,
         details:    details || '',
-        userId:     userId ? parseInt(userId) : null,
+        userId:     uid,
         householdId,
         // Ignored by every reader unless the category is type "savings"
         // (see Transaction.savingsWithdrawal's schema comment) — harmless

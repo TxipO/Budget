@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { badRequest, isValidYear, isValidMonth, isPositiveInt, isNonNegativeNumber, roundMoney } from '@/lib/validate';
+import { badRequest, isValidYear, isValidMonth, parseId, parseAmount } from '@/lib/validate';
 import { requireHouseholdId, isOwnedCategory } from '@/lib/household';
 
 export async function GET(req: NextRequest) {
@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { searchParams } = req.nextUrl;
-    const year  = parseInt(searchParams.get('year')  || '2026');
+    const year  = parseInt(searchParams.get('year')  || String(new Date().getUTCFullYear()));
     const month = searchParams.get('month');
     if (!Number.isFinite(year)) return badRequest('Невалідний рік');
 
@@ -39,20 +39,22 @@ export async function POST(req: NextRequest) {
 
     if (!isValidYear(year))                          return badRequest('Невалідний рік');
     if (!isValidMonth(month))                        return badRequest('Місяць має бути від 1 до 12');
-    if (!isPositiveInt(Number(categoryId)))          return badRequest('Невалідна категорія');
-    if (!isNonNegativeNumber(Number(plannedAmount))) return badRequest('Сума не може бути від\'ємною');
+    const catId = parseId(categoryId);
+    const planned = parseAmount(plannedAmount, true);
+    if (catId === null)                              return badRequest('Невалідна категорія');
+    if (planned === null)                            return badRequest('Невалідна сума (від 0 до 1 000 000 000)');
 
     // categoryId already implicitly scopes year_month_categoryId to one
     // household (a category belongs to exactly one), but only once we
     // confirm it belongs to THIS caller's household — otherwise this upsert
     // could silently overwrite another household's plan for their own
     // category id.
-    if (!(await isOwnedCategory(householdId, Number(categoryId)))) return badRequest('Невалідна категорія');
+    if (!(await isOwnedCategory(householdId, catId))) return badRequest('Невалідна категорія');
 
     const plan = await prisma.monthlyPlan.upsert({
-      where: { year_month_categoryId: { year, month, categoryId } },
-      update: { plannedAmount: roundMoney(plannedAmount), notes: notes ?? undefined },
-      create: { year, month, categoryId, plannedAmount: roundMoney(plannedAmount), notes: notes ?? '', householdId },
+      where: { year_month_categoryId: { year, month, categoryId: catId } },
+      update: { plannedAmount: planned, notes: notes ?? undefined },
+      create: { year, month, categoryId: catId, plannedAmount: planned, notes: notes ?? '', householdId },
       include: { category: true },
     });
     return NextResponse.json(plan);

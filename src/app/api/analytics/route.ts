@@ -14,8 +14,10 @@ export async function GET(req: NextRequest) {
   try {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const yearParam = parseInt(req.nextUrl.searchParams.get('year') || String(new Date().getFullYear()));
-    const year = Number.isFinite(yearParam) ? yearParam : new Date().getFullYear();
+    // UTC getters — the in-progress checks below (isCurrentMonth, inProgressIdx) are UTC too.
+    const nowYear = new Date().getUTCFullYear();
+    const yearParam = parseInt(req.nextUrl.searchParams.get('year') || String(nowYear));
+    const year = Number.isFinite(yearParam) ? yearParam : nowYear;
 
     const yearEnd = new Date(Date.UTC(year + 1, 0, 1));
     const txs = await prisma.transaction.findMany({

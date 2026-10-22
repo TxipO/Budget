@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { badRequest, isValidDate, isPositiveInt, isPositiveNumber, roundMoney } from '@/lib/validate';
+import { badRequest, parseDate, parseId, parseAmount } from '@/lib/validate';
 import { merchantKeyOf, findSweepSiblings } from '@/lib/sweepSiblings';
 import { requireHouseholdId, isOwnedCategory, isOwnedUser } from '@/lib/household';
 
@@ -8,17 +8,23 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   try {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const id = parseInt(params.id);
-    if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
+    const id = parseId(params.id);
+    if (id === null) return badRequest('Невалідний ID');
     const body = await req.json();
 
-    if (!isValidDate(body.date))                   return badRequest('Невалідна дата');
-    if (!isPositiveInt(Number(body.categoryId)))   return badRequest('Невалідна категорія');
-    if (!isPositiveNumber(Number(body.amount)))    return badRequest('Сума має бути більше 0');
+    // Parse once, check and store the same value — see transactions/route.ts POST.
+    const parsedDate = parseDate(body.date);
+    const newCategoryId = parseId(body.categoryId);
+    const amt = parseAmount(body.amount);
+    const hasUser = body.userId !== undefined && body.userId !== null && body.userId !== '';
+    const uid = hasUser ? parseId(body.userId) : null;
+    if (!parsedDate)                               return badRequest('Невалідна дата');
+    if (newCategoryId === null)                    return badRequest('Невалідна категорія');
+    if (amt === null)                              return badRequest('Сума має бути більше 0 і не більше 1 000 000 000');
+    if (hasUser && uid === null)                   return badRequest('Невалідний користувач');
     if (body.savingsWithdrawal !== undefined && typeof body.savingsWithdrawal !== 'boolean') return badRequest('Невалідне значення напрямку');
     if (body.isTransfer !== undefined && typeof body.isTransfer !== 'boolean') return badRequest('Невалідне значення виключення з балансу');
 
-    const newCategoryId = parseInt(body.categoryId);
 
     // Read the pre-update row so we can tell whether this is a Monobank- or
     // voice-sourced transaction getting its category corrected — that's the
@@ -43,12 +49,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     // row's userId, so the form pre-filled the LOGGED-IN person and this PUT
     // saved it. Still editable for manual/voice/import rows.
     const isBankRow = before.source === 'mono' || before.source === 'sparebank';
-    if (!isBankRow && body.userId && !(await isOwnedUser(householdId, parseInt(body.userId)))) return badRequest('Невалідний користувач');
+    if (!isBankRow && uid !== null && !(await isOwnedUser(householdId, uid))) return badRequest('Невалідний користувач');
 
     // Truncate to a clean UTC calendar-day boundary — see the matching
     // comment in transactions/route.ts POST. Found during deep-review
     // 2026-07-11.
-    const parsedDate = new Date(body.date);
     const truncatedDate = new Date(Date.UTC(parsedDate.getUTCFullYear(), parsedDate.getUTCMonth(), parsedDate.getUTCDate()));
 
     // scope (2026-09-29): a category change is a ONE-OFF exception unless the
@@ -89,9 +94,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       data: {
         date:       truncatedDate,
         categoryId: newCategoryId,
-        amount:     roundMoney(parseFloat(body.amount)),
+        amount:     amt,
         details:    newDetails,
-        ...(isBankRow ? {} : { userId: body.userId ? parseInt(body.userId) : null }),
+        ...(isBankRow ? {} : { userId: uid }),
         savingsWithdrawal: newSavingsWithdrawal,
         // Manual "не рахувати в загальний баланс" toggle — see the create
         // route's matching comment and Transaction.isTransfer's schema
@@ -171,8 +176,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   try {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const id = parseInt(params.id);
-    if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
+    const id = parseId(params.id);
+    if (id === null) return badRequest('Невалідний ID');
     const owned = await prisma.transaction.findUnique({ where: { id }, select: { householdId: true } });
     if (!owned || owned.householdId !== householdId) {
       return NextResponse.json({ error: 'Транзакцію не знайдено' }, { status: 404 });

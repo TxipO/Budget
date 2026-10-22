@@ -30,6 +30,26 @@ export async function POST(req: NextRequest) {
     if (!name)                    return badRequest('Назва категорії обов\'язкова');
     if (!isValidType(body.type))  return badRequest('Тип має бути income, expense або savings');
 
+    // A soft-deleted category (isActive=false) still owns the unique
+    // (household, name, type) slot, so re-adding the same name would hit
+    // P2002 "already exists" with nothing visible to the user. Bring the old
+    // one back instead (keeps its history); color/icon refreshed if sent.
+    // Keyed by name+type: an inactive same-name category of ANOTHER type is
+    // not a collision, and retyping a category with transactions would
+    // reclassify its history (see categories/[id] PUT).
+    const inactive = await prisma.category.findFirst({ where: { householdId, name, type: body.type, isActive: false } });
+    if (inactive) {
+      const revived = await prisma.category.update({
+        where: { id: inactive.id },
+        data: {
+          isActive: true,
+          ...(typeof body.color === 'string' ? { color: body.color } : {}),
+          ...(typeof body.icon  === 'string' ? { icon: body.icon }   : {}),
+        },
+      });
+      return NextResponse.json(revived);
+    }
+
     const cat = await prisma.category.create({
       data: {
         name,

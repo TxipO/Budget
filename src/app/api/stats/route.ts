@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireHouseholdId } from '@/lib/household';
-import { savingsAmount, isBudgetRelevant, isCurrentMonth, comparableCutoffDay } from '@/lib/budgetRules';
+import { savingsAmount, isBudgetRelevant, comparableCutoffDay } from '@/lib/budgetRules';
 
 const MONTHS_SHORT = ['Січ','Лют','Бер','Кві','Тра','Чер','Лип','Сер','Вер','Жов','Лис','Гру'];
+
+// Exclusive end of the previous window, clipped to match how far `now` is into
+// the current one.
+function comparablePrevEnd(prevStart: Date, rangeStart: Date, now: Date): Date {
+  const k = (now.getUTCFullYear() - rangeStart.getUTCFullYear()) * 12 + now.getUTCMonth() - rangeStart.getUTCMonth();
+  const anchor = new Date(Date.UTC(prevStart.getUTCFullYear(), prevStart.getUTCMonth() + k, 1));
+  return new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(),
+    comparableCutoffDay(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, now) + 1));
+}
 
 async function sumByType(householdId: number, start: Date, end: Date) {
   const txs = await prisma.transaction.findMany({
@@ -37,10 +46,11 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const now    = new Date();
   const period = searchParams.get('period') || 'month';
-  const yearP  = parseInt(searchParams.get('year')  || String(now.getFullYear()));
-  const monthP = parseInt(searchParams.get('month') || String(now.getMonth() + 1));
-  const year   = Number.isFinite(yearP) ? yearP : now.getFullYear();
-  const month  = Number.isFinite(monthP) && monthP >= 1 && monthP <= 12 ? monthP : now.getMonth() + 1;
+  // UTC getters, same as isCurrentMonth / the range boundaries below.
+  const yearP  = parseInt(searchParams.get('year')  || String(now.getUTCFullYear()));
+  const monthP = parseInt(searchParams.get('month') || String(now.getUTCMonth() + 1));
+  const year   = Number.isFinite(yearP) ? yearP : now.getUTCFullYear();
+  const month  = Number.isFinite(monthP) && monthP >= 1 && monthP <= 12 ? monthP : now.getUTCMonth() + 1;
 
   let rangeStart: Date;
   let rangeEnd: Date;
@@ -59,12 +69,6 @@ export async function GET(req: NextRequest) {
     prevEnd    = new Date(Date.UTC(year, month - 1, 1));
     trendMonths = 6;
 
-    // In-progress month vs a FULL previous month reads as a huge swing early
-    // on and is exactly the wrong kind of alarming on a reassuring dashboard;
-    // clip the previous window to the same day-of-month (see comparableCutoffDay).
-    if (isCurrentMonth(year, month, now)) {
-      prevEnd = new Date(Date.UTC(year, month - 2, comparableCutoffDay(year, month - 1, now) + 1));
-    }
   } else if (period === 'quarter') {
     rangeEnd   = new Date(Date.UTC(year, month, 1));
     rangeStart = new Date(Date.UTC(year, month - 3, 1));
@@ -92,6 +96,15 @@ export async function GET(req: NextRequest) {
     const diffMonths = (rangeEnd.getUTCFullYear() - rangeStart.getUTCFullYear()) * 12
                      + rangeEnd.getUTCMonth() - rangeStart.getUTCMonth();
     trendMonths = Math.max(diffMonths, 1);
+  }
+
+  // An in-progress window vs a FULL previous one reads as a huge swing and is
+  // exactly the wrong kind of alarming on a reassuring dashboard: clip the
+  // previous window to the same elapsed length — same number of whole months
+  // in, then the same day-of-month (see comparableCutoffDay). Completed and
+  // future windows are left alone.
+  if (period !== 'all' && now >= rangeStart && now < rangeEnd) {
+    prevEnd = comparablePrevEnd(prevStart, rangeStart, now);
   }
 
   // Current & previous period
@@ -186,7 +199,7 @@ export async function GET(req: NextRequest) {
     // so it can't also silently push a real transaction out of the top 8.
     // category.type 'transfer' excluded too, independent of isTransfer — see
     // isBudgetRelevant's own comment on why both checks matter.
-    where: { householdId, date: { gte: rangeStart, lt: rangeEnd }, isTransfer: false, category: { type: { not: 'transfer' } } },
+    where: { householdId, date: { gte: rangeStart, lt: rangeEnd }, isTransfer: false, poolCorrection: false, category: { type: { not: 'transfer' } } },
     include: { category: true, user: { select: { id: true, name: true } } },
     orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     take: 8,

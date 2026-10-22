@@ -290,7 +290,10 @@ async function main() {
   step(7, 'Aggregate cross-check (manual sum vs a fresh independent calculation)');
   const now = new Date();
   const y = now.getUTCFullYear(), m = now.getUTCMonth() + 1;
-  const monthTxs = txs.filter(t => t.date.getUTCFullYear() === y && t.date.getUTCMonth() + 1 === m);
+  // Same exclusions as the API (budgetRules.isBudgetRelevant): isTransfer,
+  // poolCorrection and category type 'transfer' never count toward a total.
+  const monthTxs = txs.filter(t => t.date.getUTCFullYear() === y && t.date.getUTCMonth() + 1 === m
+    && !t.isTransfer && !t.poolCorrection && t.category.type !== 'transfer');
   const income = monthTxs.filter(t => t.category.type === 'income').reduce((s, t) => s + t.amount, 0);
   const expenses = monthTxs.filter(t => t.category.type === 'expense').reduce((s, t) => s + t.amount, 0);
   console.log(`  current month (${y}-${String(m).padStart(2, '0')}) independently computed: income=${income}, expenses=${expenses}`);
@@ -316,7 +319,8 @@ async function main() {
     if (!login.ok || !cookie) { fail(`login to ${apiUrl} failed with status ${login.status}`); }
     else {
       const stats = await fetch(`${apiUrl}/api/stats?period=month&year=${y}&month=${m}`, { headers: { Cookie: cookie } }).then(r => r.json());
-      if (stats.income === income && stats.expenses === expenses) {
+      // Float sums accumulate in different orders (DB vs API): compare to a cent, not with ===.
+      if (Math.abs(stats.income - income) < 0.01 && Math.abs(stats.expenses - expenses) < 0.01) {
         pass(`live API (${apiUrl}) matches independent DB calculation: income=${stats.income}, expenses=${stats.expenses}`);
       } else {
         fail(`live API returned income=${stats.income}, expenses=${stats.expenses} but direct DB calculation says income=${income}, expenses=${expenses} — investigate the API route's query logic`);

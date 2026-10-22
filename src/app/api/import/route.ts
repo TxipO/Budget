@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import ExcelJS from 'exceljs';
-import { requireHouseholdId } from '@/lib/household';
+import { requireHouseholdId, MAX_USERS } from '@/lib/household';
 import { PLANNING_YEARS, planningMonthCol } from '@/lib/planningLayout';
 
 const INCOME_COLORS: Record<string, string> = {
@@ -44,17 +44,50 @@ function cellText(v: ExcelJS.CellValue): string | null {
   }
   return String(v);
 }
-function cellNumber(v: ExcelJS.CellValue): number | null {
+// A user-facing import problem → 400 (anything else is a real 500).
+class ImportError extends Error {}
+
+// Must match export/route.ts: set as the workbook's `keywords` doc property.
+const EXPORT_MARKER = 'budget-app-export';
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+const MAX_ROWS = 10000;
+const MAX_AMOUNT = 1e9;
+
+// Numbers: native numbers / formula results as-is; text only if it is a
+// plain decimal (spaces/NBSP/thin-space thousands separators and a decimal
+// comma allowed: '1 234,50', '1,5', '1,234.50'). Garbage ('12abc', '1e5x')
+// is rejected with the cell's location — parseFloat used to silently
+// truncate it to 12 and import a wrong amount.
+function cellNumber(v: ExcelJS.CellValue, where: string): number | null {
   const round = (n: number) => Math.round(n * 100) / 100;
-  if (typeof v === 'number') return round(v);
-  if (v && typeof v === 'object' && 'result' in v && typeof (v as any).result === 'number') return round((v as any).result);
-  const s = cellText(v);
-  if (s === null || s.trim() === '') return null;
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? round(n) : null;
+  const raw = v && typeof v === 'object' && !(v instanceof Date) && 'result' in v ? (v as any).result : v;
+  if (raw === null || raw === undefined) return null;
+  let n: number;
+  if (typeof raw === 'number') {
+    n = raw;
+  } else if (typeof raw === 'string') {
+    let t = raw.replace(/[\s  ]/g, '');
+    if (t === '') return null;
+    // Both separators present → the last one is the decimal mark.
+    if (t.includes(',') && t.includes('.')) {
+      t = t.lastIndexOf(',') > t.lastIndexOf('.') ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
+    } else {
+      t = t.replace(',', '.');
+    }
+    if (!/^-?\d+(\.\d+)?$/.test(t)) throw new ImportError(`Некоректне число "${raw}" (${where})`);
+    n = Number(t);
+  } else {
+    return null; // Date, error value, rich text, boolean — not a number cell
+  }
+  if (!Number.isFinite(n) || Math.abs(n) > MAX_AMOUNT) throw new ImportError(`Некоректне число (${where})`);
+  return round(n);
 }
 function cellDate(v: ExcelJS.CellValue): Date | null {
-  if (v instanceof Date) return v;
+  // Native Excel dates arrive as a Date (possibly with a time part) — keep the
+  // UTC calendar day only, like every other writer (transactions POST, mono).
+  if (v instanceof Date) {
+    return Number.isFinite(v.getTime()) ? new Date(Date.UTC(v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate())) : null;
+  }
   const s = cellText(v);
   if (!s) return null;
   // ExcelJS gives a real Date for native Excel date cells (the common
@@ -79,26 +112,42 @@ export async function POST(req: NextRequest) {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const formData = await req.formData();
-    const file = formData.get('file') as File;
-    if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 });
+    const file = formData.get('file');
+    if (!file || typeof file === 'string') return NextResponse.json({ error: 'Файл не вибрано' }, { status: 400 });
+    if (file.size > MAX_FILE_BYTES) return NextResponse.json({ error: 'Файл завеликий (максимум 5 МБ)' }, { status: 400 });
 
     const buffer = await file.arrayBuffer();
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);
 
-    // --- Ensure users exist ---
-    // householdId_name — the compound unique (MT Ф4), not a bare name lookup
-    // — so this only ever matches/creates within the importing household,
-    // never collides with another household's "Паша"/"Женя".
-    for (const name of ['Паша', 'Женя']) {
-      await prisma.user.upsert({
-        where: { householdId_name: { householdId, name } }, update: {}, create: { name, householdId },
-      });
+    // Our own export carries the marker: its Ведення rows are the same
+    // transactions already in the DB under different signatures (aggregated
+    // [імпорт] rows from Планування vs real ones), so importing it back
+    // doubled the books (income +171k / expense +170k seen live).
+    if (wb.keywords === EXPORT_MARKER) {
+      return NextResponse.json({ error: 'Цей файл створено експортом застосунку — імпорт задублює дані' }, { status: 400 });
     }
 
     // --- Parse Планування sheet ---
     const planSheet = wb.getWorksheet('Планування');
-    if (!planSheet) return NextResponse.json({ error: 'Sheet "Планування" not found' }, { status: 400 });
+    if (!planSheet) return NextResponse.json({ error: 'Аркуш "Планування" не знайдено' }, { status: 400 });
+    const vedSheet = wb.getWorksheet('Ведення');
+    if (planSheet.rowCount > MAX_ROWS || (vedSheet?.rowCount ?? 0) > MAX_ROWS) {
+      return NextResponse.json({ error: `Забагато рядків у файлі (максимум ${MAX_ROWS})` }, { status: 400 });
+    }
+
+    // --- Ensure users exist ---
+    // Only seed Паша/Женя into a household that has NO users yet (a fresh
+    // import); an established household with differently named members must
+    // not get phantom people. householdId_name is the compound unique
+    // (MT Ф4), never colliding with another household's names; capped by MAX_USERS.
+    if ((await prisma.user.count({ where: { householdId } })) === 0) {
+      for (const name of ['Паша', 'Женя'].slice(0, MAX_USERS)) {
+        await prisma.user.upsert({
+          where: { householdId_name: { householdId, name } }, update: {}, create: { name, householdId },
+        });
+      }
+    }
 
     // Find section boundaries by scanning column C (index 3, exceljs is 1-based)
     type SectionType = 'income' | 'expense' | 'savings' | null;
@@ -118,14 +167,6 @@ export async function POST(req: NextRequest) {
       const name = cleanName(cell);
       if (!name) continue;
 
-      // Upsert category (householdId+name+type is unique at the DB level)
-      const cat = await prisma.category.upsert({
-        where: { householdId_name_type: { householdId, name, type: currentSection } },
-        update: {},
-        create: { name, type: currentSection, color: getColor(name, currentSection), householdId },
-      });
-      importedCats.set(name, cat.id);
-
       // Read monthly values across EVERY year block the export template
       // actually has (2026-2030, see lib/planningLayout.ts), not just the
       // first — FIXED 2026-08-30 (/fullreview deep): this used to hardcode
@@ -135,46 +176,60 @@ export async function POST(req: NextRequest) {
       // 2026). A household re-importing a real multi-year-edited export
       // would have every 2027+ column silently ignored, with no error — the
       // exact "silent data loss" class this skill's Stage 2 exists to catch.
+      const entries: { year: number; m: number; amount: number }[] = [];
       for (const year of PLANNING_YEARS) {
         for (let m = 0; m < 12; m++) {
-          const amount = cellNumber(row.getCell(planningMonthCol(year, m + 1)).value);
+          const amount = cellNumber(row.getCell(planningMonthCol(year, m + 1)).value, `Планування, рядок ${r}`);
           if (amount === null || amount <= 0) continue;
-
-          // Create a monthly summary transaction on the 1st of each month.
-          // UTC explicitly so this doesn't depend on the server process's
-          // timezone (local dev vs Vercel) — see stats/route.ts for the bug
-          // this class of mistake caused when those didn't match.
-          const date = new Date(Date.UTC(year, m, 1));
-
-          // Upsert: avoid duplicates on re-import (delete existing for this cat/month then re-create)
-          await prisma.transaction.deleteMany({
-            where: {
-              categoryId: cat.id,
-              householdId,
-              date: { gte: new Date(Date.UTC(year, m, 1)), lt: new Date(Date.UTC(year, m + 1, 1)) },
-              details: '[імпорт]',
-            },
-          });
-          await prisma.transaction.create({
-            data: {
-              date, categoryId: cat.id, amount, details: '[імпорт]', householdId,
-            },
-          });
-
-          // Create monthly plan — year+month+categoryId is already implicitly
-          // household-scoped (a category belongs to exactly one household),
-          // no compound-key change needed the way Category's was.
-          await prisma.monthlyPlan.upsert({
-            where: { year_month_categoryId: { year, month: m + 1, categoryId: cat.id } },
-            update: { plannedAmount: amount },
-            create: { year, month: m + 1, categoryId: cat.id, plannedAmount: amount, householdId },
-          });
+          entries.push({ year, m, amount });
         }
+      }
+      // A label with no non-zero cell is a template/placeholder row, not a
+      // category — don't create phantom categories from it.
+      if (entries.length === 0) continue;
+
+      // Upsert category (householdId+name+type is unique at the DB level)
+      const cat = await prisma.category.upsert({
+        where: { householdId_name_type: { householdId, name, type: currentSection } },
+        update: {},
+        create: { name, type: currentSection, color: getColor(name, currentSection), householdId },
+      });
+      importedCats.set(name, cat.id);
+
+      for (const { year, m, amount } of entries) {
+        // Create a monthly summary transaction on the 1st of each month.
+        // UTC explicitly so this doesn't depend on the server process's
+        // timezone (local dev vs Vercel) — see stats/route.ts for the bug
+        // this class of mistake caused when those didn't match.
+        const date = new Date(Date.UTC(year, m, 1));
+
+        // Upsert: avoid duplicates on re-import (delete existing for this cat/month then re-create)
+        await prisma.transaction.deleteMany({
+          where: {
+            categoryId: cat.id,
+            householdId,
+            date: { gte: new Date(Date.UTC(year, m, 1)), lt: new Date(Date.UTC(year, m + 1, 1)) },
+            details: '[імпорт]',
+          },
+        });
+        await prisma.transaction.create({
+          data: {
+            date, categoryId: cat.id, amount, details: '[імпорт]', householdId,
+          },
+        });
+
+        // Create monthly plan — year+month+categoryId is already implicitly
+        // household-scoped (a category belongs to exactly one household),
+        // no compound-key change needed the way Category's was.
+        await prisma.monthlyPlan.upsert({
+          where: { year_month_categoryId: { year, month: m + 1, categoryId: cat.id } },
+          update: { plannedAmount: amount },
+          create: { year, month: m + 1, categoryId: cat.id, plannedAmount: amount, householdId },
+        });
       }
     }
 
     // --- Parse Ведення sheet (individual transactions) ---
-    const vedSheet = wb.getWorksheet('Ведення');
     if (vedSheet) {
       // Dedup by "which occurrence of this signature within THIS file", not
       // by "does a transaction with this signature exist at all" — the
@@ -198,7 +253,7 @@ export async function POST(req: NextRequest) {
         const rawDate = row.getCell(3).value;
         const type    = cellText(row.getCell(4).value);
         const catName = cellText(row.getCell(5).value);
-        const signedAmount = cellNumber(row.getCell(6).value);
+        const signedAmount = cellNumber(row.getCell(6).value, `Ведення, рядок ${r}`);
         const details = cellText(row.getCell(7).value);
 
         if (!rawDate || !type || !catName || signedAmount === null || signedAmount === 0) continue;
@@ -241,6 +296,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, categories: importedCats.size });
   } catch (e) {
+    if (e instanceof ImportError) return NextResponse.json({ error: e.message }, { status: 400 });
     console.error('[import POST]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

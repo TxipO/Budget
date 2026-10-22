@@ -71,14 +71,16 @@ export async function GET(req: NextRequest) {
   // The Планування sheet has a fixed number of category rows per section
   // (template constraint, see SECTIONS above). If a section ever has more
   // active categories than rows, the extras would silently be left out of
-  // the export with no error — fail loudly instead so it's never invisible.
+  // the export with no error — refuse with a clear message so it's never
+  // invisible (and not an opaque 500: the user can act on this).
+  const TYPE_GEN: Record<string, string> = { income: 'доходу', expense: 'витрат', savings: 'збережень' };
   for (const section of SECTIONS) {
     const capacity = section.dataEnd - section.dataStart + 1;
     const count = categories.filter(c => c.type === section.type).length;
     if (count > capacity) {
       return NextResponse.json({
-        error: `Категорій типу "${TYPE_UA[section.type]}" (${count}) більше, ніж рядків у шаблоні (${capacity}). Розширте шаблон Excel перед експортом.`,
-      }, { status: 500 });
+        error: `Забагато категорій ${TYPE_GEN[section.type]} для шаблону Excel (${count} при ліміті ${capacity}). Видаліть невикористані категорії або розширте шаблон.`,
+      }, { status: 400 });
     }
   }
 
@@ -195,6 +197,11 @@ export async function GET(req: NextRequest) {
   // ЛИСТ «ПЛАНУВАННЯ»
   // ═══════════════════════════════════════════════════════════════════════
   const wsPlan = wb.getWorksheet('Планування')!;
+
+  // Marker read by import/route.ts (must match its EXPORT_MARKER): re-importing
+  // our own export doubles the books (Ведення rows are non-aggregated).
+  // Core doc property only — no sheet/XML-part changes.
+  wb.keywords = 'budget-app-export';
 
   // Write ONLY category names + month data cells.
   // Sum rows (21, 37, 50), row 7, row 8, and sum columns (Q, AE, AS, BG, BU)
