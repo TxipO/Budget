@@ -92,12 +92,20 @@ function SkeletonCard() {
 
 export default function Dashboard() {
   const { formatMoney, formatMoneySign } = useCurrency();
+  // UTC getters: the server and the planning page work in UTC months, and it
+  // makes the SSR and client initial values agree whatever the browser's zone.
   const now = new Date();
-  const [year,     setYear]     = useState(now.getFullYear());
-  const [month,    setMonth]    = useState(now.getMonth() + 1);
+  const [year,     setYear]     = useState(now.getUTCFullYear());
+  const [month,    setMonth]    = useState(now.getUTCMonth() + 1);
   const [period,   setPeriod]   = useState<Period>('month');
   const [stats,    setStats]    = useState<Stats | null>(null);
   const [loading,  setLoading]  = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  // Only the newest loadStats response may land; paramsRef lets callers that
+  // outlive a render (sync, undo toast) still fetch the CURRENT period.
+  const statsSeq = useRef(0);
+  const paramsRef = useRef({ period: 'month' as Period, year, month });
+  paramsRef.current = { period, year, month };
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Stats['recent'][0] | null>(null);
   // Collapsed by default — one of 6+ simultaneous dashboard blocks (critique
@@ -125,7 +133,7 @@ export default function Dashboard() {
   // re-tapping the small trigger. touchstart too: iOS Safari doesn't always
   // synthesize mousedown for taps on non-interactive areas.
   useEffect(() => {
-    if (!syncMenuOpen && !quarterMenuOpen && !warnPinned) return;
+    if (!syncMenuOpen && !quarterMenuOpen && !warnPinned && !warnHover) return;
     function onOutside(e: Event) {
       const t = e.target as Node;
       if (warnPinned && !warnRef.current?.contains(t)) setWarnPinned(false);
@@ -133,7 +141,7 @@ export default function Dashboard() {
       if (quarterMenuOpen && !quarterRef.current?.contains(t)) setQuarterMenuOpen(false);
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { setWarnPinned(false); setWarnHover(false); }
+      if (e.key === 'Escape') { setWarnPinned(false); setWarnHover(false); setSyncMenuOpen(false); setQuarterMenuOpen(false); }
     }
     document.addEventListener('mousedown', onOutside);
     document.addEventListener('touchstart', onOutside);
@@ -143,7 +151,7 @@ export default function Dashboard() {
       document.removeEventListener('touchstart', onOutside);
       document.removeEventListener('keydown', onKey);
     };
-  }, [syncMenuOpen, quarterMenuOpen, warnPinned]);
+  }, [syncMenuOpen, quarterMenuOpen, warnPinned, warnHover]);
   const [syncSelected, setSyncSelected] = useState<Record<string, boolean>>({});
   const [syncing, setSyncing] = useState(false);
   // Only visible feedback once the dropdown auto-closes at sync start
@@ -172,7 +180,8 @@ export default function Dashboard() {
   // require a trip to Settings. Expired SpareBank 1 sessions are excluded
   // (need reconnecting there first, syncing one would just error). The same
   // two responses feed the "needs attention" badge, so no second request.
-  useEffect(() => {
+  // Re-run after a sync so the badge clears once the bank link is healthy again.
+  function loadBankStatus() {
     Promise.all([
       fetch('/api/monobank/status').then(r => r.ok ? r.json() : []).catch(() => []),
       fetch('/api/sparebank/status').then(r => r.ok ? r.json() : []).catch(() => []),
@@ -185,7 +194,7 @@ export default function Dashboard() {
         ...sb.filter(s => s.connected && !s.expired).map(s => ({ key: `sparebank-${s.userId}`, userId: s.userId, name: s.name, bank: 'sparebank' as const, bankLabel: 'SpareBank 1' })),
       ];
       setBankConnections(conns);
-      setSyncSelected(Object.fromEntries(conns.map(c => [c.key, true])));
+      setSyncSelected(prev => Object.fromEntries(conns.map(c => [c.key, prev[c.key] ?? true])));
 
       const t = Date.now();
       const dm = (d: string | number) => new Date(d).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
@@ -204,7 +213,8 @@ export default function Dashboard() {
       }
       setIssues(found);
     });
-  }, []);
+  }
+  useEffect(() => { loadBankStatus(); }, []);
 
   // Sequential, not Promise.all — SpareBank 1's ASPSP enforces a strict daily
   // call cap (see project memory), so this app never fires concurrent
@@ -267,15 +277,24 @@ export default function Dashboard() {
     errors.forEach(e => toast(e, 'error'));
     if (!anyCreated && errors.length === 0) toast('Нових транзакцій немає');
     loadStats();
+    loadBankStatus();
   }
 
   function loadStats() {
+    const seq = ++statsSeq.current;
     setLoading(true);
+    setLoadError(false);
+    const { period, year, month } = paramsRef.current;
     const params = new URLSearchParams({ period, year: String(year), month: String(month) });
     fetch(`/api/stats?${params}`)
       .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
-      .then(data => { setStats(data); setLoading(false); })
-      .catch(() => { setLoading(false); toast('Помилка завантаження даних', 'error'); });
+      .then(data => { if (seq !== statsSeq.current) return; setStats(data); setLoading(false); })
+      .catch(() => {
+        if (seq !== statsSeq.current) return;
+        // Drop the old numbers: they belong to another period than the heading.
+        setStats(null); setLoadError(true); setLoading(false);
+        toast('Помилка завантаження даних', 'error');
+      });
   }
 
   useEffect(() => { loadStats(); }, [year, month, period]);
@@ -542,7 +561,7 @@ export default function Dashboard() {
 
         {period === 'year' && (
           <div style={{ display: 'flex', gap: 6 }}>
-            {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(y => (
+            {[now.getUTCFullYear() - 1, now.getUTCFullYear(), now.getUTCFullYear() + 1].map(y => (
               <button
                 key={y}
                 onClick={() => setYear(y)}
@@ -565,8 +584,17 @@ export default function Dashboard() {
       <div className="grid-5" style={{ marginBottom: 24 }}>
         {loading
           ? cardDefs.map(c => <SkeletonCard key={c.label} />)
+          : !stats
+          ? (
+            <div className="stat-card" style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <span style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>
+                {loadError ? 'Не вдалося завантажити дані за цей період' : 'Немає даних'}
+              </span>
+              <button className="btn-ghost" onClick={loadStats}>Спробувати ще раз</button>
+            </div>
+          )
           : cardDefs.map(c => {
-              const val = stats![c.key];
+              const val = stats[c.key];
               const cardColor = c.key === 'balance'
                 ? (val >= 0 ? TYPE_COLORS.income : TYPE_COLORS.expense)
                 : c.color;
@@ -597,8 +625,8 @@ export default function Dashboard() {
                         overspending is). */}
                     {c.key === 'balance' || c.key === 'savings' ? formatMoneySign(val) : formatMoney(val)}
                   </div>
-                  {stats!.prev && (
-                    <DeltaBadge current={val} prev={stats!.prev![c.key]} invertGood={c.invertGood} />
+                  {stats.prev && (
+                    <DeltaBadge current={val} prev={stats.prev[c.key]} invertGood={c.invertGood} />
                   )}
                   {/* Cumulative (all-time) balance rides along as a quiet
                       second line on the one card it's related to, instead of

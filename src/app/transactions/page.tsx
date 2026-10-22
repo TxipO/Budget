@@ -29,9 +29,10 @@ function amountSign(tx: Tx): 1 | -1 {
 
 export default function TransactionsPage() {
   const { formatMoney, formatMoneySign, currency } = useCurrency();
+  // UTC getters: same month boundaries as the server and the planning page.
   const now = new Date();
-  const [year,  setYear]  = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year,  setYear]  = useState(now.getUTCFullYear());
+  const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [typeFilter, setTypeFilter] = useState('');
   const [userFilter, setUserFilter] = useState('');
   // Two independent checkboxes, not a single toggle — lets "тільки банк" and
@@ -50,14 +51,27 @@ export default function TransactionsPage() {
   const exportRef = useRef<HTMLDivElement>(null);
   const pendingDels = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
+  // load() is also called from timers/toasts that outlive a render, so it reads
+  // the CURRENT filters via a ref; loadSeq drops responses that arrive out of order.
+  const loadSeq = useRef(0);
+  const query = useRef({ year, month, typeFilter, globalSearch });
+  query.current = { year, month, typeFilter, globalSearch };
+
   function load() {
+    const seq = ++loadSeq.current;
+    const { year, month, typeFilter, globalSearch } = query.current;
     const url = globalSearch
       ? `/api/transactions?limit=100000${typeFilter ? `&type=${typeFilter}` : ''}`
       : `/api/transactions?year=${year}&month=${month}${typeFilter ? `&type=${typeFilter}` : ''}`;
     fetch(url)
       .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
-      .then(setTxs)
-      .catch(() => toast('Помилка завантаження транзакцій', 'error'));
+      // Rows whose delete is still inside the undo window stay hidden on reload.
+      .then((rows: Tx[]) => { if (seq === loadSeq.current) setTxs(rows.filter(t => !pendingDels.current.has(t.id))); })
+      .catch(() => {
+        if (seq !== loadSeq.current) return;
+        setTxs([]); // old rows would sit under the new month's heading
+        toast('Помилка завантаження транзакцій', 'error');
+      });
   }
 
   useEffect(() => { load(); }, [year, month, typeFilter, globalSearch]);
@@ -68,12 +82,18 @@ export default function TransactionsPage() {
 
   useEffect(() => { setPage(1); }, [year, month, typeFilter, userFilter, showBank, showManual, search, globalSearch]);
 
-  // Cleanup pending delete timers on unmount
+  // Leaving the page (or closing the tab) inside the undo window must not drop
+  // a delete the toast already announced: fire it now instead of cancelling it.
   useEffect(() => {
-    return () => {
-      pendingDels.current.forEach(tid => clearTimeout(tid));
+    function flush() {
+      pendingDels.current.forEach((tid, id) => {
+        clearTimeout(tid);
+        fetch(`/api/transactions/${id}`, { method: 'DELETE', keepalive: true }).catch(() => {});
+      });
       pendingDels.current.clear();
-    };
+    }
+    window.addEventListener('pagehide', flush);
+    return () => { window.removeEventListener('pagehide', flush); flush(); };
   }, []);
 
   useEffect(() => {
@@ -161,13 +181,15 @@ export default function TransactionsPage() {
   function exportCSV() {
     // Includes rows excluded from totals (hidden in the list) so the file can be reconciled; they're marked.
     const header = ['Дата', 'Категорія', 'Тип', `Сума (${currency})`, 'Деталі', 'Хто', 'Не враховано'];
+    // Free text (bank counterparty names) must not open as a spreadsheet formula.
+    const safe = (v: string) => /^(\s*[=+\-@]|[\t\r])/.test(v) ? `'${v}` : v;
     const rows = txs.filter(matchesFilters).map(tx => [
       new Date(tx.date).toLocaleDateString('uk-UA', { timeZone: 'UTC' }),
-      tx.category.name,
+      safe(tx.category.name),
       TYPE_LABELS[tx.category.type],
       String(amountSign(tx) * tx.amount),
-      tx.details,
-      tx.user?.name ?? '',
+      safe(tx.details ?? ''),
+      safe(tx.user?.name ?? ''),
       isBudgetRelevant(tx) ? '' : 'так',
     ]);
     const csv = [header, ...rows]

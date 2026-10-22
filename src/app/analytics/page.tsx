@@ -1,6 +1,6 @@
 'use client';
 import dynamic from 'next/dynamic';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TrendingUp, TrendingDown, PiggyBank, Wallet } from 'lucide-react';
 import { MONTH_SHORT } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
@@ -35,20 +35,29 @@ const formatDdMm = (iso: string) => {
 
 export default function AnalyticsPage() {
   const { formatMoney, formatMoneySign } = useCurrency();
-  const [year, setYear] = useState(new Date().getFullYear());
+  // UTC, like the server's year boundaries and the planning page.
+  const thisYear = new Date().getUTCFullYear();
+  const [year, setYear] = useState(thisYear);
   const [data, setData] = useState<MonthData[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [savingsByCategory, setSavingsByCategory] = useState<SavingsCategoryBalance[]>([]);
 
+  const loadSeq = useRef(0); // a slower response for a previously picked year must not overwrite the current one
   useEffect(() => {
+    const seq = ++loadSeq.current;
     fetch(`/api/analytics?year=${year}`)
       .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
       .then((res: { months: { income: number; expenses: number; savings: number; balance: number }[]; insights: Insight[]; savingsByCategory: SavingsCategoryBalance[] }) => {
+        if (seq !== loadSeq.current) return;
         if (Array.isArray(res.months)) setData(res.months.map((m, i) => ({ month: MONTH_SHORT[i], ...m })));
         setInsights(Array.isArray(res.insights) ? res.insights : []);
         setSavingsByCategory(Array.isArray(res.savingsByCategory) ? res.savingsByCategory : []);
       })
-      .catch(() => toast('Помилка завантаження аналітики', 'error'));
+      .catch(() => {
+        if (seq !== loadSeq.current) return;
+        setData([]); setInsights([]); setSavingsByCategory([]); // not the previous year's numbers under this heading
+        toast('Помилка завантаження аналітики', 'error');
+      });
   }, [year]);
 
   const totalIncome   = data.reduce((s, d) => s + d.income, 0);
@@ -64,7 +73,7 @@ export default function AnalyticsPage() {
           <p style={{ color: 'var(--c-text-sub)', fontSize: 14 }}>Річна статистика</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map(y => (
+          {[thisYear - 1, thisYear, thisYear + 1].map(y => (
             <button key={y} onClick={() => setYear(y)} className="btn-ghost"
               style={{ background: year === y ? 'rgba(249,115,22,0.2)' : undefined, color: year === y ? '#FB923C' : undefined }}>
               {y}

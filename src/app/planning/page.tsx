@@ -30,9 +30,13 @@ export default function PlanningPage() {
   const thisMonth = now.getUTCMonth() + 1;
   const [year,     setYear]     = useState(thisYear);
   const [cats,     setCats]     = useState<Category[]>([]);
-  const [plans,    setPlans]    = useState<Plan[]>([]);
-  const [actuals,  setActuals]  = useState<Actual[]>([]);
-  const [editCell, setEditCell] = useState<{ catId: number; month: number } | null>(null);
+  // Plans and actuals land together and are tagged with their year: the table
+  // always shows ONE consistent year, even if a slower response arrives late.
+  const [grid,     setGrid]     = useState<{ year: number; plans: Plan[]; actuals: Actual[] }>({ year: thisYear, plans: [], actuals: [] });
+  const { plans, actuals } = grid;
+  const gridYear = grid.year;
+  const gridSeq = useRef(0);
+  const [editCell, setEditCell] = useState<{ catId: number; month: number; year: number } | null>(null);
   const [editVal,  setEditVal]  = useState('');
   const [editNote, setEditNote] = useState('');
   const amountRef = useRef<HTMLInputElement>(null);
@@ -47,21 +51,13 @@ export default function PlanningPage() {
 
   useEffect(() => {
     if (!cats.length) return;
-    fetch(`/api/plans?year=${year}`)
-      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
-      .then((data: any[]) =>
-        setPlans(data.map(p => ({
-          categoryId:    p.categoryId,
-          month:         p.month,
-          plannedAmount: p.plannedAmount,
-          notes:         p.notes ?? '',
-        })))
-      )
-      .catch(() => toast('Помилка завантаження планів', 'error'));
-
-    fetch(`/api/transactions?year=${year}`)
-      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
-      .then((txs: { date: string; amount: number; isTransfer: boolean; poolCorrection: boolean; savingsWithdrawal: boolean; category: { id: number; type: string } }[]) => {
+    const seq = ++gridSeq.current;
+    Promise.all([
+      fetch(`/api/plans?year=${year}`).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); }),
+      fetch(`/api/transactions?year=${year}`).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); }),
+    ])
+      .then(([planRows, txs]: [any[], { date: string; amount: number; isTransfer: boolean; poolCorrection: boolean; savingsWithdrawal: boolean; category: { id: number; type: string } }[]]) => {
+        if (seq !== gridSeq.current) return;
         const map: Record<string, number> = {};
         txs.forEach(tx => {
           // Found live 2026-09-18: counting isTransfer rows inflated "факт" vs plan.
@@ -79,12 +75,25 @@ export default function PlanningPage() {
           const key = `${tx.category.id}-${m}`;
           map[key]  = (map[key] || 0) + signedAmount;
         });
-        setActuals(Object.entries(map).map(([key, actual]) => {
-          const [catId, month] = key.split('-').map(Number);
-          return { categoryId: catId, month, actual };
-        }));
+        setGrid({
+          year,
+          plans: planRows.map(p => ({
+            categoryId:    p.categoryId,
+            month:         p.month,
+            plannedAmount: p.plannedAmount,
+            notes:         p.notes ?? '',
+          })),
+          actuals: Object.entries(map).map(([key, actual]) => {
+            const [catId, month] = key.split('-').map(Number);
+            return { categoryId: catId, month, actual };
+          }),
+        });
       })
-      .catch(() => toast('Помилка завантаження транзакцій', 'error'));
+      .catch(() => {
+        if (seq !== gridSeq.current) return;
+        setGrid({ year, plans: [], actuals: [] }); // not another year's numbers under this heading
+        toast('Помилка завантаження планів і транзакцій', 'error');
+      });
   }, [year, cats]);
 
   function getPlanned(catId: number, month: number) {
@@ -97,27 +106,29 @@ export default function PlanningPage() {
     return plans.find(p => p.categoryId === catId && p.month === month)?.notes || '';
   }
 
-  async function savePlan(catId: number, month: number, val: number, notes: string) {
+  // `y` is the year the edited cell belonged to, never whatever year is selected now.
+  async function savePlan(y: number, catId: number, month: number, val: number, notes: string) {
     const res = await fetch('/api/plans', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ year, month, categoryId: catId, plannedAmount: val, notes }),
+      body: JSON.stringify({ year: y, month, categoryId: catId, plannedAmount: val, notes }),
     });
     if (!res.ok) throw new Error(await res.text());
-    setPlans(prev => {
-      const idx = prev.findIndex(p => p.categoryId === catId && p.month === month);
+    setGrid(g => {
+      if (g.year !== y) return g; // the table has moved on to another year
+      const idx = g.plans.findIndex(p => p.categoryId === catId && p.month === month);
       if (idx >= 0) {
-        const copy = [...prev];
+        const copy = [...g.plans];
         copy[idx] = { ...copy[idx], plannedAmount: val, notes };
-        return copy;
+        return { ...g, plans: copy };
       }
-      return [...prev, { categoryId: catId, month, plannedAmount: val, notes }];
+      return { ...g, plans: [...g.plans, { categoryId: catId, month, plannedAmount: val, notes }] };
     });
     toast('План збережено');
   }
 
   function startEdit(catId: number, month: number) {
-    setEditCell({ catId, month });
+    setEditCell({ catId, month, year: gridYear });
     setEditVal(String(getPlanned(catId, month) || ''));
     setEditNote(getNotes(catId, month));
     setTimeout(() => amountRef.current?.focus(), 30);
@@ -126,15 +137,15 @@ export default function PlanningPage() {
   async function commitEdit() {
     if (!editCell) return;
     try {
-      await savePlan(editCell.catId, editCell.month, parseFloat(editVal) || 0, editNote);
+      await savePlan(editCell.year, editCell.catId, editCell.month, parseFloat(editVal) || 0, editNote);
       setEditCell(null);
     } catch {
       toast('Помилка збереження плану', 'error');
     }
   }
 
-  const monthDone = (m: number) => year < thisYear || (year === thisYear && m < thisMonth);
-  const yearDone  = year < thisYear;
+  const monthDone = (m: number) => gridYear < thisYear || (gridYear === thisYear && m < thisMonth);
+  const yearDone  = gridYear < thisYear;
 
   const sections = [
     { type: 'income',  label: 'Дохід' },
@@ -158,7 +169,7 @@ export default function PlanningPage() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {[thisYear - 1, thisYear, thisYear + 1, thisYear + 2].map(y => (
             <button
-              key={y} onClick={() => setYear(y)} className="btn-ghost"
+              key={y} onClick={() => { setYear(y); setEditCell(null); }} className="btn-ghost"
               style={{
                 background: year === y ? 'rgba(249,115,22,0.2)' : undefined,
                 color:      year === y ? '#FB923C' : undefined,
@@ -231,7 +242,7 @@ export default function PlanningPage() {
                         const planned = getPlanned(cat.id, m);
                         const actual  = getActual(cat.id, m);
                         const notes   = getNotes(cat.id, m);
-                        const isEdit  = editCell?.catId === cat.id && editCell?.month === m;
+                        const isEdit  = editCell?.year === gridYear && editCell?.catId === cat.id && editCell?.month === m;
                         const hasData = actual !== 0 || planned > 0;
                         const status = planStatus(type, actual, planned, monthDone(m));
 

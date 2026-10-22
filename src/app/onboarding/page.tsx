@@ -17,6 +17,9 @@ export default function OnboardingPage() {
   const [step, setStep] = useState<Step>('users');
   const [error, setError] = useState('');
   const [finishing, setFinishing] = useState(false);
+  // Household is committed once /complete succeeds; a retry after a Monobank
+  // failure must not call it again.
+  const [created, setCreated] = useState(false);
   const [selfUserId, setSelfUserId] = useState<number | null>(null);
 
   // Step 1 — users
@@ -82,24 +85,28 @@ export default function OnboardingPage() {
     if (pin && pin !== pinConfirm) { setError('PIN не збігається'); return; }
     setFinishing(true);
     try {
-      const res = await fetch('/api/onboarding/complete', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          selfName: selfName.trim(),
-          secondUserName: addSecondUser ? secondUserName.trim() : '',
-          categories,
-          currency,
-          pin: pin || undefined,
-        }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) { setError(data?.error || 'Помилка завершення налаштування'); return; }
+      if (!created) {
+        const res = await fetch('/api/onboarding/complete', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            selfName: selfName.trim(),
+            secondUserName: addSecondUser ? secondUserName.trim() : '',
+            categories,
+            currency,
+            pin: pin || undefined,
+          }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) { setError(data?.error || 'Помилка завершення налаштування'); return; }
+        setCreated(true);
+      }
 
-      // Best-effort — a failed Monobank connect shouldn't block finishing
-      // onboarding (household/categories/PIN are already committed by this
-      // point); the user can just connect it later from Settings.
+      // A failed Monobank connect keeps the user here with the error visible
+      // (household/categories/PIN are already committed): fix the token and
+      // press «Готово» again, or clear the field to connect later in Settings.
       const token = monoToken.trim();
       if (token && selfUserId) {
+        const monoFailed = 'Не вдалося підключити Monobank. Виправте токен або очистіть поле й натисніть «Готово» — підключити можна пізніше в Налаштуваннях.';
         try {
           const monoRes = await fetch('/api/monobank/connect', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -107,10 +114,12 @@ export default function OnboardingPage() {
           });
           if (!monoRes.ok) {
             const monoData = await monoRes.json().catch(() => null);
-            toast(monoData?.error || 'Не вдалося підключити Monobank — спробуйте пізніше в Налаштуваннях', 'error');
+            setError(monoData?.error ? `${monoData.error}. ${monoFailed}` : monoFailed);
+            return;
           }
         } catch {
-          toast('Не вдалося підключити Monobank — спробуйте пізніше в Налаштуваннях', 'error');
+          setError(monoFailed);
+          return;
         }
       }
 

@@ -33,7 +33,9 @@ export default function Sidebar() {
     // guard against by fetching anyway.
     if (APP_SHELL_HIDDEN_ROUTES.includes(pathname)) return;
 
-    const saved = localStorage.getItem('currentUser');
+    // Storage can be blocked (private mode, site data off); the pick just isn't remembered then.
+    let saved: string | null = null;
+    try { saved = localStorage.getItem('currentUser'); } catch {}
     if (saved) setUser(saved);
 
     fetch('/api/users').then(r => r.ok ? r.json() : []).then((list: { id: number; name: string }[]) => {
@@ -55,14 +57,14 @@ export default function Sidebar() {
       if (data.onboarded === false && pathname !== '/onboarding') { router.replace('/onboarding'); return; }
       if (!data.shared && data.user?.name) {
         setUser(data.user.name);
-        localStorage.setItem('currentUser', data.user.name);
+        try { localStorage.setItem('currentUser', data.user.name); } catch {}
       }
     }).catch(() => {});
   }, [pathname, router]);
 
   function switchUser(u: string) {
     setUser(u);
-    localStorage.setItem('currentUser', u);
+    try { localStorage.setItem('currentUser', u); } catch {}
   }
 
   async function logout() {
