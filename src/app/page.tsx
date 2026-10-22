@@ -416,7 +416,7 @@ export default function Dashboard() {
               {(warnHover || warnPinned) && (
                 <div className="header-dropdown" role="status" style={{
                   position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 20,
-                  background: 'var(--c-raised)', border: '1px solid var(--c-border-hi)', borderLeft: '3px solid #EF4444', borderRadius: 10,
+                  background: 'var(--c-raised)', border: '1px solid rgba(239,68,68,0.55)', borderRadius: 10,
                   padding: 12, width: 300, maxWidth: 'calc(100vw - 32px)', boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
                 }}>
                   <ul style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, color: 'var(--c-text)' }}>
