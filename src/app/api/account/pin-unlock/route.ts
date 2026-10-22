@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireHouseholdId } from '@/lib/household';
 import { unlockCookieValue, UNLOCK_MAX_AGE_S } from '@/lib/session';
-import { hashPin, safeEqual, currentPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse } from '@/lib/pin';
+import { hashPin, safeEqual, currentPinHash, clearPinFailures, pinLockoutResponse } from '@/lib/pin';
 
 // The /lock screen's action — proves the caller knows the ALREADY-configured
 // PIN for their own household (identity is already established by the
@@ -24,7 +24,6 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     if (typeof body?.pin !== 'string' || !safeEqual(hashPin(body.pin), stored)) {
-      await registerPinFailure(householdId);
       return NextResponse.json({ error: 'Невірний PIN' }, { status: 401 });
     }
     await clearPinFailures(householdId);

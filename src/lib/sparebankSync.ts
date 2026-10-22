@@ -48,15 +48,23 @@ export interface SyncResult {
   skippedExisting: number;
   skippedError: number;
   checked: number;
+  // True when the watermark was NOT advanced: an item threw (skippedError > 0)
+  // or the MAX_PAGES cap hit with a continuation_key still unread. The caller
+  // must treat the sync as failed, not clean.
+  incomplete: boolean;
 }
 
 // Throws EnableBankingError on an ASPSP/gateway-level failure (rate limit,
 // auth expired, etc.) — the caller decides how to surface that (an HTTP
 // response for the manual route, a Telegram alert + failure counter for the
-// cron route). Never partially advances the watermark: it only moves once
-// every page has been fetched and ingested without an unrecovered error, so
-// an early throw leaves lastSyncedAt exactly where it was and the next
-// attempt re-covers the same gap instead of silently skipping it.
+// cron route). Fails closed on the watermark: it only moves once every page
+// has been fetched AND every item ingested without a throw, so both an early
+// throw and a per-item failure (skippedError) / a MAX_PAGES cut-off leave
+// lastSyncedAt exactly where it was and the next attempt re-covers the same
+// gap (dedup in ingestTransaction makes re-processing the overlap safe)
+// instead of silently skipping it. One permanently-bad item therefore stalls
+// the watermark, and each run just re-dedups a growing window — bounded by
+// the caller's failure counter/alert and the cron's MIN_GAP_HOURS rate gate.
 export async function syncSparebankAccount(
   account: SyncableAccount,
   householdId: number,
@@ -105,9 +113,11 @@ export async function syncSparebankAccount(
   }
 
   const previousSyncedAt = account.lastSyncedAt;
-  await prisma.sparebankAccount.update({ where: { id: account.id }, data: { lastSyncedAt: new Date() } });
+  // continuationKey still set here = the loop ran out of pages, not data.
+  const incomplete = skippedError > 0 || !!continuationKey;
+  if (!incomplete) await prisma.sparebankAccount.update({ where: { id: account.id }, data: { lastSyncedAt: new Date() } });
 
-  return { createdIds, reconciledIds, previousSyncedAt, skippedPending, skippedExisting, skippedError, checked };
+  return { createdIds, reconciledIds, previousSyncedAt, skippedPending, skippedExisting, skippedError, checked, incomplete };
 }
 
 export { EnableBankingError };

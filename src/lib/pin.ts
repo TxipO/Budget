@@ -84,12 +84,15 @@ export async function setPinHash(householdId: number, hash: string | null): Prom
 // Brute-force guard: a 4-digit PIN is only 10k combinations, so any endpoint
 // that checks a PIN must not answer unlimited guesses. Deployed as Vercel
 // serverless functions, so in-memory module state is NOT shared across
-// invocations — state must live in the database instead. 5 straight
-// failures => 30s lockout. Shared across every PIN-checking endpoint (login,
-// unlock, change-PIN, Telegram-account-linking) so an attacker can't dodge
-// the lockout by hammering a different route that also checks the PIN.
-// Scoped per-household (HouseholdLockout) so one household's failed
-// attempts never affect another's lockout state.
+// invocations — state must live in the database instead. Every 5th straight
+// attempt locks the household out, escalating 30s -> 2min -> 10min (cap); only
+// a correct PIN (clearPinFailures) resets the escalation. Shared across every
+// PIN-checking endpoint (login, unlock, change-PIN, Telegram-account-linking)
+// so an attacker can't dodge the lockout by hammering a different route that
+// also checks the PIN. Scoped per-household (HouseholdLockout) so one
+// household's failed attempts never affect another's lockout state.
+// Trade-off: the lock is per household, not per client, so anyone who can reach
+// the endpoint can keep the owner locked out by guessing. Accepted.
 async function ensureLockoutRow(householdId: number) {
   // Concurrent cold-start requests can both attempt the create half of this
   // upsert before either commits, and Postgres/Prisma doesn't retry that as
@@ -102,30 +105,37 @@ async function ensureLockoutRow(householdId: number) {
   }
 }
 
-export async function registerPinFailure(householdId: number) {
-  await ensureLockoutRow(householdId);
-  const [{ failCount }] = await prisma.$queryRaw<{ failCount: number }[]>`
-    UPDATE "HouseholdLockout" SET "failCount" = "failCount" + 1 WHERE "householdId" = ${householdId} RETURNING "failCount"
-  `;
-  if (failCount >= 5) {
-    await prisma.householdLockout.update({
-      where: { householdId },
-      data: { lockedUntil: BigInt(Date.now() + 30_000), failCount: 0 },
-    });
-  }
-}
+// Kept only so existing callers still compile: the attempt is already charged
+// (atomically, BEFORE the compare) by pinLockoutResponse, so there is nothing
+// left to record on a wrong guess.
+export async function registerPinFailure(_householdId: number) {}
 
 export async function clearPinFailures(householdId: number) {
   await ensureLockoutRow(householdId);
   await prisma.householdLockout.update({ where: { householdId }, data: { failCount: 0, lockedUntil: BigInt(0) } });
 }
 
+// Atomic check + charge: ONE UPDATE both refuses a locked household and counts
+// this attempt (and sets the lock on every 5th). A separate check-then-record
+// let a parallel burst all pass the check before the first failure landed.
+// Postgres serializes concurrent UPDATEs on the row, so at most 5 attempts per
+// lock cycle ever get past this. Call it right before comparing the PIN; a
+// correct PIN must then call clearPinFailures.
 export async function pinLockoutResponse(householdId: number): Promise<NextResponse | null> {
+  await ensureLockoutRow(householdId);
+  const now = BigInt(Date.now());
+  const claimed = await prisma.$queryRaw<{ failCount: number }[]>`
+    UPDATE "HouseholdLockout" SET
+      "failCount" = "failCount" + 1,
+      "lockedUntil" = CASE WHEN ("failCount" + 1) % 5 = 0
+        THEN ${now}::bigint + (CASE WHEN "failCount" + 1 >= 15 THEN 600000 WHEN "failCount" + 1 >= 10 THEN 120000 ELSE 30000 END)
+        ELSE "lockedUntil" END
+    WHERE "householdId" = ${householdId} AND "lockedUntil" <= ${now}::bigint
+    RETURNING "failCount"
+  `;
+  if (claimed.length) return null;
   const row = await prisma.householdLockout.findUnique({ where: { householdId } });
-  const lockedUntil = row ? Number(row.lockedUntil) : 0;
-  const left = lockedUntil - Date.now();
-  const wait = left > 0 ? Math.ceil(left / 1000) : 0;
-  if (!wait) return null;
+  const wait = Math.max(1, Math.ceil((Number(row?.lockedUntil ?? 0) - Date.now()) / 1000));
   return NextResponse.json(
     { error: `Забагато спроб — зачекайте ${wait} с` },
     { status: 429, headers: { 'Retry-After': String(wait) } },

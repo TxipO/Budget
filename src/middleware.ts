@@ -141,7 +141,7 @@ const LOCKED_ALLOWLIST = ['/lock', '/api/account/pin-unlock', '/api/account/logo
 // attached, and clicking "Увійти" silently did nothing). Next.js
 // recognizes a nonce-based CSP response header and automatically applies
 // the same nonce to every script it injects itself.
-function buildCsp(nonce: string): string {
+function buildCsp(nonce: string, pathname: string): string {
   return [
     "default-src 'self'",
     // 'unsafe-eval' is required specifically by telegram-widget.js, which
@@ -154,7 +154,9 @@ function buildCsp(nonce: string): string {
     // Accepted tradeoff: this app has no user-generated content that could
     // feed an attacker-controlled string into an eval() reachable from
     // already-trusted code, so the realistic XSS-via-eval risk here is low.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval'`,
+    // Scoped to /login (the only page that loads the widget — LoginForm.tsx);
+    // every other page keeps a strict script-src with no eval.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${pathname === '/login' ? " 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self' data:",
@@ -171,12 +173,12 @@ function buildCsp(nonce: string): string {
   ].join('; ');
 }
 
-function withCsp(res: NextResponse, nonce: string): NextResponse {
+function withCsp(res: NextResponse, nonce: string, pathname: string): NextResponse {
   // Dev mode's HMR bundle needs 'unsafe-eval', which a strict CSP can't
   // grant without also weakening script-src for prod — so CSP is
   // production-only, same call as next.config.mjs's other headers.
   if (process.env.NODE_ENV === 'production') {
-    res.headers.set('Content-Security-Policy', buildCsp(nonce));
+    res.headers.set('Content-Security-Policy', buildCsp(nonce, pathname));
   }
   return res;
 }
@@ -190,7 +192,7 @@ export async function middleware(req: NextRequest) {
   const secret = process.env.AUTH_SECRET;
   const { pathname } = req.nextUrl;
   if (PUBLIC_PATHS.some(p => pathname === p) || PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) {
-    return withCsp(NextResponse.next({ request: { headers: requestHeaders } }), nonce);
+    return withCsp(NextResponse.next({ request: { headers: requestHeaders } }), nonce, pathname);
   }
 
   // Fail CLOSED, not open: without a secret we cannot verify any cookie, so
@@ -202,9 +204,9 @@ export async function middleware(req: NextRequest) {
   // the door.
   if (!secret) {
     if (pathname.startsWith('/api/')) {
-      return withCsp(NextResponse.json({ error: 'Автентифікацію не налаштовано' }, { status: 500 }), nonce);
+      return withCsp(NextResponse.json({ error: 'Автентифікацію не налаштовано' }, { status: 500 }), nonce, pathname);
     }
-    return withCsp(new NextResponse('Автентифікацію не налаштовано. Зверніться до адміністратора.', { status: 500 }), nonce);
+    return withCsp(new NextResponse('Автентифікацію не налаштовано. Зверніться до адміністратора.', { status: 500 }), nonce, pathname);
   }
 
   const cookie = req.cookies.get('budget-auth')?.value;
@@ -237,25 +239,25 @@ export async function middleware(req: NextRequest) {
       const unlocked = unlockCookie ? await verifyUnlock(unlockCookie, secret, session.householdId) : false;
       if (!unlocked) {
         if (pathname.startsWith('/api/')) {
-          return withCsp(NextResponse.json({ error: 'Locked' }, { status: 401 }), nonce);
+          return withCsp(NextResponse.json({ error: 'Locked' }, { status: 401 }), nonce, pathname);
         }
         const url = req.nextUrl.clone();
         url.pathname = '/lock';
         url.search = '';
-        return withCsp(NextResponse.redirect(url), nonce);
+        return withCsp(NextResponse.redirect(url), nonce, pathname);
       }
     }
 
-    return withCsp(NextResponse.next({ request: { headers: requestHeaders } }), nonce);
+    return withCsp(NextResponse.next({ request: { headers: requestHeaders } }), nonce, pathname);
   }
 
   if (pathname.startsWith('/api/')) {
-    return withCsp(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), nonce);
+    return withCsp(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), nonce, pathname);
   }
   const url = req.nextUrl.clone();
   url.pathname = '/login';
   url.search = '';
-  return withCsp(NextResponse.redirect(url), nonce);
+  return withCsp(NextResponse.redirect(url), nonce, pathname);
 }
 
 export const config = {

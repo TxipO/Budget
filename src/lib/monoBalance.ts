@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { decrypt } from '@/lib/crypto';
-import { getClientInfo, pickMonoAccount, MonobankError } from '@/lib/monobank';
+import { getClientInfo, pickMonoAccount, findMonoClientConflict, MonobankError } from '@/lib/monobank';
+import { notifyHousehold } from '@/lib/telegramBot';
 import { MONO_CCY_NAMES } from '@/lib/monoIngest';
 
 // Reads the tracked card's balance from Monobank's client-info and stores it on
@@ -18,9 +19,30 @@ export interface MonoBalanceResult {
 
 export async function refreshMonoBalance(userId: number): Promise<MonoBalanceResult> {
   try {
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { monoTokenEnc: true, monoAccountId: true } });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { monoTokenEnc: true, monoAccountId: true, monoClientId: true, householdId: true, name: true } });
     if (!user?.monoTokenEnc) return { ok: false, amount: null, currency: null, error: 'not connected' };
     const info = await getClientInfo(decrypt(user.monoTokenEnc));
+    // Backfill/guard for users connected before monoClientId existed (both rows
+    // were null, so connect's conflict check could never fire). Fail-open: a
+    // clash only alerts (once per user+clientId), it never blocks the sync.
+    if (!user.monoClientId && info.clientId) {
+      try {
+        const other = await findMonoClientConflict(info.clientId, userId);
+        if (other === null) {
+          await prisma.user.update({ where: { id: userId }, data: { monoClientId: info.clientId } });
+        } else {
+          console.error('[monoBalance] same Monobank clientId bound to users', userId, 'and', other);
+          const key = `monoClientConflict:${userId}`;
+          const seen = await prisma.appSetting.findUnique({ where: { key } });
+          if (user.householdId && seen?.value !== info.clientId) {
+            await notifyHousehold(user.householdId, `⚠️ Один і той самий акаунт Monobank підключено двом користувачам (${user.name} і користувач #${other}) — транзакції можуть потрапляти не тому власнику. Перепідключіть Monobank лише в одного.`);
+            await prisma.appSetting.upsert({ where: { key }, create: { key, value: info.clientId }, update: { value: info.clientId } });
+          }
+        }
+      } catch (e) {
+        console.error('[monoBalance] clientId guard failed for user', userId, e);
+      }
+    }
     const accounts = info.accounts ?? [];
     const account = accounts.find(a => a.id === user.monoAccountId) ?? pickMonoAccount(accounts);
     if (!account || !Number.isFinite(account.balance)) return { ok: false, amount: null, currency: null, error: 'no account' };

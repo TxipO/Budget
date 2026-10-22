@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { issueAuthCookies } from '@/lib/session';
-import { hashPin, safeEqual, currentPinHash, PIN_HOUSEHOLD_ID, registerPinFailure as registerFailure, clearPinFailures as clearFailures, pinLockoutResponse as tooManyAttempts } from '@/lib/pin';
+import { hashPin, safeEqual, currentPinHash, PIN_HOUSEHOLD_ID, clearPinFailures as clearFailures, pinLockoutResponse as tooManyAttempts } from '@/lib/pin';
 
 // PIN LOGIN — establishes identity for household #1 (see lib/pin.ts's
 // PIN_HOUSEHOLD_ID). Changing/removing a PIN, for household #1 or any other
@@ -19,7 +19,6 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     if (typeof body.pin !== 'string' || !safeEqual(hashPin(body.pin), stored)) {
-      await registerFailure(PIN_HOUSEHOLD_ID);
       return NextResponse.json({ error: 'Невірний PIN' }, { status: 401 });
     }
     await clearFailures(PIN_HOUSEHOLD_ID);

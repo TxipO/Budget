@@ -3,6 +3,7 @@
 //  2. newest backups/budget-*.json.gz must be < 50h old
 //  3. savings-pool cross-check: the bank's stored balance change vs the app's pool change
 //  3b. stored bank balances (SparebankAccount / User.monoBalance*) fresher than 3 days
+//  3c. SpareBank auto-sync health: failure counter > 0, or last auto-sync older than 36h (Mono has no sync counter; 3b covers it)
 // Silent when OK. On problems: Ukrainian Telegram message to every household-1 user with a
 // telegramId (bot token = TELEGRAM_BOT_TOKEN from .env, same as src/lib/telegramBot.ts).
 // WEEKLY_CHECK_TEST=1 forces the alert path with a "Тест:" prefix. Exit 1 on real problems.
@@ -104,6 +105,23 @@ try {
   for (const u of mono) problems.push(`Баланс Monobank (${u.name}) не оновлюється: ${age(u.monoBalanceFetchedAt)}. Перевір крон і токен Monobank.`);
   log(`stale balances: sparebank ${sb.length}, mono ${mono.length}`);
 } catch (e) { problems.push(`Перевірка свіжості балансів впала: ${e.message}`); }
+
+// 3c. auto-sync health. The cron alerts on its own failures, but only when Telegram delivery works
+// and only on the 1st/3rd/... failure; this is the independent weekly backstop. Only users whose
+// consent is still valid (an expired one is the cron's own 'expired' alert, not a sync fault).
+try {
+  const now = new Date();
+  const sbUsers = await prisma.user.findMany({
+    where: { householdId: 1, sbAutoSync: true, sbSessionEnc: { not: null }, OR: [{ sbValidUntil: null }, { sbValidUntil: { gt: now } }] },
+    select: { name: true, sbSyncFailCount: true, sbLastAutoSyncAt: true },
+  });
+  for (const u of sbUsers) {
+    const lastH = u.sbLastAutoSyncAt ? (now - u.sbLastAutoSyncAt) / 3.6e6 : Infinity;
+    if (u.sbSyncFailCount > 0) problems.push(`Автосинхронізація SpareBank 1 (${u.name}) не вдалась ${u.sbSyncFailCount} раз(ів) поспіль.`);
+    if (lastH > 36) problems.push(`Автосинхронізація SpareBank 1 (${u.name}) не спрацьовувала ${lastH === Infinity ? 'жодного разу' : Math.round(lastH) + ' год'} (ліміт 36). Перевір GitHub Actions / крон.`);
+  }
+  log(`auto-sync health: ${sbUsers.length} user(s) checked`);
+} catch (e) { problems.push(`Перевірка автосинхронізації впала: ${e.message}`); }
 
 // 4. alert
 let code = 0;

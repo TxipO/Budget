@@ -231,7 +231,9 @@ const KEYWORD_CATEGORY: [RegExp, string][] = [
   [/ресторан|restaurant|кафе|cafe|café|бар\b|bar\b|паб|pub\b|суші|sushi|піцер|pizza|kebab|кебаб|grill|гриль|бургер|burger|кав'?ярн|coffee ?shop|кофейн/i, 'Балування'],
   [/netflix|spotify|youtube ?premium|apple\.com\/bill|google ?(play|one)|playstation|xbox|patreon|подпис|підписк/i, 'Підписки'],
   [/coursera|udemy|prometheus|школа|курси|university|college|навчанн|учеба|education|study/i, 'Навчання'],
-  [/vape|вейп|сигарет|tobacco|casino|казино|bet|parimatch|букмекер/i, 'Залежності'],
+  // "bet" is anchored: unanchored it hit betaling/abetong/alphabet. JS \b is
+  // ASCII-only, so lookarounds on \p{L} (u flag); digits allowed after (bet365).
+  [/vape|вейп|сигарет|tobacco|casino|казино|(?<!\p{L})bet(?!\p{L})|parimatch|букмекер/iu, 'Залежності'],
   [/квіти|flowers|подарун|подарок|gift/i, 'Подарунки'],
   [/zara|h&m|lc waikiki|epicentr|епіцентр|leroy merlin|ikea|одяг|взуття|одежда|clothes|clothing/i, 'Домашній хлам/одяг/etc'],
 ];

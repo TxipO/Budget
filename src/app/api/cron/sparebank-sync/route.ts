@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { safeEqual } from '@/lib/pin';
 import { syncSparebankAccount, EnableBankingError } from '@/lib/sparebankSync';
-import { sendMessage } from '@/lib/telegramBot';
+import { notifyHousehold } from '@/lib/telegramBot';
 import { refreshSparebankBalances } from '@/lib/sparebankBalances';
 import { refreshStaleMonoBalances } from '@/lib/monoBalance';
 
@@ -29,7 +29,10 @@ import { refreshStaleMonoBalances } from '@/lib/monoBalance';
 // day — so the gate is the time since this user's last auto-sync: about two real
 // syncs a day no matter when GitHub gets around to firing, and the two DST
 // candidate fires per window are harmless (the second finds the user "too soon").
-const MIN_GAP_HOURS = 10;
+// 8, not 10: GitHub fires jitter up to ~2h late, and a 10h gap skipped the
+// on-time fire that followed a late one. Failed runs stamp sbLastAutoSyncAt too,
+// so a persistently failing user is still retried at most ~3x/day, never hammered.
+const MIN_GAP_HOURS = 8;
 
 // Balance refresh (added 2026-10-12, after a stored balance sat 2.5 months stale
 // because only a manual button ever updated it). Rides on the same unattended
@@ -49,6 +52,19 @@ const BALANCE_MIN_AGE_MS = 18 * 3600 * 1000;
 // a person doesn't need "expires in 6 days", "5 days", "4 days"... daily.
 const CONSENT_WARN_DAYS = [7, 3, 1];
 
+// "Already told them" marker, one AppSetting row per user: value is
+// `<consent end ISO>:<daysLeft | expired>`. The cron fires several times a day
+// and daysLeft only changes once per 24h, so without this every fire re-sent
+// the same warning (and 'expired' on every fire forever). A reconnect moves
+// sbValidUntil, which naturally re-arms it.
+async function alertOnce(user: { id: number; name: string }, householdId: number, marker: string, text: string) {
+  const key = `sbAlert:${user.id}:consent`;
+  const prev = await prisma.appSetting.findUnique({ where: { key } });
+  if (prev?.value === marker) return;
+  await notifyHousehold(householdId, text);
+  await prisma.appSetting.upsert({ where: { key }, create: { key, value: marker }, update: { value: marker } });
+}
+
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
@@ -63,7 +79,7 @@ export async function GET(req: NextRequest) {
   const users = await prisma.user.findMany({
     where: { sbAutoSync: true, sbSessionEnc: { not: null }, sparebankAccounts: { some: { syncEnabled: true } } },
     select: {
-      id: true, name: true, householdId: true, telegramId: true, sbValidUntil: true,
+      id: true, name: true, householdId: true, sbValidUntil: true,
       sbLastAutoSyncAt: true, sbSyncFailCount: true,
       sparebankAccounts: { where: { syncEnabled: true }, select: { id: true, userId: true, accountUid: true, lastSyncedAt: true, syncFloor: true, balanceFetchedAt: true } },
     },
@@ -83,13 +99,11 @@ export async function GET(req: NextRequest) {
       const daysLeft = Math.ceil((user.sbValidUntil.getTime() - Date.now()) / (24 * 3600 * 1000));
       if (daysLeft <= 0) {
         results.push({ userId: user.id, skipped: 'consent expired' });
-        if (user.telegramId) {
-          await sendMessage(Number(user.telegramId), `⚠️ Доступ SpareBank 1 для ${user.name} прострочено — автосинхронізація зупинена. Перепідключіть банк у Налаштуваннях.`);
-        }
+        await alertOnce(user, user.householdId, `${user.sbValidUntil.toISOString()}:expired`, `⚠️ Доступ SpareBank 1 для ${user.name} прострочено — автосинхронізація зупинена. Перепідключіть банк у Налаштуваннях.`);
         continue;
       }
-      if (user.telegramId && CONSENT_WARN_DAYS.includes(daysLeft)) {
-        await sendMessage(Number(user.telegramId), `⏳ Доступ SpareBank 1 для ${user.name} закінчується через ${daysLeft} дн. Перепідключіть банк заздалегідь у Налаштуваннях, щоб не перервати автосинхронізацію.`);
+      if (CONSENT_WARN_DAYS.includes(daysLeft)) {
+        await alertOnce(user, user.householdId, `${user.sbValidUntil.toISOString()}:${daysLeft}`, `⏳ Доступ SpareBank 1 для ${user.name} закінчується через ${daysLeft} дн. Перепідключіть банк заздалегідь у Налаштуваннях, щоб не перервати автосинхронізацію.`);
       }
     }
 
@@ -103,6 +117,13 @@ export async function GET(req: NextRequest) {
         const result = await syncSparebankAccount(account, user.householdId, null); // unattended — no real end-user behind a scheduled job
         userCreated += result.createdIds.length;
         userChecked += result.checked;
+        // Watermark did not move (item threw / page cap hit) — count it as a
+        // failed run so the counter + alert path below fires; see sparebankSync.ts.
+        if (result.incomplete) {
+          userFailed = true;
+          lastMessage = result.skippedError > 0 ? `не вдалось обробити ${result.skippedError} транзакцій (див. логи)` : 'забагато сторінок виписки — синхронізацію обірвано';
+          console.error('[cron/sparebank-sync] incomplete sync for account', account.id, 'user', user.id, lastMessage);
+        }
       } catch (e) {
         userFailed = true;
         lastMessage = e instanceof EnableBankingError ? e.message : 'невідома помилка';
@@ -123,16 +144,16 @@ export async function GET(req: NextRequest) {
       // First failure pages immediately; after that, only every 3rd
       // consecutive one — a single-day blip shouldn't notify anyone, but a
       // sync that's been broken for days must not stay silently unnoticed.
-      if (user.telegramId && (newFailCount === 1 || newFailCount % 3 === 0)) {
-        await sendMessage(Number(user.telegramId), `⚠️ Автосинхронізація SpareBank 1 для ${user.name} не вдалась (${newFailCount}-й раз поспіль): ${lastMessage}`);
+      if (newFailCount === 1 || newFailCount % 3 === 0) {
+        await notifyHousehold(user.householdId, `⚠️ Автосинхронізація SpareBank 1 для ${user.name} не вдалась (${newFailCount}-й раз поспіль): ${lastMessage}`);
       }
     }
   }
 
   // Monobank balances: no bank quota concern (token-based, ~1 req/60s), and
   // independent of SpareBank — a Monobank-only user isn't in the query above.
-  // Runs only inside a target-hour window (the gate at the top), so ~2
-  // attempts/day, each skipped while the stored balance is under 5h old.
+  // Runs on every authorized fire (GitHub fires up to 4x/day), each user
+  // skipped while the stored balance is under 5h old.
   let monoBalances: Awaited<ReturnType<typeof refreshStaleMonoBalances>> = [];
   try {
     monoBalances = await refreshStaleMonoBalances();
