@@ -76,6 +76,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // NotificationLog retention: opportunistic, one cheap delete per run instead of a separate job.
+  await prisma.notificationLog.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 180 * 24 * 3600 * 1000) } } }).catch((e) => console.error('[cron/sparebank-sync] notificationLog prune failed', e));
+
   const users = await prisma.user.findMany({
     where: { sbAutoSync: true, sbSessionEnc: { not: null }, sparebankAccounts: { some: { syncEnabled: true } } },
     select: {

@@ -135,12 +135,20 @@ if (problems.length) {
     try {
       const users = await prisma.user.findMany({ where: { householdId: 1, telegramId: { not: null } }, select: { telegramId: true } });
       for (const u of users) {
-        const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: u.telegramId, text: text.slice(0, 3500) }),
-        });
-        log(`telegram ${u.telegramId}: ${r.status}`);
-        if (!r.ok) code = 1;
+        const body = text.slice(0, 3500);
+        let ok = false, error = null;
+        try {
+          const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: u.telegramId, text: body }),
+          });
+          ok = r.ok;
+          if (!ok) error = `${r.status} ${await r.text().catch(() => '')}`;
+          log(`telegram ${u.telegramId}: ${r.status}`);
+        } catch (e) { error = e.message; log(`telegram send failed: ${e.message}`); }
+        if (!ok) code = 1;
+        // NotificationLog: the Bot API can't read back sent messages. Best-effort, never blocks the alert.
+        await prisma.notificationLog.create({ data: { householdId: 1, chatId: String(u.telegramId), kind: 'weekly-check', text: body, ok, error: error?.split(token).join('***').slice(0, 300) ?? null } }).catch((e) => log(`notificationLog write failed: ${e.message}`));
       }
       if (!users.length) { log('немає отримувачів з telegramId'); code = 1; }
     } catch (e) { log(`telegram send failed: ${e.message}`); code = 1; }

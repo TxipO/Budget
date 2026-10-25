@@ -429,3 +429,20 @@ model MonthlyPlan {
 
   @@unique([year, month, categoryId])
 }
+
+// Every outgoing Telegram bot message (added 2026-10-25). The Bot API cannot read
+// back what the bot sent, so without this an alert is only ever visible to its
+// recipient. Written by lib/telegramBot.ts and scripts/weekly-check.mjs; read with
+// scripts/notifications.mjs. Pruned (180 days) by the sparebank-sync cron.
+model NotificationLog {
+  id          Int      @id @default(autoincrement())
+  householdId Int?
+  chatId      String?
+  kind        String
+  text        String
+  ok          Boolean
+  error       String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}
