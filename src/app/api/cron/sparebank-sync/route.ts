@@ -132,19 +132,20 @@ export async function GET(req: NextRequest) {
     }
 
     if (!userFailed) {
-      await prisma.user.update({ where: { id: user.id }, data: { sbLastAutoSyncAt: new Date(), sbSyncFailCount: 0 } });
+      await prisma.user.update({ where: { id: user.id }, data: { sbLastAutoSyncAt: new Date(), sbSyncFailCount: 0, sbLastSyncError: null } });
       // Never throws, never feeds the failure bookkeeping above — see
       // BALANCE_MIN_AGE_MS. psu=null: same unattended bucket as the sync.
       const balances = await refreshSparebankBalances(user.sparebankAccounts, null, { minAgeMs: BALANCE_MIN_AGE_MS });
       results.push({ userId: user.id, created: userCreated, checked: userChecked, balances });
     } else {
       const newFailCount = user.sbSyncFailCount + 1;
-      await prisma.user.update({ where: { id: user.id }, data: { sbLastAutoSyncAt: new Date(), sbSyncFailCount: newFailCount } });
+      await prisma.user.update({ where: { id: user.id }, data: { sbLastAutoSyncAt: new Date(), sbSyncFailCount: newFailCount, sbLastSyncError: lastMessage } });
       results.push({ userId: user.id, error: lastMessage });
-      // First failure pages immediately; after that, only every 3rd
-      // consecutive one — a single-day blip shouldn't notify anyone, but a
-      // sync that's been broken for days must not stay silently unnoticed.
-      if (newFailCount === 1 || newFailCount % 3 === 0) {
+      // A single failed run (a one-off night blip at the bank, 2026-10-25) must
+      // not notify anyone — the dashboard badge already shows from the 1st. Page
+      // on the 2nd consecutive failure, then every 3rd, so a sync that's been
+      // broken for days still can't stay silently unnoticed.
+      if (newFailCount === 2 || newFailCount % 3 === 0) {
         await notifyHousehold(user.householdId, `⚠️ Автосинхронізація SpareBank 1 для ${user.name} не вдалась (${newFailCount}-й раз поспіль): ${lastMessage}`);
       }
     }

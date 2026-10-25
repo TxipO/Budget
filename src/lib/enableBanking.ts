@@ -71,7 +71,21 @@ async function call(path: string, init?: RequestInit) {
     }
     throw new EnableBankingError('Забагато запитів до Enable Banking — спробуйте пізніше', 429);
   }
-  if (!res.ok) throw new EnableBankingError(`Enable Banking API помилка: ${res.status}`, res.status);
+  if (!res.ok) {
+    // The bare status made a one-off nightly 400 (2026-10-25) undiagnosable and
+    // Vercel keeps logs ~1h — so surface the error body's code/message, short and
+    // newline-free. Only these fields, never headers/JWT; uids masked in the path.
+    const raw = await res.text().catch(() => '');
+    let body: any = null;
+    try { body = JSON.parse(raw); } catch { /* non-JSON — fall back to raw text */ }
+    const parts = body && typeof body === 'object'
+      ? [body.error, body.code, body.message, body.detail].filter((v): v is string => typeof v === 'string' && v !== '')
+      : [raw];
+    const summary = parts.join(': ').replace(/\s+/g, ' ').trim().slice(0, 150);
+    const safePath = path.split('?')[0].replace(/\/(accounts|sessions)\/[^/]+/, '/$1/***');
+    console.error(`[enableBanking] ${init?.method ?? 'GET'} ${safePath} -> ${res.status}${summary ? `: ${summary}` : ''}`);
+    throw new EnableBankingError(`Enable Banking API помилка: ${res.status}${summary ? ` (${summary})` : ''}`, res.status);
+  }
   return res.json();
 }
 

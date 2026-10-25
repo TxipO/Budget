@@ -187,7 +187,7 @@ export default function Dashboard() {
       fetch('/api/sparebank/status').then(r => r.ok ? r.json() : []).catch(() => []),
     ]).then(([mono, sb]: [
       { userId: number; name: string; connected: boolean; balanceFetchedAt: string | null }[],
-      { userId: number; name: string; connected: boolean; expired: boolean; validUntil: string | null; autoSync: boolean; lastAutoSyncAt: string | null; autoSyncFailCount: number; accounts: { syncEnabled: boolean; balanceFetchedAt: string | null }[] }[],
+      { userId: number; name: string; connected: boolean; expired: boolean; validUntil: string | null; autoSync: boolean; lastAutoSyncAt: string | null; autoSyncFailCount: number; lastSyncError: string | null; accounts: { syncEnabled: boolean; balanceFetchedAt: string | null }[] }[],
     ]) => {
       const conns: BankConnection[] = [
         ...mono.filter(m => m.connected).map(m => ({ key: `mono-${m.userId}`, userId: m.userId, name: m.name, bank: 'mono' as const, bankLabel: 'Monobank' })),
@@ -203,7 +203,7 @@ export default function Dashboard() {
         if (s.expired) { found.push(`${s.name}: доступ SpareBank 1 прострочено — перепідключи в Налаштуваннях (BankID)`); continue; }
         if (s.validUntil && new Date(s.validUntil).getTime() - t < CONSENT_WARN_MS) found.push(`${s.name}: доступ SpareBank 1 спливає ${dm(s.validUntil)} — перепідключи в Налаштуваннях`);
         // lastAutoSyncAt is the last ATTEMPT (set on failure too), so with a fail count it dates the last try.
-        if (s.autoSync && s.autoSyncFailCount > 0) found.push(`${s.name}: автосинхронізація SpareBank 1 завершується помилкою${s.lastAutoSyncAt ? ` (остання спроба ${dm(s.lastAutoSyncAt)})` : ''}`);
+        if (s.autoSync && s.autoSyncFailCount > 0) found.push(`${s.name}: автосинхронізація SpareBank 1 завершується помилкою${s.lastAutoSyncAt ? ` (остання спроба ${dm(s.lastAutoSyncAt)})` : ''}${s.lastSyncError ? `: ${s.lastSyncError}` : ''}`);
         else if (s.autoSync && s.lastAutoSyncAt && t - new Date(s.lastAutoSyncAt).getTime() > AUTOSYNC_STALE_MS) found.push(`${s.name}: автосинхронізація SpareBank 1 не запускалась з ${dm(s.lastAutoSyncAt)}`);
         const old = s.accounts.filter(a => a.syncEnabled && a.balanceFetchedAt && t - new Date(a.balanceFetchedAt).getTime() > BALANCE_ISSUE_MS).map(a => new Date(a.balanceFetchedAt!).getTime());
         if (old.length) found.push(`${s.name}: баланс SpareBank 1 не оновлювався з ${dm(Math.min(...old))}`);

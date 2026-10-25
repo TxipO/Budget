@@ -115,6 +115,9 @@ model User {
   sbAutoSync       Boolean   @default(false)
   sbLastAutoSyncAt DateTime?
   sbSyncFailCount  Int       @default(0)
+  // 2026-10-25: last failed auto-sync's message (null after a clean run), so the
+  // dashboard badge can say WHY — Vercel logs are gone after ~1h.
+  sbLastSyncError  String?
 
   // Telegram Login Widget auth (see lib/telegramAuth.ts). telegramId is
   // Telegram's own numeric user id, stored as a string (safer than Int for

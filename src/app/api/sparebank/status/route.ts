@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
       where: { householdId },
       select: {
         id: true, name: true, sbSessionEnc: true, sbValidUntil: true,
-        sbAutoSync: true, sbLastAutoSyncAt: true, sbSyncFailCount: true,
+        sbAutoSync: true, sbLastAutoSyncAt: true, sbSyncFailCount: true, sbLastSyncError: true,
         sparebankAccounts: {
           select: { id: true, label: true, iban: true, syncEnabled: true, lastSyncedAt: true, balanceAmount: true, balanceCurrency: true, balanceFetchedAt: true, categoryId: true },
           orderBy: { id: 'asc' },
@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
       autoSync: u.sbAutoSync,
       lastAutoSyncAt: u.sbLastAutoSyncAt,
       autoSyncFailCount: u.sbSyncFailCount,
+      lastSyncError: u.sbLastSyncError,
       accounts: u.sparebankAccounts.map(a => ({
         id: a.id,
         label: a.label,
