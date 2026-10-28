@@ -393,6 +393,7 @@ select.input-field option {
   /* Tap targets: ghost/primary buttons were 26-34px tall on phones. */
   .btn-ghost, .btn-primary, .input-field { min-height: 40px; }
   .btn-ghost { min-width: 40px; justify-content: center; }
+  .attn-btn { width: 40px !important; height: 40px !important; }
 
   /* Транзакції header: month stepper takes the free width next to the
      export icon; "Додати" gets its own full-width row instead of a stray
@@ -483,7 +484,7 @@ select.input-field option {
   .header-dropdown {
     position: fixed !important; top: auto !important;
     bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom)) !important;
-    left: 16px !important; right: 16px !important; min-width: 0 !important;
+    left: 16px !important; right: 16px !important; min-width: 0 !important; width: auto !important; max-width: none !important;
   }
   /* Same root cause, plain text instead of a menu — let it flow normally
      under its button instead of floating off an unpredictable edge. */

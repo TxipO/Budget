@@ -434,7 +434,7 @@ export default function TransactionsPage() {
           // which used to show a real net WITHDRAWAL as a plain positive
           // number, reading as a deposit. Found live 2026-09-07.
           { label: 'Збереження', value: totals.savings, color: 'var(--c-warn-text)', signed: true },
-          { label: 'Перекази', value: transfersTotal, color: '#94A3B8', signed: false },
+          { label: 'Перекази', value: transfersTotal, color: 'var(--c-text-muted)', signed: false },
         ].map(s => (
           <div key={s.label} className="card tx-summary-card" style={{ flex: '1 1 100px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: '#64748B' }}>{s.label}</span>

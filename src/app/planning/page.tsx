@@ -211,7 +211,7 @@ export default function PlanningPage() {
               const yearTotalPlanned = sectionTotalByMonth.reduce((s, m) => s + m.planned, 0);
               const yearTotalActual  = sectionTotalByMonth.reduce((s, m) => s + m.actual, 0);
               const yearTotalStatus  = planStatus(type, yearTotalActual, yearTotalPlanned, yearDone);
-              const typeColor = type === 'income' ? '#22C55E' : type === 'expense' ? '#EF4444' : '#F59E0B';
+              const typeColor = type === 'income' ? 'var(--c-income-num)' : type === 'expense' ? 'var(--c-expense-num)' : 'var(--c-savings-num)';
 
               return [
                 <tr key={`sec-${type}`} style={{ background: 'rgba(255,255,255,0.02)' }}>

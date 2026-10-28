@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Save, Plus, EyeOff } from 'lucide-react';
 import { TYPE_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
@@ -204,6 +204,10 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
     }
   }
 
+  // Move focus into the dialog so keyboard/screen-reader users start inside it.
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { dialogRef.current?.focus(); }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -213,6 +217,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
+        ref={dialogRef} tabIndex={-1}
         role="dialog" aria-modal="true" aria-label={editId ? 'Редагувати транзакцію' : 'Нова транзакція'}
         className="card-elevated"
         // % of .modal-overlay (position:fixed;inset:0), not vh — vh is
@@ -224,7 +229,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
         // A fixed-position ancestor's percentage height tracks the real
         // visible viewport correctly, no dvh/svh browser-support gamble
         // needed.
-        style={{ width: '100%', maxWidth: 460, maxHeight: '90%', display: 'flex', flexDirection: 'column' }}
+        style={{ width: '100%', maxWidth: 460, maxHeight: '90%', display: 'flex', flexDirection: 'column', outline: 'none' }}
         onClick={e => e.stopPropagation()}
       >
         <div className="tx-modal-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '28px 28px 20px', flexShrink: 0 }}>
@@ -261,7 +266,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
                   key={t} type="button"
                   onClick={() => { setScopeChoice(null); setForm(f => ({ ...f, type: t, categoryId: '' })); }}
                   style={{
-                    flex: 1, padding: '8px 4px', borderRadius: 8, border: 'none',
+                    flex: 1, padding: '11px 4px', borderRadius: 8, border: 'none',
                     cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
                     background: form.type === t
                       ? t === 'income'  ? 'rgba(34,197,94,0.2)'

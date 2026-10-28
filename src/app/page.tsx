@@ -374,7 +374,7 @@ export default function Dashboard() {
                   padding: 12, minWidth: 220, boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
                 }}>
                   {bankConnections.map(c => (
-                    <label key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '4px 0', cursor: 'pointer', color: 'var(--c-text-sec)' }}>
+                    <label key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '10px 0', cursor: 'pointer', color: 'var(--c-text-sec)' }}>
                       <input
                         type="checkbox"
                         checked={syncSelected[c.key] ?? true}
@@ -411,7 +411,7 @@ export default function Dashboard() {
             >
               <button
                 onClick={() => setWarnPinned(p => !p)}
-                title="Потрібна увага" aria-label="Потрібна увага" aria-expanded={warnHover || warnPinned}
+                className="attn-btn" title="Потрібна увага" aria-label="Потрібна увага" aria-expanded={warnHover || warnPinned}
                 style={{
                   width: 36, height: 36, borderRadius: '50%', border: 'none', padding: 0, background: '#EF4444', color: 'white',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -550,7 +550,7 @@ export default function Dashboard() {
                     key={q}
                     onClick={() => { setMonth(q * 3); setQuarterMenuOpen(false); }}
                     style={{
-                      display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px',
+                      display: 'block', width: '100%', textAlign: 'left', padding: '10px 10px',
                       borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                       fontSize: 13, fontWeight: 600,
                       background: Math.ceil(month / 3) === q ? 'var(--c-accent-fill)' : 'transparent',
