@@ -599,9 +599,9 @@ export default function SettingsPage() {
   }
 
   const sections = [
-    { type: 'income', label: 'Дохід', color: '#22C55E' },
-    { type: 'expense', label: 'Витрати', color: '#EF4444' },
-    { type: 'savings', label: 'Збереження', color: '#F59E0B' },
+    { type: 'income', label: 'Дохід', color: 'var(--c-income-num)' },
+    { type: 'expense', label: 'Витрати', color: 'var(--c-expense-num)' },
+    { type: 'savings', label: 'Збереження', color: 'var(--c-savings-num)' },
   ];
 
   return (
@@ -1161,14 +1161,15 @@ export default function SettingsPage() {
           </div>
           <div>
             <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Колір</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <div className="pick-grid" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {CATEGORY_PALETTE.map(c => (
                 <button
+                  className="pick-swatch"
                   key={c} type="button"
                   onClick={() => setForm(f => ({ ...f, color: c }))}
                   style={{
                     width: 24, height: 24, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer',
-                    outline: form.color === c ? '2px solid white' : 'none', outlineOffset: 2,
+                    outline: form.color === c ? '2px solid var(--c-text)' : 'none', outlineOffset: 2,
                   }}
                 />
               ))}
@@ -1177,9 +1178,10 @@ export default function SettingsPage() {
           <button type="submit" className="btn-primary"><Plus size={15} /> Додати</button>
           <div style={{ flexBasis: '100%' }}>
             <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>Іконка</label>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 96, overflowY: 'auto' }}>
+            <div className="pick-grid pick-icons" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 96, overflowY: 'auto' }}>
               {ICON_KEYS.map(key => (
                 <button
+                  className="pick-icon"
                   key={key} type="button"
                   onClick={() => setForm(f => ({ ...f, icon: key }))}
                   title={key}
@@ -1225,11 +1227,12 @@ export default function SettingsPage() {
                       <CategoryIcon name={cat.icon} color={cat.color} size={15} />
                     </button>
                     <button
+                      className="hit40"
                       title="Змінити колір"
                       onClick={() => { setEditingColorId(editingColorId === cat.id ? null : cat.id); setEditingIconId(null); }}
                       style={{
                         width: 16, height: 16, borderRadius: '50%', background: cat.color,
-                        border: editingColorId === cat.id ? '2px solid white' : '2px solid transparent',
+                        border: editingColorId === cat.id ? '2px solid var(--c-text)' : '2px solid transparent',
                         cursor: 'pointer', flexShrink: 0, padding: 0,
                       }}
                     />
@@ -1239,9 +1242,10 @@ export default function SettingsPage() {
                     </button>
                   </div>
                   {editingIconId === cat.id && (
-                    <div style={{ display: 'flex', gap: 6, paddingBottom: 10, paddingLeft: 26, flexWrap: 'wrap', maxHeight: 120, overflowY: 'auto' }}>
+                    <div className="pick-grid pick-icons" style={{ display: 'flex', gap: 6, paddingBottom: 10, paddingLeft: 26, flexWrap: 'wrap', maxHeight: 120, overflowY: 'auto' }}>
                       {ICON_KEYS.map(key => (
                         <button
+                          className="pick-icon"
                           key={key} type="button"
                           onClick={() => updateIcon(cat.id, key)}
                           title={key}
@@ -1258,14 +1262,15 @@ export default function SettingsPage() {
                     </div>
                   )}
                   {editingColorId === cat.id && (
-                    <div style={{ display: 'flex', gap: 6, paddingBottom: 10, paddingLeft: 26, flexWrap: 'wrap' }}>
+                    <div className="pick-grid" style={{ display: 'flex', gap: 6, paddingBottom: 10, paddingLeft: 26, flexWrap: 'wrap' }}>
                       {CATEGORY_PALETTE.map(c => (
                         <button
+                          className="pick-swatch"
                           key={c} type="button"
                           onClick={() => updateColor(cat.id, c)}
                           style={{
                             width: 22, height: 22, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer',
-                            outline: cat.color === c ? '2px solid white' : 'none', outlineOffset: 2,
+                            outline: cat.color === c ? '2px solid var(--c-text)' : 'none', outlineOffset: 2,
                           }}
                         />
                       ))}

@@ -601,6 +601,9 @@ export default function Dashboard() {
           )
           : cardDefs.map(c => {
               const val = stats[c.key];
+              const numColor = c.key === 'balance' ? (val >= 0 ? 'var(--c-income-num)' : 'var(--c-expense-num)')
+                : c.key === 'income' ? 'var(--c-income-num)' : c.key === 'expenses' ? 'var(--c-expense-num)'
+                : c.key === 'savings' ? 'var(--c-savings-num)' : 'var(--c-transfer-num)';
               const cardColor = c.key === 'balance'
                 ? (val >= 0 ? TYPE_COLORS.income : TYPE_COLORS.expense)
                 : c.color;
@@ -612,7 +615,7 @@ export default function Dashboard() {
                       <c.icon size={16} color={cardColor} />
                     </div>
                   </div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: cardColor, fontVariantNumeric: 'tabular-nums', marginBottom: 8 }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: numColor, fontVariantNumeric: 'tabular-nums', marginBottom: 8 }}>
                     {/* "Вільний залишок" and "Збереження" are the two cards
                         that can genuinely go negative — a period with more
                         withdrawals than deposits nets negative, same as a

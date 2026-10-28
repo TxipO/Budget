@@ -90,6 +90,13 @@ img, video { max-width: 100%; height: auto; }
   --c-pos-text:    #4ADE80;
   --c-neg-text:    #FCA5A5;
   --c-accent-hi:   #FB923C;
+  /* Big-number variants of the TYPE_COLORS hues (income/expense/savings/
+     transfer): identical on dark, 700-step on light where #22C55E/#F59E0B
+     are ~2.3:1 on white. */
+  --c-income-num:  #22C55E;
+  --c-expense-num: #EF4444;
+  --c-savings-num: #F59E0B;
+  --c-transfer-num:#64748B;
   /* Inner padding of dashboard/settings cards; 16px on phones (see media query). */
   --card-pad: 24px;
 }
@@ -114,6 +121,10 @@ img, video { max-width: 100%; height: auto; }
   --c-pos-text:    #15803D;
   --c-neg-text:    #B91C1C;
   --c-accent-hi:   #C2410C;
+  --c-income-num:  #15803D;
+  --c-expense-num: #B91C1C;
+  --c-savings-num: #B45309;
+  --c-transfer-num:#475569;
 }
 
 @keyframes pulse {
@@ -181,6 +192,8 @@ input[type="number"]::-webkit-outer-spin-button {
   border-radius: 16px;
 }
 
+.hit40 { position: relative; }
+.hit40::after { content: ''; position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; transform: translate(-50%, -50%); }
 .card-pad { padding: var(--card-pad); }
 
 /* Period switcher on Головна: padding lives here (not inline) so mobile can
@@ -369,6 +382,13 @@ select.input-field option {
   body { padding-bottom: var(--nav-h); }
 
   .stat-card { padding: 16px; border-radius: 14px; }
+
+  /* Colour/icon pickers in Налаштування: 40px pitch so each swatch/tile is a
+     real tap target (they were 22-30px). Icon grids scroll inside. */
+  .pick-grid { gap: 8px !important; }
+  .pick-swatch { width: 32px !important; height: 32px !important; }
+  .pick-icon { width: 40px !important; height: 40px !important; }
+  .pick-icons { max-height: 176px !important; }
 
   /* Tap targets: ghost/primary buttons were 26-34px tall on phones. */
   .btn-ghost, .btn-primary, .input-field { min-height: 40px; }

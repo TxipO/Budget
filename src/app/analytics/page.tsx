@@ -27,6 +27,11 @@ const INSIGHT_STYLE: Record<Insight['tone'], { bg: string; border: string; color
   info: { bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.2)', color: 'var(--c-accent-hi)' },
 };
 
+// Big stat numbers: same hues, darker on the light theme (see globals.css).
+const NUM_VAR: Record<string, string> = {
+  '#22C55E': 'var(--c-income-num)', '#EF4444': 'var(--c-expense-num)', '#F59E0B': 'var(--c-savings-num)',
+};
+
 // "DD.MM" of the UTC calendar day (balanceFetchedAt is a UTC instant).
 const formatDdMm = (iso: string) => {
   const d = new Date(iso);
@@ -107,7 +112,7 @@ export default function AnalyticsPage() {
                 <c.icon size={16} color={c.color} />
               </div>
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: c.color, fontVariantNumeric: 'tabular-nums' }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: NUM_VAR[c.color] ?? c.color, fontVariantNumeric: 'tabular-nums' }}>
               {c.signed ? formatMoneySign(c.value) : formatMoney(c.value)}
             </div>
             {/* Per-pool chips, savings card only — "Всього збереження" above
