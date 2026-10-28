@@ -204,9 +204,16 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
     }
   }
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
+        role="dialog" aria-modal="true" aria-label={editId ? 'Редагувати транзакцію' : 'Нова транзакція'}
         className="card-elevated"
         // % of .modal-overlay (position:fixed;inset:0), not vh — vh is
         // computed against the layout viewport, which on real mobile
@@ -262,9 +269,9 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
                       : 'rgba(245,158,11,0.2)'
                       : 'rgba(255,255,255,0.04)',
                     color: form.type === t
-                      ? t === 'income'  ? '#4ADE80'
-                      : t === 'expense' ? '#FCA5A5'
-                      : '#FCD34D'
+                      ? t === 'income'  ? 'var(--c-pos-text)'
+                      : t === 'expense' ? 'var(--c-neg-text)'
+                      : 'var(--c-warn-text)'
                       : '#64748B',
                     transition: 'all 0.15s',
                   }}
@@ -312,7 +319,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
                       flex: 1, padding: '8px 4px', borderRadius: 8, border: 'none',
                       cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.15s',
                       background: form.savingsWithdrawal === opt.v ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.04)',
-                      color: form.savingsWithdrawal === opt.v ? '#FCD34D' : '#64748B',
+                      color: form.savingsWithdrawal === opt.v ? 'var(--c-warn-text)' : '#64748B',
                     }}
                   >
                     {opt.label}
@@ -399,7 +406,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
                 {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
               {ownerLocked && (
-                <p style={{ fontSize: 11, color: '#64748B', marginTop: 6 }}>з банку — власник рахунку</p>
+                <p style={{ fontSize: 12, color: '#64748B', marginTop: 6 }}>з банку — власник рахунку</p>
               )}
             </div>
           )}
@@ -424,7 +431,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
               Не рахувати в загальний баланс
             </button>
             {form.isTransfer && (
-              <p style={{ fontSize: 11, color: '#64748B', marginTop: 6, textAlign: 'center' }}>
+              <p style={{ fontSize: 12, color: '#64748B', marginTop: 6, textAlign: 'center' }}>
                 Транзакція лишиться у списку, але не увійде в жодну суму — дохід, витрати, збереження, накопичений залишок.
               </p>
             )}

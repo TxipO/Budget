@@ -11,9 +11,9 @@ const ICONS = {
   info:    <Info       size={16} />,
 };
 const COLORS = {
-  success: { bg: 'rgba(34,197,94,0.12)',  border: 'rgba(34,197,94,0.3)',  color: '#4ADE80' },
-  error:   { bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.3)',  color: '#FCA5A5' },
-  info:    { bg: 'rgba(249,115,22,0.12)', border: 'rgba(249,115,22,0.3)', color: '#FB923C' },
+  success: { bg: 'rgba(34,197,94,0.12)',  border: 'rgba(34,197,94,0.3)',  color: 'var(--c-pos-text)' },
+  error:   { bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.3)',  color: 'var(--c-neg-text)' },
+  info:    { bg: 'rgba(249,115,22,0.12)', border: 'rgba(249,115,22,0.3)', color: 'var(--c-accent-hi)' },
 };
 
 export default function ToastContainer() {
@@ -33,7 +33,7 @@ export default function ToastContainer() {
   if (!toasts.length) return null;
 
   return (
-    <div className="toast-stack" style={{
+    <div className="toast-stack" role="status" aria-live="polite" style={{
       position: 'fixed', bottom: 24, right: 24, zIndex: 1000,
       display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end',
     }}>
@@ -56,7 +56,7 @@ export default function ToastContainer() {
                 onClick={() => { t.action!.onClick(); setToasts(prev => prev.filter(x => x.id !== t.id)); }}
                 style={{
                   background: 'none', border: `1px solid ${c.border}`, cursor: 'pointer',
-                  color: c.color, padding: '2px 8px', borderRadius: 6, fontSize: 12,
+                  color: c.color, padding: '6px 10px', borderRadius: 6, fontSize: 13,
                   fontWeight: 600, fontFamily: 'inherit', whiteSpace: 'nowrap',
                 }}
               >
@@ -65,7 +65,7 @@ export default function ToastContainer() {
             )}
             <button
               onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: c.color, padding: 0, opacity: 0.7 }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: c.color, padding: 8, margin: -8, opacity: 0.7, display: 'flex' }}
               title="Закрити" aria-label="Закрити"
             >
               <X size={13} />

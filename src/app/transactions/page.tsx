@@ -271,10 +271,10 @@ export default function TransactionsPage() {
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Транзакції</h1>
-          <p style={{ color: '#475569', fontSize: 14 }}>{filtered.length} записів</p>
+          <p style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>{filtered.length} записів</p>
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-          <div style={{
+        <div className="tx-head-actions" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+          <div className="tx-stepper" style={{
             display: 'flex', alignItems: 'center', gap: 2,
             background: 'var(--c-elevated)', border: '1px solid var(--c-border)',
             borderRadius: 12, padding: '4px',
@@ -334,7 +334,7 @@ export default function TransactionsPage() {
             )}
           </div>
           <button
-            className="btn-primary"
+            className="btn-primary tx-add"
             onClick={() => { setEditing(null); setShowForm(true); }}
             title="Alt+N"
           >
@@ -346,7 +346,7 @@ export default function TransactionsPage() {
       {/* Filters */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 280 }}>
-          <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
+          <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-text-muted)' }} />
           <input
             className="input-field"
             style={{ paddingLeft: 36 }}
@@ -361,7 +361,7 @@ export default function TransactionsPage() {
           title="Шукати по всіх роках, а не тільки в обраному місяці"
           style={{
             background: globalSearch ? 'rgba(249,115,22,0.2)' : undefined,
-            color: globalSearch ? '#FB923C' : undefined,
+            color: globalSearch ? 'var(--c-accent-hi)' : undefined,
             borderColor: globalSearch ? 'rgba(249,115,22,0.3)' : undefined,
             fontSize: 13, display: 'flex', alignItems: 'center', gap: 6,
           }}
@@ -376,7 +376,7 @@ export default function TransactionsPage() {
               className="btn-ghost"
               style={{
                 background: typeFilter === val ? 'rgba(249,115,22,0.2)' : undefined,
-                color: typeFilter === val ? '#FB923C' : undefined,
+                color: typeFilter === val ? 'var(--c-accent-hi)' : undefined,
                 borderColor: typeFilter === val ? 'rgba(249,115,22,0.3)' : undefined,
                 fontSize: 13,
               }}
@@ -399,7 +399,7 @@ export default function TransactionsPage() {
                 className="btn-ghost"
                 style={{
                   background: userFilter === val ? 'rgba(249,115,22,0.2)' : undefined,
-                  color: userFilter === val ? '#FB923C' : undefined,
+                  color: userFilter === val ? 'var(--c-accent-hi)' : undefined,
                   borderColor: userFilter === val ? 'rgba(249,115,22,0.3)' : undefined,
                   fontSize: 13,
                 }}
@@ -411,11 +411,11 @@ export default function TransactionsPage() {
           </>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '0 4px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--c-text-sec)', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--c-text-sec)', cursor: 'pointer', padding: '10px 0' }}>
             <input type="checkbox" checked={showBank} onChange={e => setShowBank(e.target.checked)} />
             Банк
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--c-text-sec)', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--c-text-sec)', cursor: 'pointer', padding: '10px 0' }}>
             <input type="checkbox" checked={showManual} onChange={e => setShowManual(e.target.checked)} />
             Вручну
           </label>
@@ -423,20 +423,20 @@ export default function TransactionsPage() {
       </div>
 
       {/* Summary row */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+      <div className="tx-summary" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
         {[
-          { label: 'Дохід', value: totals.income, color: '#4ADE80', signed: false },
-          { label: 'Витрати', value: totals.expenses, color: '#FCA5A5', signed: false },
+          { label: 'Дохід', value: totals.income, color: 'var(--c-pos-text)', signed: false },
+          { label: 'Витрати', value: totals.expenses, color: 'var(--c-neg-text)', signed: false },
           // Unlike income/expenses/transfers (always a sum of same-signed
           // rows by construction, never negative), savings can genuinely
           // net negative -- more withdrawals than deposits in the period.
           // formatMoney() alone drops the sign (Math.abs under the hood),
           // which used to show a real net WITHDRAWAL as a plain positive
           // number, reading as a deposit. Found live 2026-09-07.
-          { label: 'Збереження', value: totals.savings, color: '#FCD34D', signed: true },
+          { label: 'Збереження', value: totals.savings, color: 'var(--c-warn-text)', signed: true },
           { label: 'Перекази', value: transfersTotal, color: '#94A3B8', signed: false },
         ].map(s => (
-          <div key={s.label} className="card" style={{ flex: '1 1 100px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div key={s.label} className="card tx-summary-card" style={{ flex: '1 1 100px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: '#64748B' }}>{s.label}</span>
             <span style={{ fontSize: 16, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums' }}>
               {s.signed ? formatMoneySign(s.value) : formatMoney(s.value)}
@@ -451,7 +451,7 @@ export default function TransactionsPage() {
         <div className="hide-on-xs" style={{
           display: 'grid', gridTemplateColumns: '100px 1fr 120px 90px 80px 72px', gap: 8,
           padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)',
-          fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em',
+          fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em',
         }}>
           <span>Дата</span>
           <span>Категорія / деталі</span>
@@ -462,7 +462,7 @@ export default function TransactionsPage() {
         </div>
 
         {filtered.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#475569', padding: '48px 0', fontSize: 14 }}>
+          <div style={{ textAlign: 'center', color: 'var(--c-text-muted)', padding: '48px 0', fontSize: 14 }}>
             Немає транзакцій
           </div>
         )}
@@ -484,8 +484,8 @@ export default function TransactionsPage() {
           const amountStr = `${amountSign(tx) > 0 ? '+' : '-'}${formatMoney(tx.amount)}`;
           // isTransfer rows never reach here — filtered out above — so no
           // dimmed "excluded" color branch is needed.
-          const amountColor = tx.category.type === 'income' ? '#4ADE80'
-                             : tx.category.type === 'expense' ? '#FCA5A5' : '#FCD34D';
+          const amountColor = tx.category.type === 'income' ? 'var(--c-pos-text)'
+                             : tx.category.type === 'expense' ? 'var(--c-neg-text)' : 'var(--c-warn-text)';
           return (
           <div key={tx.id} className="table-row">
             {/* Desktop: fixed-column grid */}
@@ -510,7 +510,7 @@ export default function TransactionsPage() {
                     {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex' }}><Landmark size={11} color={BANK_SYNC_COLOR} /></span>}
                   </div>
                   {tx.details && (
-                    <div style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: 12, color: 'var(--c-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {tx.details}
                     </div>
                   )}
@@ -529,7 +529,7 @@ export default function TransactionsPage() {
                 {amountStr}
               </span>
 
-              <span style={{ fontSize: 12, color: '#475569' }}>{tx.user?.name || '—'}</span>
+              <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>{tx.user?.name || '—'}</span>
 
               <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                 <button
@@ -554,7 +554,7 @@ export default function TransactionsPage() {
             </div>
 
             {/* Mobile: stacked card row — icon, category+meta (grows/truncates), amount+actions */}
-            <div className="tx-row-mobile" style={{ display: 'none', alignItems: 'center', gap: 10, padding: '12px 16px' }}>
+            <div className="tx-row-mobile" style={{ display: 'none', alignItems: 'center', gap: 10, padding: '8px 8px 8px 16px' }}>
               <CategoryIcon name={tx.category.icon} color={tx.category.color} size={16} tile />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -562,7 +562,7 @@ export default function TransactionsPage() {
                   {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex', flexShrink: 0 }}><AlertTriangle size={10} color="#FBBF24" /></span>}
                   {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex', flexShrink: 0 }}><Landmark size={10} color={BANK_SYNC_COLOR} /></span>}
                 </div>
-                <div style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: 12, color: 'var(--c-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {dateStr}{tx.details && ` · ${tx.details}`}{tx.user && ` · ${tx.user.name}`}
                 </div>
               </div>
@@ -570,7 +570,7 @@ export default function TransactionsPage() {
                 <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: amountColor }}>
                   {amountStr}
                 </span>
-                <div style={{ display: 'flex', gap: 2 }}>
+                <div style={{ display: 'flex', gap: 0 }}>
                   <button
                     className="btn-ghost"
                     style={{ padding: '9px', border: 'none' }}
@@ -604,7 +604,7 @@ export default function TransactionsPage() {
           }}>
             <button
               className="btn-ghost"
-              style={{ padding: '5px 8px', border: 'none', opacity: page === 1 ? 0.3 : 1 }}
+              style={{ padding: '5px 12px', border: 'none', opacity: page === 1 ? 0.3 : 1 }}
               disabled={page === 1}
               onClick={() => setPage(p => p - 1)}
               title="Попередня сторінка" aria-label="Попередня сторінка"
@@ -616,7 +616,7 @@ export default function TransactionsPage() {
             </span>
             <button
               className="btn-ghost"
-              style={{ padding: '5px 8px', border: 'none', opacity: page === totalPages ? 0.3 : 1 }}
+              style={{ padding: '5px 12px', border: 'none', opacity: page === totalPages ? 0.3 : 1 }}
               disabled={page === totalPages}
               onClick={() => setPage(p => p + 1)}
               title="Наступна сторінка" aria-label="Наступна сторінка"

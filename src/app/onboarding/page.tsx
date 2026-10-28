@@ -154,7 +154,7 @@ export default function OnboardingPage() {
         {step === 'users' && (
           <>
             <div>
-              <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Ваше ім'я</label>
+              <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Ваше ім'я</label>
               <input className="input-field" value={selfName} onChange={e => setSelfName(e.target.value)} placeholder="Як вас звати" autoFocus />
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--c-text-sec)', cursor: 'pointer' }}>
@@ -163,12 +163,12 @@ export default function OnboardingPage() {
             </label>
             {addSecondUser && (
               <div>
-                <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Ім'я другої людини</label>
+                <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Ім'я другої людини</label>
                 <input className="input-field" value={secondUserName} onChange={e => setSecondUserName(e.target.value)} placeholder="Наприклад, ім'я партнера" />
               </div>
             )}
             <div>
-              <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Валюта бюджету</label>
+              <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Валюта бюджету</label>
               <select className="input-field" value={currency} onChange={e => setCurrency(e.target.value)}>
                 {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
               </select>
@@ -307,7 +307,7 @@ export default function OnboardingPage() {
           </>
         )}
 
-        {error && <div style={{ fontSize: 13, color: '#FCA5A5' }}>{error}</div>}
+        {error && <div style={{ fontSize: 13, color: 'var(--c-neg-text)' }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between' }}>
           {step !== 'users' ? (

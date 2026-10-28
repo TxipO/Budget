@@ -274,7 +274,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
 
   if (registration) {
     return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg, #0A0A0F)', overflowY: 'auto', padding: '24px 0' }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg, #0A0A0F)', overflowY: 'auto', padding: '24px 16px' }}>
         <form onSubmit={completeRegistration} style={cardStyle}>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--c-text)' }}>Вітаємо, {registration.firstName}!</div>
@@ -283,7 +283,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
 
           {unlinkedUsers.length > 0 && (
             <div style={{ width: '100%' }}>
-              <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
+              <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
                 Це ви?
               </label>
               <select className="input-field" value={linkChoice} onChange={e => setLinkChoice(e.target.value)}>
@@ -295,7 +295,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
 
           {!linkChoice && (
             <div style={{ width: '100%' }}>
-              <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
+              <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
                 Ім'я
               </label>
               <input
@@ -307,7 +307,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
 
           {linkChoice && (
             <div style={{ width: '100%' }}>
-              <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
+              <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
                 PIN (підтвердіть, що це ви)
               </label>
               <input
@@ -319,7 +319,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
           )}
 
           <div style={{ width: '100%' }}>
-            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
+            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
               Email (не обов'язково)
             </label>
             <input
@@ -328,7 +328,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
             />
           </div>
 
-          {error && <div style={{ fontSize: 13, color: '#FCA5A5' }}>{error}</div>}
+          {error && <div style={{ fontSize: 13, color: 'var(--c-neg-text)' }}>{error}</div>}
           <button type="submit" className="btn-primary" disabled={regBusy} style={{ width: '100%', justifyContent: 'center' }}>
             {regBusy ? 'Збереження…' : 'Продовжити'}
           </button>
@@ -339,7 +339,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
 
   if (emailStep === 'register') {
     return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg, #0A0A0F)', overflowY: 'auto', padding: '24px 0' }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-bg, #0A0A0F)', overflowY: 'auto', padding: '24px 16px' }}>
         <div style={cardStyle}>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--c-text)' }}>Email підтверджено!</div>
@@ -375,12 +375,12 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
             </form>
           )}
 
-          {emailError && <div style={{ fontSize: 13, color: '#FCA5A5' }}>{emailError}</div>}
+          {emailError && <div style={{ fontSize: 13, color: 'var(--c-neg-text)' }}>{emailError}</div>}
 
           <button
             type="button"
             onClick={() => { setShowEmailLink(v => !v); setEmailError(''); }}
-            style={{ background: 'none', border: 'none', color: 'var(--c-text-muted)', fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}
+            style={{ background: 'none', border: 'none', color: 'var(--c-text-muted)', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: '10px 12px', textAlign: 'center' }}
           >
             {showEmailLink ? '← Створити новий акаунт замість цього' : 'У мене вже є акаунт — прив’язати цей email до нього'}
           </button>
@@ -394,7 +394,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
       position: 'fixed', inset: 0, zIndex: 50,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'var(--c-bg, #0A0A0F)',
-      overflowY: 'auto', padding: '24px 0',
+      overflowY: 'auto', padding: '24px 16px',
     }}>
       <form onSubmit={submitPin} style={cardStyle}>
         <div style={{
@@ -436,7 +436,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
               className="input-field" type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)}
               placeholder="you@example.com"
             />
-            {emailError && <div style={{ fontSize: 13, color: '#FCA5A5' }}>{emailError}</div>}
+            {emailError && <div style={{ fontSize: 13, color: 'var(--c-neg-text)' }}>{emailError}</div>}
             <button type="button" onClick={submitEmailRequest} disabled={emailBusy || !emailInput.trim()} className="btn-primary" style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Mail size={14} /> {emailBusy ? 'Надсилання…' : 'Увійти через email'}
             </button>
@@ -456,7 +456,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
           <button
             type="button"
             onClick={() => setShowPin(true)}
-            style={{ background: 'none', border: 'none', color: 'var(--c-text-muted)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+            style={{ background: 'none', border: 'none', color: 'var(--c-text-muted)', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: '10px 12px' }}
           >
             <Lock size={12} /> Увійти за PIN
           </button>
@@ -472,7 +472,7 @@ export default function LoginForm({ nonce, botUsername }: { nonce?: string; botU
               placeholder="PIN"
               style={{ textAlign: 'center', fontSize: 20, letterSpacing: 6 }}
             />
-            {error && <div style={{ fontSize: 13, color: '#FCA5A5' }}>{error}</div>}
+            {error && <div style={{ fontSize: 13, color: 'var(--c-neg-text)' }}>{error}</div>}
             <button type="submit" className="btn-primary" disabled={busy} style={{ width: '100%', justifyContent: 'center' }}>
               {busy ? 'Перевірка…' : 'Увійти'}
             </button>

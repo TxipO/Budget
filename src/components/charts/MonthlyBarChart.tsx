@@ -38,7 +38,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export default function MonthlyBarChart({ data }: { data: MonthData[] }) {
   if (!data.length) return (
-    <div style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: 14 }}>
+    <div style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c-text-muted)', fontSize: 14 }}>
       Немає даних
     </div>
   );
@@ -48,8 +48,8 @@ export default function MonthlyBarChart({ data }: { data: MonthData[] }) {
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 4, right: 4, left: -10, bottom: 0 }} barGap={4}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--c-border)" />
-          <XAxis dataKey="month" tick={{ fill: '#475569', fontSize: 12 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false}
+          <XAxis dataKey="month" interval="preserveStartEnd" minTickGap={6} tick={{ fill: 'var(--c-text-muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: 'var(--c-text-muted)', fontSize: 12 }} axisLine={false} tickLine={false}
             tickFormatter={formatCompact} />
           <Tooltip content={<CustomTooltip />} />
           <Bar dataKey="income"   name="Дохід"       fill="#22C55E" radius={[4, 4, 0, 0]} />

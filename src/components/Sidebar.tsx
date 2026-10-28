@@ -149,7 +149,7 @@ export default function Sidebar() {
           paddingTop: 16,
           marginTop: 4,
         }}>
-          <p style={{ fontSize: 11, color: '#475569', marginBottom: 8, paddingLeft: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+          <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginBottom: 8, paddingLeft: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
             Активний
           </p>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -168,7 +168,7 @@ export default function Sidebar() {
                   fontFamily: 'inherit',
                   transition: 'all 0.15s',
                   background: user === u.name ? 'rgba(249,115,22,0.2)' : 'var(--c-hover)',
-                  color: user === u.name ? '#FB923C' : 'var(--c-text-muted)',
+                  color: user === u.name ? 'var(--c-accent-hi)' : 'var(--c-text-muted)',
                 }}
               >
                 {u.name}

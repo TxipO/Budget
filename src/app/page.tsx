@@ -49,7 +49,7 @@ function pctChange(current: number, prev: number): number | null {
   return Math.round(((current - prev) / Math.abs(prev)) * 100);
 }
 
-function DeltaBadge({ current, prev, invertGood = false }: { current: number; prev: number; invertGood?: boolean }) {
+function DeltaBadge({ current, prev, invertGood = false, neutral = false }: { current: number; prev: number; invertGood?: boolean; neutral?: boolean }) {
   const pct = pctChange(current, prev);
   if (pct === null) return null;
   // A near-zero change rendered nothing at all here before — reading as
@@ -59,7 +59,7 @@ function DeltaBadge({ current, prev, invertGood = false }: { current: number; pr
     return (
       <span style={{
         display: 'inline-flex', alignItems: 'center', gap: 2,
-        fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20,
+        fontSize: 12, fontWeight: 700, padding: '2px 7px', borderRadius: 20,
         background: 'var(--c-hover)', color: 'var(--c-text-muted)',
       }}>
         Стабільно
@@ -71,9 +71,9 @@ function DeltaBadge({ current, prev, invertGood = false }: { current: number; pr
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 2,
-      fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20,
-      background: good ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-      color: good ? '#4ADE80' : '#FCA5A5',
+      fontSize: 12, fontWeight: 700, padding: '2px 7px', borderRadius: 20,
+      background: neutral ? 'var(--c-hover)' : good ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+      color: neutral ? 'var(--c-text-muted)' : good ? 'var(--c-pos-text)' : 'var(--c-neg-text)',
     }}>
       {up ? <ArrowUp size={9} /> : <ArrowDown size={9} />}
       {Math.abs(pct)}%
@@ -88,6 +88,12 @@ function SkeletonCard() {
       <div style={{ height: 28, width: '70%', background: 'var(--c-hover)', borderRadius: 8 }} />
     </div>
   );
+}
+
+// Chart cards used to render as bare titles while /api/stats was in flight
+// (several seconds against a remote DB), which read as a blank gap in the page.
+function ChartSkeleton({ height }: { height: number }) {
+  return <div style={{ height, borderRadius: 12, background: 'var(--c-hover)', animation: 'pulse 1.5s infinite' }} />;
 }
 
 export default function Dashboard() {
@@ -336,7 +342,7 @@ export default function Dashboard() {
     // isn't a budget outcome, so DeltaBadge's usual up-is-good/down-is-good
     // framing doesn't apply. invertGood is arbitrary either way here.
     { label: 'Перекази',        key: 'transfers' as const, color: TYPE_COLORS.transfer, icon: ArrowLeftRight, bg: 'rgba(100,116,139,0.08)', invertGood: false },
-    { label: 'Вільний залишок', key: 'balance'   as const, color: '#FB923C',            icon: Wallet,         bg: 'rgba(249,115,22,0.08)',  invertGood: false },
+    { label: 'Вільний залишок', key: 'balance'   as const, color: 'var(--c-accent-hi)',            icon: Wallet,         bg: 'rgba(249,115,22,0.08)',  invertGood: false },
   ];
 
   const categoriesWithPlan = stats?.byCategory.filter(c => c.planned > 0) ?? [];
@@ -389,7 +395,7 @@ export default function Dashboard() {
               {!syncMenuOpen && syncStatus && (
                 <div className="sync-status-label" style={{
                   position: 'absolute', top: '100%', right: 0, marginTop: 4,
-                  fontSize: 11, color: 'var(--c-text-muted)', whiteSpace: 'nowrap',
+                  fontSize: 12, color: 'var(--c-text-muted)', whiteSpace: 'nowrap',
                 }}>
                   {syncStatus}
                 </div>
@@ -447,12 +453,12 @@ export default function Dashboard() {
 
       {/* Period selector */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 24, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{
+        {/* 5 labels measured ~393px, wider than a 375px phone: .period-pills
+            tightens the buttons on mobile so they fit at 360+, and still
+            scrolls (scrollbar hidden) on anything narrower. */}
+        <div className="period-pills" style={{
           display: 'flex', gap: 2, padding: 4,
           background: 'var(--c-elevated)', border: '1px solid var(--c-border)', borderRadius: 12,
-          // 5 labels measure ~393px, wider than a 375px phone (found live
-          // 2026-09-19 mobile audit) — scroll instead of wrap so the pill
-          // shape stays intact instead of breaking into rows.
           overflowX: 'auto', maxWidth: '100%',
         }}>
           {PERIODS.map(p => (
@@ -460,7 +466,7 @@ export default function Dashboard() {
               key={p}
               onClick={() => setPeriod(p)}
               style={{
-                padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                borderRadius: 8, border: 'none', cursor: 'pointer',
                 fontSize: 13, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.2s',
                 background: period === p ? 'var(--c-accent-fill)' : 'transparent',
                 color:      period === p ? 'white' : 'var(--c-text-muted)',
@@ -568,7 +574,7 @@ export default function Dashboard() {
                 className="btn-ghost"
                 style={{
                   background: year === y ? 'rgba(249,115,22,0.2)' : undefined,
-                  color: year === y ? '#FB923C' : undefined,
+                  color: year === y ? 'var(--c-accent-hi)' : undefined,
                   fontWeight: year === y ? 700 : undefined,
                   fontSize: 13,
                 }}
@@ -626,7 +632,7 @@ export default function Dashboard() {
                     {c.key === 'balance' || c.key === 'savings' ? formatMoneySign(val) : formatMoney(val)}
                   </div>
                   {stats.prev && (
-                    <DeltaBadge current={val} prev={stats.prev[c.key]} invertGood={c.invertGood} />
+                    <DeltaBadge current={val} prev={stats.prev[c.key]} invertGood={c.invertGood} neutral={c.key === 'transfers'} />
                   )}
                   {/* Cumulative (all-time) balance rides along as a quiet
                       second line on the one card it's related to, instead of
@@ -636,12 +642,12 @@ export default function Dashboard() {
                     <div style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                       marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--c-border)',
-                      fontSize: 11, color: 'var(--c-text-muted)',
+                      fontSize: 12, color: 'var(--c-text-muted)',
                     }}>
                       <span>З початку</span>
                       <span style={{
                         fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-                        color: stats.cumBalance >= 0 ? 'var(--c-text-sec)' : '#FCA5A5',
+                        color: stats.cumBalance >= 0 ? 'var(--c-text-sec)' : 'var(--c-neg-text)',
                       }}>
                         {formatMoneySign(stats.cumBalance)}
                       </span>
@@ -655,9 +661,9 @@ export default function Dashboard() {
 
       {/* Budget progress bars (month view only, when plans exist) */}
       {sections.budget && stats && period === 'month' && categoriesWithPlan.length > 0 && (
-        <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+        <div className="card card-pad" style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
-            <Target size={16} color="#FB923C" />
+            <Target size={16} color="var(--c-accent-hi)" />
             <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Бюджет по категоріях</h3>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
@@ -671,7 +677,7 @@ export default function Dashboard() {
                       <CategoryIcon name={cat.icon} color={cat.color} size={14} />
                       <span style={{ fontSize: 13, color: 'var(--c-text-sec)', fontWeight: 500 }}>{cat.name}</span>
                     </div>
-                    <span style={{ fontSize: 12, color: over ? '#FCA5A5' : 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                    <span style={{ fontSize: 12, color: over ? 'var(--c-neg-text)' : 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatMoney(cat.amount)} / {formatMoney(cat.planned)}
                     </span>
                   </div>
@@ -690,7 +696,7 @@ export default function Dashboard() {
                       transition: 'transform 0.6s cubic-bezier(0.4,0,0.2,1)',
                     }} />
                   </div>
-                  <div style={{ fontSize: 11, color: over ? '#FCA5A5' : pct > 80 ? '#FCD34D' : '#4ADE80', marginTop: 4, fontWeight: 600 }}>
+                  <div style={{ fontSize: 12, color: over ? 'var(--c-neg-text)' : pct > 80 ? 'var(--c-warn-text)' : 'var(--c-pos-text)', marginTop: 4, fontWeight: 600 }}>
                     {over ? `Перевищення на ${formatMoney(cat.amount - cat.planned)}` : `${Math.round(pct)}% використано`}
                   </div>
                 </div>
@@ -704,19 +710,19 @@ export default function Dashboard() {
       {/* Charts row */}
       {sections.charts && (
         <div className="grid-2" style={{ marginBottom: 24 }}>
-          <div className="card" style={{ padding: 24 }}>
+          <div className="card card-pad">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
-              <PieChart size={16} color="#FB923C" />
+              <PieChart size={16} color="var(--c-accent-hi)" />
               <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Витрати по категоріях</h3>
             </div>
-            {stats && <ExpenseDonut data={stats.byCategory} total={stats.expenses} />}
+            {stats ? <ExpenseDonut data={stats.byCategory} total={stats.expenses} /> : loading && <ChartSkeleton height={240} />}
           </div>
-          <div className="card" style={{ padding: 24 }}>
+          <div className="card card-pad">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
-              <LineChart size={16} color="#FB923C" />
+              <LineChart size={16} color="var(--c-accent-hi)" />
               <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Дохід та витрати</h3>
             </div>
-            {stats && <BalanceTrend data={stats.trend} />}
+            {stats ? <BalanceTrend data={stats.trend} /> : loading && <ChartSkeleton height={220} />}
           </div>
         </div>
       )}
@@ -729,18 +735,18 @@ export default function Dashboard() {
             aria-expanded={userSectionOpen}
             style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-              padding: 24, background: 'none', border: 'none', cursor: 'pointer',
-              textAlign: 'left', paddingBottom: userSectionOpen ? 4 : 24,
+              padding: 'var(--card-pad)', background: 'none', border: 'none', cursor: 'pointer',
+              textAlign: 'left', paddingBottom: userSectionOpen ? 4 : 'var(--card-pad)',
             }}
           >
-            <Wallet size={16} color="#FB923C" />
+            <Wallet size={16} color="var(--c-accent-hi)" />
             <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', flex: 1 }}>Хто скільки</h3>
             {userSectionOpen
               ? <ChevronUp size={16} color="var(--c-text-muted)" />
               : <ChevronDown size={16} color="var(--c-text-muted)" />}
           </button>
           {userSectionOpen && (
-            <div style={{ padding: '0 24px 24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+            <div style={{ padding: '0 var(--card-pad) var(--card-pad)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
               {stats.byUser.map((u, i) => {
                 // Literal, not var(--c-text-muted): this value feeds a
                 // `${uColor}22` hex-alpha concat below, which a CSS var
@@ -767,7 +773,7 @@ export default function Dashboard() {
                       <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text)' }}>{u.name}</span>
                       <span style={{
                         marginLeft: 'auto', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-                        color: u.net >= 0 ? '#4ADE80' : '#FCA5A5',
+                        color: u.net >= 0 ? 'var(--c-pos-text)' : 'var(--c-neg-text)',
                       }}>{formatMoneySign(u.net)}</span>
                     </div>
                     <div style={{ display: 'flex', height: 6, borderRadius: 4, overflow: 'hidden', marginBottom: 12, background: 'var(--c-border-mid)' }}>
@@ -777,9 +783,9 @@ export default function Dashboard() {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                       {[
-                        { label: 'Дохід',      val: u.income,   c: '#4ADE80' },
-                        { label: 'Витрати',    val: u.expenses, c: '#FCA5A5' },
-                        { label: 'Збереження', val: u.savings,  c: '#FCD34D' },
+                        { label: 'Дохід',      val: u.income,   c: 'var(--c-pos-text)' },
+                        { label: 'Витрати',    val: u.expenses, c: 'var(--c-neg-text)' },
+                        { label: 'Збереження', val: u.savings,  c: 'var(--c-warn-text)' },
                       ].filter(r => r.val !== 0).map(r => (
                         <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                           <span style={{ color: 'var(--c-text-muted)' }}>{r.label}</span>
@@ -797,7 +803,7 @@ export default function Dashboard() {
 
       {/* Pending Monobank holds — not counted anywhere, purely informational */}
       {pending.length > 0 && (
-        <div className="card" style={{ padding: 24, marginBottom: 24, opacity: 0.75 }}>
+        <div className="card card-pad" style={{ marginBottom: 24, opacity: 0.75 }}>
           <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4 }}>
             Очікують підтвердження
           </h3>
@@ -821,7 +827,7 @@ export default function Dashboard() {
 
       {/* Recent transactions */}
       {sections.recent && (
-      <div className="card" style={{ padding: 24 }}>
+      <div className="card card-pad">
         <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 20 }}>
           Останні транзакції
         </h3>
@@ -874,8 +880,8 @@ export default function Dashboard() {
                 colour either way — a pot growing isn't income. */}
             <span style={{
               fontSize: 15, fontWeight: 700, fontVariantNumeric: 'tabular-nums', flexShrink: 0, whiteSpace: 'nowrap',
-              color: tx.category.type === 'income' ? '#4ADE80'
-                   : tx.category.type === 'expense' ? '#FCA5A5' : '#FCD34D',
+              color: tx.category.type === 'income' ? 'var(--c-pos-text)'
+                   : tx.category.type === 'expense' ? 'var(--c-neg-text)' : 'var(--c-warn-text)',
             }}>
               {tx.category.type === 'income' || (tx.category.type === 'savings' && !tx.savingsWithdrawal) ? '+' : '-'}{formatMoney(tx.amount)}
             </span>

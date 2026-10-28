@@ -46,7 +46,7 @@ export default function LockPage() {
       position: 'fixed', inset: 0, zIndex: 50,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'var(--c-bg, #0A0A0F)',
-      overflowY: 'auto', padding: '24px 0',
+      overflowY: 'auto', padding: '24px 16px',
     }}>
       <form onSubmit={submit} style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18,
@@ -74,11 +74,11 @@ export default function LockPage() {
           placeholder="••••••"
           style={{ textAlign: 'center', fontSize: 20, letterSpacing: 6 }}
         />
-        {error && <div style={{ fontSize: 13, color: '#FCA5A5' }}>{error}</div>}
+        {error && <div style={{ fontSize: 13, color: 'var(--c-neg-text)' }}>{error}</div>}
         <button type="submit" className="btn-primary" disabled={busy} style={{ width: '100%', justifyContent: 'center' }}>
           {busy ? 'Перевірка…' : 'Розблокувати'}
         </button>
-        <button type="button" onClick={logout} style={{ background: 'none', border: 'none', color: 'var(--c-text-muted)', fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}>
+        <button type="button" onClick={logout} style={{ background: 'none', border: 'none', color: 'var(--c-text-muted)', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: '10px 12px' }}>
           Вийти з акаунту
         </button>
       </form>

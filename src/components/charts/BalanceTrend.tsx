@@ -35,7 +35,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export default function BalanceTrend({ data }: { data: TrendPoint[] }) {
   if (!data.length) return (
-    <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: 14 }}>
+    <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c-text-muted)', fontSize: 14 }}>
       Немає даних
     </div>
   );
@@ -57,12 +57,12 @@ export default function BalanceTrend({ data }: { data: TrendPoint[] }) {
           <CartesianGrid strokeDasharray="3 3" stroke="var(--c-border)" />
           <XAxis
             dataKey="month"
-            tick={{ fill: '#475569', fontSize: 12 }}
+            tick={{ fill: 'var(--c-text-muted)', fontSize: 12 }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
-            tick={{ fill: '#475569', fontSize: 11 }}
+            tick={{ fill: 'var(--c-text-muted)', fontSize: 12 }}
             axisLine={false}
             tickLine={false}
             tickFormatter={formatCompact}

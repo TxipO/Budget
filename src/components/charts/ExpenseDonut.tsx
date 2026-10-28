@@ -29,7 +29,7 @@ const CustomTooltip = ({ active, payload }: any) => {
 export default function ExpenseDonut({ data, total }: Props) {
   const { formatMoney } = useCurrency();
   if (!data.length) return (
-    <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: 14 }}>
+    <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c-text-muted)', fontSize: 14 }}>
       Немає витрат за цей період
     </div>
   );
@@ -86,7 +86,7 @@ export default function ExpenseDonut({ data, total }: Props) {
                 {formatMoney(item.amount)}
               </span>
               <span style={{
-                fontSize: 11, fontWeight: 700, flexShrink: 0,
+                fontSize: 12, fontWeight: 700, flexShrink: 0,
                 padding: '1px 6px', borderRadius: 4,
                 background: 'rgba(255,255,255,0.06)', color: '#94A3B8',
                 minWidth: 34, textAlign: 'center',

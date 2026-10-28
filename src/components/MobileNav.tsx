@@ -17,7 +17,7 @@ export default function MobileNav() {
   if (APP_SHELL_HIDDEN_ROUTES.includes(pathname)) return null;
 
   return (
-    <nav className="bottom-nav" style={{
+    <nav className="bottom-nav" aria-label="Основна навігація" style={{
       position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
       background: 'var(--c-sidebar)',
       borderTop: '1px solid var(--c-border-mid)',
@@ -29,16 +29,17 @@ export default function MobileNav() {
       {NAV.map(({ href, icon: Icon, label }) => {
         const active = pathname === href;
         return (
-          <Link key={href} href={href} style={{
+          <Link key={href} href={href} aria-current={active ? 'page' : undefined} style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-            padding: '6px 12px', borderRadius: 10, textDecoration: 'none',
-            color: active ? '#FB923C' : '#475569',
+            padding: '6px 0', borderRadius: 10, textDecoration: 'none',
+            color: active ? 'var(--c-accent-hi)' : 'var(--c-text-muted)',
             background: active ? 'rgba(249,115,22,0.12)' : 'transparent',
             transition: 'all 0.15s',
-            minWidth: 56,
+            flex: 1, minWidth: 0,
           }}>
             <Icon size={20} />
-            <span style={{ fontSize: 10, fontWeight: active ? 700 : 500 }}>{label}</span>
+            {/* Fixed line-height keeps the nav at --nav-h (71px) at 11px. */}
+            <span style={{ fontSize: 11, lineHeight: '15px', fontWeight: active ? 700 : 500, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
           </Link>
         );
       })}

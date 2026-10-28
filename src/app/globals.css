@@ -85,6 +85,13 @@ img, video { max-width: 100%; height: auto; }
   /* Warning text (a stale bank balance): amber-light on dark, amber-700 on
      light where #FCD34D would be ~1.5:1. */
   --c-warn-text:   #FCD34D;
+  /* Semantic text colors (income / expense / active accent): the pastel dark-
+     theme tints are ~1.3-2:1 on white, so light swaps to the 700 ramp step. */
+  --c-pos-text:    #4ADE80;
+  --c-neg-text:    #FCA5A5;
+  --c-accent-hi:   #FB923C;
+  /* Inner padding of dashboard/settings cards; 16px on phones (see media query). */
+  --card-pad: 24px;
 }
 
 [data-theme="light"] {
@@ -104,6 +111,9 @@ img, video { max-width: 100%; height: auto; }
   --c-scrollthumb: #CBD5E1;
   --c-accent-text: #C2410C;
   --c-warn-text:   #B45309;
+  --c-pos-text:    #15803D;
+  --c-neg-text:    #B91C1C;
+  --c-accent-hi:   #C2410C;
 }
 
 @keyframes pulse {
@@ -129,6 +139,12 @@ img, video { max-width: 100%; height: auto; }
 * {
   box-sizing: border-box;
 }
+
+/* Native controls (checkbox, date picker, select popup, scrollbar corners)
+   follow the theme and the brand accent instead of browser blue/white. */
+:root { color-scheme: dark; }
+[data-theme="light"] { color-scheme: light; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--c-accent-fill); }
 
 body {
   background-color: var(--c-bg);
@@ -163,6 +179,23 @@ input[type="number"]::-webkit-outer-spin-button {
   background: var(--c-elevated);
   border: 1px solid var(--c-border);
   border-radius: 16px;
+}
+
+.card-pad { padding: var(--card-pad); }
+
+/* Period switcher on Головна: padding lives here (not inline) so mobile can
+   tighten it. No visible scrollbar — it only scrolls below ~340px. */
+.period-pills { scrollbar-width: none; }
+.period-pills::-webkit-scrollbar { display: none; }
+.period-pills button { padding: 7px 14px; }
+
+/* Wide tables in a scroll container: a soft edge shadow on the side that still
+   has content (the "local" cover hides it once scrolled to the end). */
+.h-scroll-hint {
+  background:
+    linear-gradient(to left, var(--c-elevated) 40%, transparent) right center / 36px 100% no-repeat local,
+    linear-gradient(to left, var(--c-border-hi), transparent) right center / 16px 100% no-repeat scroll,
+    var(--c-elevated);
 }
 
 .card-elevated {
@@ -203,7 +236,7 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 .nav-link.active {
   background: rgba(249,115,22,0.15);
-  color: #FB923C;
+  color: var(--c-accent-hi);
 }
 
 .badge {
@@ -214,9 +247,9 @@ input[type="number"]::-webkit-outer-spin-button {
   font-size: 12px;
   font-weight: 600;
 }
-.badge-income  { background: rgba(34,197,94,0.15);  color: #4ADE80; }
-.badge-expense { background: rgba(239,68,68,0.15);  color: #FCA5A5; }
-.badge-savings { background: rgba(245,158,11,0.15); color: #FCD34D; }
+.badge-income  { background: rgba(34,197,94,0.15);  color: var(--c-pos-text); }
+.badge-expense { background: rgba(239,68,68,0.15);  color: var(--c-neg-text); }
+.badge-savings { background: rgba(245,158,11,0.15); color: var(--c-warn-text); }
 
 .btn-primary {
   display: inline-flex;
@@ -309,9 +342,18 @@ select.input-field option {
 .mobile-only   { display: none; }
 .desktop-only  { display: block; }
 
-.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-.grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
-.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.grid-5 { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+
+/* Narrow desktop / tablet (sidebar + ~600px of content): five stat cards in one
+   row clipped their figures ("+1 592 kr"). 3 + 2 on a 6-track grid instead. */
+@media (min-width: 769px) and (max-width: 1099px) {
+  .grid-5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .grid-5 > * { grid-column: span 2; }
+  .grid-5 > :nth-child(n+4) { grid-column: span 3; }
+  .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 @media (max-width: 768px) {
   .sidebar-wrap  { display: none; }
@@ -323,15 +365,35 @@ select.input-field option {
      padding, 20 icon, 3 gap, 15 label line + 1 border = 71 measured at 375px).
      body padding, toasts and header sheets all key off this one number —
      they used a hand-copied 68 that left the last 3px of content under the nav. */
-  :root { --nav-h: 71px; }
+  :root { --nav-h: 71px; --card-pad: 16px; }
   body { padding-bottom: var(--nav-h); }
 
   .stat-card { padding: 16px; border-radius: 14px; }
 
+  /* Tap targets: ghost/primary buttons were 26-34px tall on phones. */
+  .btn-ghost, .btn-primary, .input-field { min-height: 40px; }
+  .btn-ghost { min-width: 40px; justify-content: center; }
+
+  /* Транзакції header: month stepper takes the free width next to the
+     export icon; "Додати" gets its own full-width row instead of a stray
+     left-aligned button. */
+  .tx-head-actions { width: 100%; }
+  .tx-stepper { flex: 1; }
+  .tx-stepper > span { flex: 1; min-width: 0 !important; }
+  .tx-add { flex: 1 1 100%; justify-content: center; }
+  /* Summary tiles: label over figure, 2x2 — side by side the two ran together
+     ("Витрати31 199 kr"). */
+  .tx-summary { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px !important; }
+  .tx-summary-card { flex-direction: column; align-items: flex-start !important; gap: 2px; padding: 12px 14px !important; }
+
+  /* 5 labels fit a 360px phone at this padding; flex-grow spreads any spare
+     width at 375+. Height gives a 40px tap target. */
+  .period-pills button { padding: 0 7px; min-height: 40px; flex: 1 0 auto; }
+
   .modal-overlay { align-items: flex-end; padding: 0; padding-bottom: env(safe-area-inset-bottom); }
 
-  .grid-4 { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .grid-5 { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .grid-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .grid-5 > :last-child { grid-column: 1 / -1; }
   .grid-2 { grid-template-columns: 1fr; gap: 12px; }
 
@@ -376,9 +438,14 @@ select.input-field option {
      158px, "Сума збереження" forced 120px). Month columns keep their th
      widths (72px); the table still scrolls sideways inside its card. */
   .plan-table { table-layout: fixed; }
+  /* Names wrap to two lines instead of truncating to "Домаш…"/"Додат…". */
   .plan-cat-col {
-    width: 90px !important; padding-left: 10px !important; padding-right: 6px !important;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    width: 116px !important; padding-left: 10px !important; padding-right: 6px !important;
+    overflow: hidden; white-space: normal; line-height: 1.25;
+  }
+  .plan-cat-name {
+    white-space: normal !important; overflow-wrap: break-word;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
   }
   .plan-edit-popover {
     position: fixed !important; top: 50% !important; left: 50% !important;

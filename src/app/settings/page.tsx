@@ -31,7 +31,7 @@ function BalanceAge({ fetchedAt }: { fetchedAt: string | null }) {
   const stale = Date.now() - t.getTime() > BALANCE_STALE_MS;
   const when = t.toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
   return (
-    <span style={{ fontSize: 11, color: stale ? 'var(--c-warn-text)' : 'var(--c-text-muted)' }}>
+    <span style={{ fontSize: 12, color: stale ? 'var(--c-warn-text)' : 'var(--c-text-muted)' }}>
       {stale ? 'застарілий · ' : ''}оновлено {when}
     </span>
   );
@@ -608,12 +608,12 @@ export default function SettingsPage() {
     <div style={{ maxWidth: 900 }}>
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Налаштування</h1>
-        <p style={{ color: '#475569', fontSize: 14 }}>Категорії та імпорт даних</p>
+        <p style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>Категорії та імпорт даних</p>
       </div>
 
       {/* Account section */}
       {account && (
-        <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+        <div className="card card-pad" style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Обліковий запис</h2>
           {account.shared ? (
             <p style={{ fontSize: 14, color: 'var(--c-text-sec)', marginBottom: 16 }}>
@@ -639,7 +639,7 @@ export default function SettingsPage() {
       )}
 
       {/* Users section */}
-      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+      <div className="card card-pad" style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Користувачі</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: users.length > 0 ? 16 : 0 }}>
           {users.map(u => (
@@ -666,7 +666,7 @@ export default function SettingsPage() {
                   </button>
                   <button
                     onClick={() => deleteUser(u)} disabled={deletingUserId === u.id}
-                    className="btn-ghost" style={{ padding: '9px 12px', color: '#FCA5A5' }}
+                    className="btn-ghost" style={{ padding: '9px 12px', color: 'var(--c-neg-text)' }}
                     aria-label={`Видалити ${u.name}`}
                   >
                     <Trash2 size={14} />
@@ -693,7 +693,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Appearance section */}
-      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+      <div className="card card-pad" style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Зовнішній вигляд</h2>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
@@ -716,7 +716,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Dashboard sections visibility */}
-      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+      <div className="card card-pad" style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4 }}>Головна сторінка</h2>
         <p style={{ fontSize: 13, color: 'var(--c-text-muted)', marginBottom: 16 }}>
           Які блоки показувати на дашборді (зберігається на цьому пристрої)
@@ -758,7 +758,7 @@ export default function SettingsPage() {
           unlock step on top of an already-authenticated session, P4) is
           available to every household, so this shows for everyone. */}
       {account && (
-      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+      <div className="card card-pad" style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4 }}>Безпека</h2>
         <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginTop: 0, marginBottom: 14 }}>
           {account.hasPin
@@ -768,7 +768,7 @@ export default function SettingsPage() {
         <form onSubmit={savePin} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           {account.hasPin && (
             <div style={{ flex: 1, minWidth: 140 }}>
-              <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Поточний PIN</label>
+              <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Поточний PIN</label>
               <input
                 className="input-field" type="password" inputMode="numeric" required
                 value={pinForm.current}
@@ -778,7 +778,7 @@ export default function SettingsPage() {
             </div>
           )}
           <div style={{ flex: 1, minWidth: 140 }}>
-            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>{account.hasPin ? 'Новий PIN' : 'PIN'}</label>
+            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>{account.hasPin ? 'Новий PIN' : 'PIN'}</label>
             <input
               className="input-field" type="password" inputMode="numeric" required
               value={pinForm.next}
@@ -808,7 +808,7 @@ export default function SettingsPage() {
           a per-user bank picker, instead of two separate cards each user had
           to check. Once a user is connected to either bank, the picker goes
           away and just shows that connection's status/sync/disconnect. */}
-      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+      <div className="card card-pad" style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Landmark size={16} color="#F97316" /> Банківське підключення
         </h2>
@@ -825,7 +825,7 @@ export default function SettingsPage() {
             an error. This surfaces that class of failure here instead of
             only in a script someone has to remember to run. */}
         {llmStatus && llmStatus.status !== 'unknown' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, marginBottom: 16, color: llmStatus.status === 'alive' ? '#4ADE80' : '#F97316' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, marginBottom: 16, color: llmStatus.status === 'alive' ? 'var(--c-pos-text)' : '#F97316' }}>
             {llmStatus.status === 'alive'
               ? <><CheckCircle size={13} /> Авто-категоризація (Groq): працює — {llmStatus.llmCount} рішень за {llmStatus.lookbackDays} днів</>
               : <><AlertTriangle size={13} /> Авто-категоризація (Groq): не спрацювала жодного разу за {llmStatus.lookbackDays} днів, хоча {llmStatus.fallbackCount} транзакцій впали в "Незрозуміло" — перевірте GROQ_API_KEY</>}
@@ -869,7 +869,7 @@ export default function SettingsPage() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                     <span style={{ fontSize: 12, color: '#64748B' }}>Monobank</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#4ADE80' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--c-pos-text)' }}>
                         <CheckCircle size={13} /> Підключено
                       </span>
                       <button
@@ -907,7 +907,7 @@ export default function SettingsPage() {
                         {sb.expired ? (
                           <span style={{ fontSize: 12, color: 'var(--c-accent-text)' }}>Доступ прострочено</span>
                         ) : (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#4ADE80' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--c-pos-text)' }}>
                             <CheckCircle size={13} /> Підключено
                           </span>
                         )}
@@ -966,7 +966,7 @@ export default function SettingsPage() {
                                   onKeyDown={e => { if (e.key === 'Enter') saveSbLabel(a.id); if (e.key === 'Escape') setSbEditingLabelId(null); }}
                                   autoFocus
                                 />
-                                <button className="btn-ghost" style={{ padding: '2px 8px', fontSize: 11 }} disabled={sbSavingLabel} onClick={() => saveSbLabel(a.id)}>OK</button>
+                                <button className="btn-ghost" style={{ padding: '2px 8px', fontSize: 12 }} disabled={sbSavingLabel} onClick={() => saveSbLabel(a.id)}>OK</button>
                               </>
                             ) : (
                               <>
@@ -1031,7 +1031,7 @@ export default function SettingsPage() {
                       Автосинхронізація (приблизно двічі на добу, коли банк і GitHub встигають)
                     </label>
                     {sb.autoSync && (
-                      <span style={{ fontSize: 11, color: sb.autoSyncFailCount > 0 ? 'var(--c-accent-text)' : 'var(--c-text-muted)' }}>
+                      <span style={{ fontSize: 12, color: sb.autoSyncFailCount > 0 ? 'var(--c-accent-text)' : 'var(--c-text-muted)' }}>
                         {sb.autoSyncFailCount > 0
                           ? `Не вдалось ${sb.autoSyncFailCount} раз(и) поспіль`
                           : sb.lastAutoSyncAt
@@ -1074,13 +1074,13 @@ export default function SettingsPage() {
                             {monoConnecting === u.id ? 'Підключення…' : 'Підключити'}
                           </button>
                         </div>
-                        <span style={{ fontSize: 11, color: '#64748B' }}>
+                        <span style={{ fontSize: 12, color: '#64748B' }}>
                           Токен видається у{' '}
                           <a href="https://api.monobank.ua/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c-accent-text)' }}>
                             особистому кабінеті на api.monobank.ua
                           </a>
                         </span>
-                        <label style={{ fontSize: 11, color: '#64748B' }}>
+                        <label style={{ fontSize: 12, color: '#64748B' }}>
                           Синхронізувати з дати (необов'язково, не більше 30 днів тому):{' '}
                           <input
                             type="date" className="input-field" style={{ fontSize: 12, padding: '3px 6px', width: 'auto', display: 'inline-block' }}
@@ -1093,7 +1093,7 @@ export default function SettingsPage() {
 
                     {choice === 'sparebank' && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
-                      <label style={{ fontSize: 11, color: '#64748B' }}>
+                      <label style={{ fontSize: 12, color: '#64748B' }}>
                         Синхронізувати з дати (необов'язково):{' '}
                         <input
                           type="date" className="input-field" style={{ fontSize: 12, padding: '3px 6px', width: 'auto', display: 'inline-block' }}
@@ -1119,7 +1119,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Import section */}
-      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+      <div className="card card-pad" style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Імпорт з Excel</h2>
         <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>
           Завантажте файл Budget.xlsx — автоматично імпортуються категорії та дані з листів "Планування" і "Ведення".
@@ -1131,28 +1131,28 @@ export default function SettingsPage() {
             {importStatus === 'loading' ? 'Імпорт…' : 'Завантажити файл'}
           </button>
           {importStatus === 'done' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#4ADE80', fontSize: 13 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--c-pos-text)', fontSize: 13 }}>
               <CheckCircle size={16} /> Імпортовано успішно
             </div>
           )}
           {importStatus === 'error' && (
-            <div style={{ color: '#FCA5A5', fontSize: 13 }}>Помилка імпорту</div>
+            <div style={{ color: 'var(--c-neg-text)', fontSize: 13 }}>Помилка імпорту</div>
           )}
         </div>
       </div>
 
       {/* Add category */}
-      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+      <div className="card card-pad" style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Додати категорію</h2>
         <form onSubmit={addCat} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div style={{ flex: '1 1 160px' }}>
-            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
+            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
               Назва
             </label>
             <input className="input-field" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required placeholder="Назва категорії" />
           </div>
           <div style={{ flex: '1 1 120px' }}>
-            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Тип</label>
+            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Тип</label>
             <select className="input-field" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
               <option value="income">Дохід</option>
               <option value="expense">Витрати</option>
@@ -1160,7 +1160,7 @@ export default function SettingsPage() {
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Колір</label>
+            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Колір</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {CATEGORY_PALETTE.map(c => (
                 <button
@@ -1176,7 +1176,7 @@ export default function SettingsPage() {
           </div>
           <button type="submit" className="btn-primary"><Plus size={15} /> Додати</button>
           <div style={{ flexBasis: '100%' }}>
-            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>Іконка</label>
+            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>Іконка</label>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 96, overflowY: 'auto' }}>
               {ICON_KEYS.map(key => (
                 <button
@@ -1202,12 +1202,12 @@ export default function SettingsPage() {
       {sections.map(({ type, label, color }) => {
         const items = cats.filter(c => c.type === type);
         return (
-          <div key={type} className="card" style={{ padding: 24, marginBottom: 16 }}>
+          <div key={type} className="card card-pad" style={{ marginBottom: 16 }}>
             <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ color }}>{label}</span>
-              <span style={{ fontSize: 12, fontWeight: 500, color: '#475569' }}>({items.length})</span>
+              <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-text-muted)' }}>({items.length})</span>
             </h2>
-            {items.length === 0 && <p style={{ fontSize: 13, color: '#475569' }}>Немає категорій</p>}
+            {items.length === 0 && <p style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>Немає категорій</p>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {items.map(cat => (
                 <div key={cat.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>

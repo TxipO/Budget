@@ -41,7 +41,7 @@ export default function SetupPage() {
       position: 'fixed', inset: 0, zIndex: 50,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'var(--c-bg, #0A0A0F)',
-      overflowY: 'auto', padding: '24px 0',
+      overflowY: 'auto', padding: '24px 16px',
     }}>
       <form onSubmit={submit} style={cardStyle}>
         <div style={{
@@ -66,7 +66,7 @@ export default function SetupPage() {
                 flex: 1, padding: '12px 0', borderRadius: 10, border: 'none', cursor: 'pointer',
                 fontSize: 15, fontWeight: 700, fontFamily: 'inherit', transition: 'all 0.15s',
                 background: count === n ? 'rgba(249,115,22,0.2)' : 'var(--c-hover)',
-                color: count === n ? '#FB923C' : 'var(--c-text-muted)',
+                color: count === n ? 'var(--c-accent-hi)' : 'var(--c-text-muted)',
               }}
             >
               {n}
@@ -76,7 +76,7 @@ export default function SetupPage() {
 
         {count !== null && Array.from({ length: count }).map((_, i) => (
           <div key={i} style={{ width: '100%' }}>
-            <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
+            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
               Ім'я{count > 1 ? ` #${i + 1}` : ''}
             </label>
             <input
@@ -89,7 +89,7 @@ export default function SetupPage() {
           </div>
         ))}
 
-        {error && <div style={{ fontSize: 13, color: '#FCA5A5' }}>{error}</div>}
+        {error && <div style={{ fontSize: 13, color: 'var(--c-neg-text)' }}>{error}</div>}
 
         {count !== null && (
           <button type="submit" className="btn-primary" disabled={busy} style={{ width: '100%', justifyContent: 'center' }}>

@@ -22,9 +22,9 @@ interface Insight { text: string; tone: 'good' | 'warn' | 'info' }
 interface SavingsCategoryBalance { name: string; color: string; icon: string; balance: number; bank: { amount: number; currency: string; fetchedAt: string } | null }
 
 const INSIGHT_STYLE: Record<Insight['tone'], { bg: string; border: string; color: string }> = {
-  good: { bg: 'rgba(34,197,94,0.08)',  border: 'rgba(34,197,94,0.2)',  color: '#4ADE80' },
-  warn: { bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.2)',  color: '#FCA5A5' },
-  info: { bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.2)', color: '#FB923C' },
+  good: { bg: 'rgba(34,197,94,0.08)',  border: 'rgba(34,197,94,0.2)',  color: 'var(--c-pos-text)' },
+  warn: { bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.2)',  color: 'var(--c-neg-text)' },
+  info: { bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.2)', color: 'var(--c-accent-hi)' },
 };
 
 // "DD.MM" of the UTC calendar day (balanceFetchedAt is a UTC instant).
@@ -75,7 +75,7 @@ export default function AnalyticsPage() {
         <div style={{ display: 'flex', gap: 8 }}>
           {[thisYear - 1, thisYear, thisYear + 1].map(y => (
             <button key={y} onClick={() => setYear(y)} className="btn-ghost"
-              style={{ background: year === y ? 'rgba(249,115,22,0.2)' : undefined, color: year === y ? '#FB923C' : undefined }}>
+              style={{ background: year === y ? 'rgba(249,115,22,0.2)' : undefined, color: year === y ? 'var(--c-accent-hi)' : undefined }}>
               {y}
             </button>
           ))}
@@ -144,11 +144,11 @@ export default function AnalyticsPage() {
                           stays fully readable, an ellipsis would just hide
                           the answer to the question this chip exists to
                           answer. */}
-                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--c-text-sec)', lineHeight: 1.35 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-sec)', lineHeight: 1.35 }}>
                         {s.name}
                       </span>
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums', flexShrink: 0, whiteSpace: 'nowrap' }}>
                       {formatMoneySign(s.balance)}
                     </span>
                    </div>
@@ -157,7 +157,7 @@ export default function AnalyticsPage() {
                     // account(s) mapped to this pool, in the bank's currency,
                     // dated by the (UTC) fetch day. Muted micro text (DESIGN.md
                     // micro 10px), wraps instead of overflowing at 375px.
-                    <div style={{ marginTop: 2, paddingLeft: 17, fontSize: 10, fontWeight: 500, color: 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.35 }}>
+                    <div style={{ marginTop: 2, paddingLeft: 17, fontSize: 12, fontWeight: 500, color: 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.35 }}>
                       з них SpareBank: {formatMoneyIn(s.bank.amount, s.bank.currency)} · {formatDdMm(s.bank.fetchedAt)}
                     </div>
                    )}
@@ -189,7 +189,7 @@ export default function AnalyticsPage() {
       )}
 
       {/* Monthly income vs expenses bar chart */}
-      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+      <div className="card card-pad" style={{ marginBottom: 20 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 20 }}>
           Дохід vs Витрати по місяцях
         </h3>
@@ -197,7 +197,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Balance by month */}
-      <div className="card" style={{ padding: 24 }}>
+      <div className="card card-pad">
         <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Вільний залишок по місяцях</h3>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {data.map(d => {
@@ -211,8 +211,8 @@ export default function AnalyticsPage() {
                 border: `1px solid ${good ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
                 borderRadius: 10, padding: '12px 8px', textAlign: 'center',
               }}>
-                <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginBottom: 6 }}>{d.month}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: good ? '#4ADE80' : '#FCA5A5', fontVariantNumeric: 'tabular-nums' }}>
+                <div style={{ fontSize: 12, color: 'var(--c-text-muted)', marginBottom: 6 }}>{d.month}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: good ? 'var(--c-pos-text)' : 'var(--c-neg-text)', fontVariantNumeric: 'tabular-nums' }}>
                   {d.balance !== 0 ? `${shown > 0 ? '+' : ''}${formatCompact(d.balance)}` : '—'}
                 </div>
               </div>

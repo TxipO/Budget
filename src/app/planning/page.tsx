@@ -21,7 +21,7 @@ function planStatus(type: string, actual: number, planned: number, periodDone: b
   if (actual >= planned) return 'good';
   return periodDone && actual !== 0 ? 'bad' : null;
 }
-const STATUS_COLOR = { good: '#4ADE80', bad: '#FCA5A5' } as const;
+const STATUS_COLOR = { good: 'var(--c-pos-text)', bad: 'var(--c-neg-text)' } as const;
 
 export default function PlanningPage() {
   const { suffix } = useCurrency();
@@ -154,7 +154,7 @@ export default function PlanningPage() {
   ];
 
   const headerStyle: React.CSSProperties = {
-    fontSize: 11, fontWeight: 700, color: '#475569',
+    fontSize: 12, fontWeight: 700, color: 'var(--c-text-muted)',
     textTransform: 'uppercase', letterSpacing: '0.04em',
     textAlign: 'center', padding: '0 4px',
   };
@@ -164,7 +164,7 @@ export default function PlanningPage() {
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Планування</h1>
-          <p style={{ color: '#475569', fontSize: 14 }}>Клікніть на клітинку, щоб задати план та коментар</p>
+          <p style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>Клікніть на клітинку, щоб задати план та коментар</p>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {[thisYear - 1, thisYear, thisYear + 1, thisYear + 2].map(y => (
@@ -172,7 +172,7 @@ export default function PlanningPage() {
               key={y} onClick={() => { setYear(y); setEditCell(null); }} className="btn-ghost"
               style={{
                 background: year === y ? 'rgba(249,115,22,0.2)' : undefined,
-                color:      year === y ? '#FB923C' : undefined,
+                color:      year === y ? 'var(--c-accent-hi)' : undefined,
                 fontWeight: year === y ? 700 : 500,
               }}
             >{y}</button>
@@ -180,7 +180,7 @@ export default function PlanningPage() {
         </div>
       </div>
 
-      <div className="card" style={{ overflow: 'auto' }}>
+      <div className="card h-scroll-hint" style={{ overflow: 'auto' }}>
         <table className="plan-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
@@ -234,7 +234,7 @@ export default function PlanningPage() {
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                           <div style={{ width: 7, height: 7, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />
-                          <span title={cat.isActive ? cat.name : `${cat.name} — категорію видалено, але її транзакції ще враховуються`} style={{ fontSize: 13, color: 'var(--c-text-sec)', fontStyle: cat.isActive ? undefined : 'italic', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</span>
+                          <span className="plan-cat-name" title={cat.isActive ? cat.name : `${cat.name} — категорію видалено, але її транзакції ще враховуються`} style={{ fontSize: 13, color: 'var(--c-text-sec)', fontStyle: cat.isActive ? undefined : 'italic', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</span>
                         </div>
                       </td>
                       {MONTH_SHORT.map((_, i) => {
@@ -313,12 +313,12 @@ export default function PlanningPage() {
                                 </span>
                               )}
                               {planned > 0 && (
-                                <span style={{ fontSize: 10, color: '#475569', fontVariantNumeric: 'tabular-nums' }}>
+                                <span style={{ fontSize: 12, color: 'var(--c-text-sub)', fontVariantNumeric: 'tabular-nums' }}>
                                   /{formatCompact(planned)}
                                 </span>
                               )}
                               {!hasData && (
-                                <span style={{ fontSize: 10, color: 'var(--c-text-sub)' }}>—</span>
+                                <span style={{ fontSize: 12, color: 'var(--c-text-sub)' }}>—</span>
                               )}
                               {notes && (
                                 <MessageSquare
@@ -335,7 +335,7 @@ export default function PlanningPage() {
                           {yearActual !== 0 ? formatCompact(yearActual) : '—'}
                         </div>
                         {yearPlanned > 0 && (
-                          <div style={{ fontSize: 10, color: '#475569', fontVariantNumeric: 'tabular-nums' }}>
+                          <div style={{ fontSize: 12, color: 'var(--c-text-sub)', fontVariantNumeric: 'tabular-nums' }}>
                             /{formatCompact(yearPlanned)}
                           </div>
                         )}
@@ -365,10 +365,10 @@ export default function PlanningPage() {
                             {formatCompact(tot.actual)}
                           </div>
                         ) : (
-                          <div style={{ fontSize: 11, color: 'var(--c-text-sub)' }}>—</div>
+                          <div style={{ fontSize: 12, color: 'var(--c-text-sub)' }}>—</div>
                         )}
                         {tot.planned > 0 && (
-                          <div style={{ fontSize: 10, color: '#475569', fontVariantNumeric: 'tabular-nums' }}>
+                          <div style={{ fontSize: 12, color: 'var(--c-text-sub)', fontVariantNumeric: 'tabular-nums' }}>
                             /{formatCompact(tot.planned)}
                           </div>
                         )}
@@ -381,7 +381,7 @@ export default function PlanningPage() {
                       {yearTotalActual !== 0 ? formatCompact(yearTotalActual) : '—'}
                     </div>
                     {yearTotalPlanned > 0 && (
-                      <div style={{ fontSize: 10, color: '#475569', fontVariantNumeric: 'tabular-nums' }}>
+                      <div style={{ fontSize: 12, color: 'var(--c-text-sub)', fontVariantNumeric: 'tabular-nums' }}>
                         /{formatCompact(yearTotalPlanned)}
                       </div>
                     )}
@@ -393,7 +393,7 @@ export default function PlanningPage() {
         </table>
       </div>
 
-      <div style={{ marginTop: 12, fontSize: 12, color: '#475569' }}>
+      <div style={{ marginTop: 12, fontSize: 12, color: 'var(--c-text-muted)' }}>
         Жирне = факт, сіре = план · Зелений = в межах · Червоний = перевитрата ·
         <MessageSquare size={10} color="#F97316" style={{ verticalAlign: 'middle', margin: '0 3px' }} />
         = є коментар (наведіть курсор)
