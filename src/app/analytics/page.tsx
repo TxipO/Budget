@@ -137,7 +137,7 @@ export default function AnalyticsPage() {
                     key={s.name}
                     style={{ background: `${s.color}20`, borderRadius: 6, padding: '5px 9px' }}
                   >
-                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, justifyContent: 'space-between' }}>
+                   <div style={{ display: 'flex', alignItems: 'flex-start', columnGap: 6, rowGap: 2, flexWrap: 'wrap', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5, minWidth: 0 }}>
                       <div style={{ marginTop: 1, flexShrink: 0 }}>
                         <CategoryIcon name={s.icon} color={s.color} size={12} />
