@@ -130,11 +130,14 @@ async function main() {
   // new date and the real name. The dedup key holds the date, so the copy used
   // to land as a SECOND counted row (pool 1 200 too high). The ingest guard
   // (findRebookedPlaceholder) now merges these for weekend-dated placeholders;
-  // this check catches what it deliberately doesn't (a Friday/holiday-dated
-  // placeholder, or rows that predate the guard): a counted placeholder-text
+  // this check catches rows that predate the guard: a counted placeholder-text
   // row and a counted resolved-text row on the SAME account/direction/amount,
   // the resolved one dated 1-3 days LATER. A clean run finds 0; a hit is a
   // probable double count — exclude (isTransfer) the placeholder row by hand.
+  // Mirrors the guard's premise: only a WEEKEND-dated placeholder is FAIL. A
+  // weekday placeholder («forfall i dag») can be a genuinely separate transfer
+  // (FALSE POSITIVE 2026-11-07: #2552 Thu vs #2557/#2558 Fri, proven separate
+  // by the bank balance) so it only WARNs for a human look.
   // Ordinary repeated transfers (both resolved text) are NOT flagged: those are
   // real and indistinguishable from this by amount alone.
   const keyOf = t => t.sbTransactionId?.match(/^sb(\d+)\|[\d-]+\|(DBIT|CRDT)\|([\d.]+)#\d+$/);
@@ -151,10 +154,18 @@ async function main() {
       if (days >= 1 && days <= 3) shifted.push([p, r]);
     }
   }
-  if (shifted.length) {
-    fail(`${shifted.length} probable date-shifted duplicate pair(s) — placeholder row and a later booked copy are BOTH counted:`);
-    for (const [p, r] of shifted) console.log(`      #${p.id} ${p.date.toISOString().slice(0, 10)} "${p.details}" / #${r.id} ${r.date.toISOString().slice(0, 10)} "${r.details}": ${p.amount} kr, ${p.sbTransactionId}`);
-  } else pass('no counted placeholder row has a counted booked copy 1-3 days later on the same account/direction/amount');
+  const isWeekend = p => [0, 6].includes(p.date.getUTCDay());
+  const show = ([p, r]) => console.log(`      #${p.id} ${p.date.toISOString().slice(0, 10)} "${p.details}" / #${r.id} ${r.date.toISOString().slice(0, 10)} "${r.details}": ${p.amount} kr, ${p.sbTransactionId}`);
+  const shiftedHard = shifted.filter(([p]) => isWeekend(p));
+  const shiftedSoft = shifted.filter(([p]) => !isWeekend(p));
+  if (shiftedHard.length) {
+    fail(`${shiftedHard.length} probable date-shifted duplicate pair(s) — weekend placeholder row and a later booked copy are BOTH counted:`);
+    shiftedHard.forEach(show);
+  } else pass('no counted weekend placeholder row has a counted booked copy 1-3 days later on the same account/direction/amount');
+  if (shiftedSoft.length) {
+    warn(`${shiftedSoft.length} weekday placeholder/booked pair(s) with same account/direction/amount — usually separate transfers, verify against the bank balance if in doubt:`);
+    shiftedSoft.forEach(show);
+  }
   // Same shift, different text: a weekend Nettgiro arrives as a bare "Nettgiro"
   // and is re-booked Monday as "Nettgiro til: X Betalt: DD.MM.YY" (found
   // 2026-10-13: #937 22.08 + #940 24.08, 249 kr). The "Betalt:" date IS the
