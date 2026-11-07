@@ -17,9 +17,7 @@ serverless. ~12k LOC, 46 API routes, 27 lib modules, 5 external integrations
 `C:\Users\doter\Budget`, source in `src/`.
 
 Replaces the former `/selfcheck`, `/deep-review`, `/full-review` and
-`/audit` skills — same content, one entry point. `/verify-export` stays
-separate (it's an export-artifact pipeline, not code review, and has its own
-standing rule in memory).
+`/audit` skills — same content, one entry point.
 
 ## Modes
 

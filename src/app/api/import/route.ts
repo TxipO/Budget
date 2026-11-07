@@ -47,7 +47,8 @@ function cellText(v: ExcelJS.CellValue): string | null {
 // A user-facing import problem → 400 (anything else is a real 500).
 class ImportError extends Error {}
 
-// Must match export/route.ts: set as the workbook's `keywords` doc property.
+// The (removed) Excel export set this as the workbook's `keywords` property;
+// kept so previously exported files are still refused.
 const EXPORT_MARKER = 'budget-app-export';
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_ROWS = 10000;

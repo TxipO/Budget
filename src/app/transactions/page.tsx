@@ -6,7 +6,6 @@ import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
 import CategoryIcon from '@/components/CategoryIcon';
 import { toast } from '@/lib/toast';
-import { downloadExport } from '@/lib/downloadExport';
 import { isBudgetRelevant, savingsAmount } from '@/lib/budgetRules';
 
 interface Tx {
@@ -46,9 +45,7 @@ export default function TransactionsPage() {
   const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Tx | null>(null);
-  const [showExport, setShowExport] = useState(false);
   const [page, setPage] = useState(1);
-  const exportRef = useRef<HTMLDivElement>(null);
   const pendingDels = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   // load() is also called from timers/toasts that outlive a render, so it reads
@@ -94,22 +91,6 @@ export default function TransactionsPage() {
     }
     window.addEventListener('pagehide', flush);
     return () => { window.removeEventListener('pagehide', flush); flush(); };
-  }, []);
-
-  useEffect(() => {
-    function handleClick(e: Event) {
-      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
-        setShowExport(false);
-      }
-    }
-    // touchstart too: on phones the menu is a bottom sheet, and iOS doesn't
-    // always synthesize mousedown for a tap on a non-interactive area.
-    document.addEventListener('mousedown', handleClick);
-    document.addEventListener('touchstart', handleClick);
-    return () => {
-      document.removeEventListener('mousedown', handleClick);
-      document.removeEventListener('touchstart', handleClick);
-    };
   }, []);
 
   useEffect(() => {
@@ -202,13 +183,7 @@ export default function TransactionsPage() {
     a.download = globalSearch ? 'бюджет_всі_роки.csv' : `бюджет_${MONTH_NAMES[month - 1]}_${year}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    setShowExport(false);
     toast('CSV збережено');
-  }
-
-  async function exportExcel() {
-    await downloadExport(`?year=${year}&month=${month}`);
-    setShowExport(false);
   }
 
   // Shared by both `filtered` (the visible list) and the transfers total
@@ -291,48 +266,14 @@ export default function TransactionsPage() {
               <ChevronRight size={16} />
             </button>
           </div>
-          <div ref={exportRef} style={{ position: 'relative' }}>
-            <button
-              className="btn-ghost"
-              onClick={() => setShowExport(v => !v)}
-              title="Експорт" aria-label="Експорт"
-              style={{ gap: 6 }}
-            >
-              <Download size={15} /> <span className="hide-on-xs">Експорт</span>
-            </button>
-            {showExport && (
-              <div className="header-dropdown" style={{
-                position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 50,
-                background: 'var(--c-raised)', border: '1px solid var(--c-border-hi)',
-                borderRadius: 10, overflow: 'hidden', minWidth: 130,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-              }}>
-                <button onClick={exportCSV} style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  width: '100%', padding: '10px 16px', background: 'none', border: 'none',
-                  color: 'var(--c-text)', fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
-                  transition: 'background 0.1s',
-                }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--c-hover)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-                >
-                  CSV
-                </button>
-                <button onClick={exportExcel} style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  width: '100%', padding: '10px 16px', background: 'none', border: 'none',
-                  color: 'var(--c-text)', fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
-                  borderTop: '1px solid var(--c-border)',
-                  transition: 'background 0.1s',
-                }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--c-hover)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-                >
-                  Excel (.xlsx)
-                </button>
-              </div>
-            )}
-          </div>
+          <button
+            className="btn-ghost"
+            onClick={exportCSV}
+            title="Експорт CSV" aria-label="Експорт CSV"
+            style={{ gap: 6 }}
+          >
+            <Download size={15} /> <span className="hide-on-xs">CSV</span>
+          </button>
           <button
             className="btn-primary tx-add"
             onClick={() => { setEditing(null); setShowForm(true); }}

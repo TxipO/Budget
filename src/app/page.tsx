@@ -1,14 +1,13 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Download, Pencil, RefreshCw, AlertCircle, Landmark, PieChart, LineChart, ArrowLeftRight } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Pencil, RefreshCw, AlertCircle, Landmark, PieChart, LineChart, ArrowLeftRight } from 'lucide-react';
 import { MONTH_NAMES, MONTH_SHORT, TYPE_COLORS, CATEGORY_PALETTE, BANK_SYNC_COLOR, type Period, PERIOD_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
 import CategoryIcon from '@/components/CategoryIcon';
 import { useDashboardPrefs } from '@/lib/dashboardPrefs';
 import { toast } from '@/lib/toast';
-import { downloadExport } from '@/lib/downloadExport';
 
 const ExpenseDonut = dynamic(() => import('@/components/charts/ExpenseDonut'), { ssr: false });
 const BalanceTrend = dynamic(() => import('@/components/charts/BalanceTrend'), { ssr: false });
@@ -433,18 +432,6 @@ export default function Dashboard() {
               )}
             </div>
           )}
-          <button
-            onClick={() => downloadExport(
-              period === 'month' ? `?year=${year}&month=${month}` :
-              period === 'year'  ? `?year=${year}` :
-              ''
-            )}
-            className="btn-ghost"
-            title="Експорт" aria-label="Експорт"
-            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}
-          >
-            <Download size={15} /> <span className="hide-on-xs">Експорт</span>
-          </button>
           <button className="btn-primary" onClick={() => { setEditing(null); setShowForm(true); }} title="Додати (Alt+N)">
             <Plus size={16} /> Додати
           </button>

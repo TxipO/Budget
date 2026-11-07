@@ -1,6 +1,5 @@
 // Single source of truth for the "Планування" sheet's multi-year column
-// layout — shared by api/export/route.ts (writes it) and api/import/route.ts
-// (reads it back). Extracted 2026-08-30 (/fullreview deep) after finding
+// layout — read by api/import/route.ts (the export route that wrote it was removed). Extracted 2026-08-30 (/fullreview deep) after finding
 // import/route.ts had its OWN hardcoded YEAR_COL=5/MONTHS=12 loop that only
 // ever read the FIRST year block (2026) and silently ignored every later
 // year's columns — a re-import of a real multi-year-edited export would
