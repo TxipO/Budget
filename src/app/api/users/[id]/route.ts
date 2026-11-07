@@ -3,11 +3,11 @@ import { prisma } from '@/lib/prisma';
 import { badRequest, isPositiveInt } from '@/lib/validate';
 import { requireHouseholdId } from '@/lib/household';
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     if (!isPositiveInt(id)) return badRequest('Невалідний ID');
 
     const body = await req.json();
@@ -27,11 +27,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     if (!isPositiveInt(id)) return badRequest('Невалідний ID');
 
     const target = await prisma.user.findUnique({ where: { id }, select: { householdId: true } });

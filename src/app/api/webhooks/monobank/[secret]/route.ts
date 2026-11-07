@@ -9,9 +9,9 @@ export async function GET() {
   return NextResponse.json({ ok: true });
 }
 
-export async function POST(req: NextRequest, { params }: { params: { secret: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ secret: string }> }) {
   try {
-    const user = await prisma.user.findUnique({ where: { monoWebhookSecret: params.secret }, select: { id: true, householdId: true } });
+    const user = await prisma.user.findUnique({ where: { monoWebhookSecret: (await params).secret }, select: { id: true, householdId: true } });
     // 200, not 404: an unrecognized secret (stale/disconnected/probing) isn't
     // an error for Monobank to retry, it's just nothing to do. A user with no
     // household (shouldn't happen post-backfill) is treated the same way —

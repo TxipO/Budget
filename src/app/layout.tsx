@@ -4,12 +4,10 @@ import { headers } from 'next/headers';
 import './globals.css';
 import Sidebar from '@/components/Sidebar';
 import MobileNav from '@/components/MobileNav';
-import dynamic from 'next/dynamic';
+import { Particles, ToastContainer } from '@/components/ClientOnly';
 import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 
-const Particles = dynamic(() => import('@/components/Particles'), { ssr: false });
-const ToastContainer = dynamic(() => import('@/components/ToastContainer'), { ssr: false });
 
 const inter = Inter({ subsets: ['latin', 'cyrillic'], variable: '--font-inter' });
 
@@ -27,11 +25,11 @@ export const viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Reading headers() opts this layout (and everything under it) out of
   // static rendering — required so each request gets its own CSP nonce
   // (see middleware.ts) instead of one baked in at build time.
-  const nonce = headers().get('x-nonce') ?? undefined;
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
     <html lang="uk" suppressHydrationWarning>
       <head>

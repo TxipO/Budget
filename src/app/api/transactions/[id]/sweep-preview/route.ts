@@ -8,11 +8,11 @@ import { merchantKeyOf, findSweepSiblings } from '@/lib/sweepSiblings';
 // the user changes this row's category to `categoryId`? TransactionForm calls
 // this before saving so it can ask "only this one, or all of them?" instead
 // of silently sweeping (see PUT /api/transactions/[id]'s scope comment).
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');
     const newCategoryId = Number(req.nextUrl.searchParams.get('categoryId'));
     if (!isPositiveInt(newCategoryId)) return badRequest('Невалідна категорія');

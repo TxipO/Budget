@@ -3,11 +3,11 @@ import { prisma } from '@/lib/prisma';
 import { badRequest, isValidType, parseId } from '@/lib/validate';
 import { requireHouseholdId } from '@/lib/household';
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const id = parseId(params.id);
+    const id = parseId((await params).id);
     if (id === null) return badRequest('Невалідний ID');
     const body = await req.json();
 
@@ -49,11 +49,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const id = parseId(params.id);
+    const id = parseId((await params).id);
     if (id === null) return badRequest('Невалідний ID');
     // A SpareBank account still mapped to this pot would keep ingesting into a
     // hidden category — make the user unlink it first.

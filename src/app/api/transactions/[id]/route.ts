@@ -4,11 +4,11 @@ import { badRequest, parseDate, parseId, parseAmount } from '@/lib/validate';
 import { merchantKeyOf, findSweepSiblings } from '@/lib/sweepSiblings';
 import { requireHouseholdId, isOwnedCategory, isOwnedUser } from '@/lib/household';
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const id = parseId(params.id);
+    const id = parseId((await params).id);
     if (id === null) return badRequest('Невалідний ID');
     const body = await req.json();
 
@@ -172,11 +172,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const householdId = requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const id = parseId(params.id);
+    const id = parseId((await params).id);
     if (id === null) return badRequest('Невалідний ID');
     const owned = await prisma.transaction.findUnique({ where: { id }, select: { householdId: true } });
     if (!owned || owned.householdId !== householdId) {
