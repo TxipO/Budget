@@ -36,7 +36,10 @@ Two mechanisms a generic single-user budgeting app or a bank's own statistics sc
 
 ## Brand Commitments
 
-Product name/title: "Бюджет" (app title and PWA name), tagline "Сімейний трекер бюджету". No further binding brand identity confirmed yet.
+Product name/title: "Бюджет" (app title and PWA name), tagline "Сімейний трекер бюджету".
+
+- Palette is kept by the user: dark ground + orange (#F97316) brand accent, with a working light theme.
+- Standing preference (2026-11-11): the users chose the category standard over experimental visual worlds — evolve the incumbent look to best-in-class craft (motion, warmth, less grey) rather than replacing it with a themed concept.
 
 ## Evidence on Hand
 

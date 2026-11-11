@@ -1,8 +1,9 @@
 'use client';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { useCurrency } from '@/lib/useCurrency';
+import CountUp, { prefersReducedMotion } from '@/components/CountUp';
 
-interface Item { name: string; amount: number; color: string; planned?: number }
+interface Item { name: string; amount: number; color: string }
 
 interface Props {
   data: Item[];
@@ -17,87 +18,71 @@ const CustomTooltip = ({ active, payload }: any) => {
   return (
     <div style={{
       background: 'var(--c-raised)', border: '1px solid var(--c-border-hi)',
-      borderRadius: 10, padding: '10px 14px', fontSize: 13,
+      borderRadius: 14, padding: '10px 14px', fontSize: 13,
     }}>
-      <p style={{ color: p.color, fontWeight: 600 }}>{name}</p>
-      <p style={{ color: 'var(--c-text)' }}>{formatMoney(value)}</p>
+      <p style={{ color: p.color, fontWeight: 700 }}>{name}</p>
+      <p style={{ color: 'var(--c-text)', fontWeight: 600 }}>{formatMoney(value)}</p>
       <p style={{ color: 'var(--c-text-muted)' }}>{pct}% від витрат</p>
     </div>
   );
 };
 
+// Ring with the period total in the centre and a name / amount / share legend.
+// Data colours arrive already mapped to display hues (see lib/displayColor).
 export default function ExpenseDonut({ data, total }: Props) {
   const { formatMoney } = useCurrency();
   if (!data.length) return (
-    <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c-text-muted)', fontSize: 14 }}>
-      Немає витрат за цей період
-    </div>
+    <div className="d-empty">Немає витрат за цей період</div>
   );
 
   const chartData = data.map(d => ({ ...d, value: d.amount, total }));
+  const animate = !prefersReducedMotion();
 
   return (
-    <div className="donut-row" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 20, alignItems: 'center', minHeight: 240 }}>
-      {/* Pie */}
-      <div className="donut-chart-box" style={{ width: 180, height: 180, flexShrink: 0 }}>
+    <>
+      <div className="d-ring">
+        <div style={{ position: 'absolute', inset: 0 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
+          <PieChart key={chartData.map(d => `${d.name}:${d.amount}`).join('|')}>
+            {/* Clockwise from 12 o'clock; the library's own sweep animation is the load moment. */}
             <Pie
               data={chartData}
-              cx="50%"
-              cy="50%"
-              innerRadius="58%"
-              outerRadius="90%"
-              paddingAngle={2}
+              cx="50%" cy="50%"
+              innerRadius="69%" outerRadius="91%"
+              startAngle={90} endAngle={-270}
+              paddingAngle={chartData.length > 1 ? 1.2 : 0}
               dataKey="value"
+              stroke="none"
+              animationBegin={0}
+              isAnimationActive={animate}
+              animationDuration={900}
+              animationEasing="ease-out"
             >
-              {chartData.map((entry, i) => (
-                <Cell key={i} fill={entry.color} stroke="transparent" />
-              ))}
+              {chartData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
           </PieChart>
         </ResponsiveContainer>
+        </div>
+        <div className="d-ring-c">
+          <span className="d-lb" style={{ fontSize: 13 }}>Витрати</span>
+          <b><CountUp value={total} /></b>
+        </div>
       </div>
 
-      {/* Custom legend */}
-      <div className="donut-legend" style={{
-        // minWidth is what makes a narrow card wrap the legend under the pie instead of squeezing it to nothing.
-        flex: 1, minWidth: 'min(220px, 100%)', overflowY: 'auto', maxHeight: 240,
-        display: 'flex', flexDirection: 'column', gap: 5,
-      }}>
-        {chartData.map(item => {
-          const pct = total > 0 ? Math.round((item.amount / total) * 100) : 0;
+      <div className="d-lg">
+        {chartData.map((item, i) => {
+          const share = total > 0 ? (item.amount / total) * 100 : 0;
           return (
-            <div key={item.name} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              <div style={{
-                width: 10, height: 10, borderRadius: 3, flexShrink: 0,
-                background: item.color,
-              }} />
-              <span style={{
-                flex: 1, fontSize: 12, color: 'var(--c-text-sec)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {item.name}
-              </span>
-              <span style={{
-                fontSize: 12, color: 'var(--c-text-muted)',
-                fontVariantNumeric: 'tabular-nums', flexShrink: 0,
-              }}>
-                {formatMoney(item.amount)}
-              </span>
-              <span style={{
-                fontSize: 12, fontWeight: 700, flexShrink: 0,
-                padding: '1px 6px', borderRadius: 4,
-                background: 'var(--c-hover)', color: 'var(--c-text-muted)',
-                minWidth: 34, textAlign: 'center',
-              }}>
-                {pct}%
-              </span>
+            <div key={item.name + i}>
+              <i style={{ background: item.color }} />
+              <span className="nm">{item.name}</span>
+              <span className="am">{formatMoney(item.amount)}</span>
+              <span className="pc">{share > 0 && share < 1 ? '<1%' : `${Math.round(share)}%`}</span>
             </div>
           );
         })}
       </div>
-    </div>
+    </>
   );
 }

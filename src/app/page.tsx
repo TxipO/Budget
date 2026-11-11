@@ -1,11 +1,14 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus, TrendingUp, TrendingDown, PiggyBank, Wallet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Target, ArrowUp, ArrowDown, Pencil, RefreshCw, AlertCircle, Landmark, PieChart, LineChart, ArrowLeftRight } from 'lucide-react';
-import { MONTH_NAMES, MONTH_SHORT, TYPE_COLORS, CATEGORY_PALETTE, BANK_SYNC_COLOR, type Period, PERIOD_LABELS } from '@/lib/utils';
+import Link from 'next/link';
+import { Plus, TrendingUp, TrendingDown, PiggyBank, Layers, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Pencil, RefreshCw, AlertCircle, Landmark, LineChart, ArrowLeftRight, Clock, Target } from 'lucide-react';
+import { MONTH_NAMES, MONTH_SHORT, CATEGORY_PALETTE, BANK_SYNC_COLOR, type Period, PERIOD_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
+import { displayColor } from '@/lib/displayColor';
 import TransactionForm from '@/components/TransactionForm';
 import CategoryIcon from '@/components/CategoryIcon';
+import CountUp from '@/components/CountUp';
 import { useDashboardPrefs } from '@/lib/dashboardPrefs';
 import { toast } from '@/lib/toast';
 
@@ -15,7 +18,8 @@ const BalanceTrend = dynamic(() => import('@/components/charts/BalanceTrend'), {
 interface Stats {
   income: number; expenses: number; savings: number; transfers: number;
   balance: number; cumBalance: number;
-  byCategory: { name: string; amount: number; color: string; icon: string; planned: number }[];
+  pools?: { categoryId: number; name: string; balance: number }[];
+  byCategory: { categoryId: number; name: string; amount: number; color: string; icon: string; planned: number }[];
   byUser: { name: string; income: number; expenses: number; savings: number; net: number }[];
   trend: { month: string; income: number; expenses: number; savings: number; balance: number }[];
   recent: {
@@ -28,6 +32,9 @@ interface Stats {
   lastByUser: { userId: number; name: string; date: string | null }[];
   prev: { income: number; expenses: number; savings: number; transfers: number; balance: number } | null;
 }
+type Tx = Stats['recent'][0];
+
+interface PlanRow { year: number; month: number; categoryId: number; plannedAmount: number; category: { id: number; name: string; type: string; color: string; icon: string } }
 
 // SpareBank 1 consent lapses periodically (needs BankID again); warn this far ahead.
 const CONSENT_WARN_MS = 7 * 24 * 3600 * 1000;
@@ -45,56 +52,150 @@ const PERIODS: Period[] = ['month', 'quarter', '6m', 'year', 'all'];
 // savings): blue, purple, teal, pink.
 const USER_COLORS = [CATEGORY_PALETTE[10], CATEGORY_PALETTE[11], CATEGORY_PALETTE[7], CATEGORY_PALETTE[6]];
 
-function pctChange(current: number, prev: number): number | null {
-  if (prev === 0) return null;
-  return Math.round(((current - prev) / Math.abs(prev)) * 100);
+const TX_PREVIEW = 3;      // rows visible while the list is collapsed
+const PLAN_ROWS_MAX = 6;   // plan bars shown; the rest live on /planning
+
+const vars = (o: Record<string, string | number>) => o as CSSProperties;
+
+// Months a dashboard period covers, matching api/stats' range maths (rolling
+// quarter / 6 months ending at `month`; the calendar year). 'all' has no
+// bounded month set, so no plan can be summed for it.
+function planMonths(period: Period, year: number, month: number): { y: number; m: number }[] | null {
+  if (period === 'month') return [{ y: year, m: month }];
+  if (period === 'year') return Array.from({ length: 12 }, (_, i) => ({ y: year, m: i + 1 }));
+  if (period === 'all') return null;
+  const n = period === 'quarter' ? 3 : 6;
+  return Array.from({ length: n }, (_, k) => {
+    const d = new Date(Date.UTC(year, month - n + k, 1));
+    return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1 };
+  });
 }
 
-function DeltaBadge({ current, prev, invertGood = false, neutral = false }: { current: number; prev: number; invertGood?: boolean; neutral?: boolean }) {
-  const pct = pctChange(current, prev);
-  if (pct === null) return null;
-  // A near-zero change rendered nothing at all here before — reading as
-  // "no data" rather than "stable", the opposite of reassuring for someone
-  // specifically checking that nothing's wrong (critique 2026-08-02, Riley).
-  if (Math.abs(pct) < 1) {
-    return (
-      <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: 2,
-        fontSize: 12, fontWeight: 700, padding: '2px 7px', borderRadius: 20,
-        background: 'var(--c-hover)', color: 'var(--c-text-muted)',
-      }}>
-        Стабільно
-      </span>
-    );
-  }
-  const up = pct > 0;
-  const good = invertGood ? !up : up;
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 2,
-      fontSize: 12, fontWeight: 700, padding: '2px 7px', borderRadius: 20,
-      background: neutral ? 'var(--c-hover)' : good ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-      color: neutral ? 'var(--c-text-muted)' : good ? 'var(--c-pos-text)' : 'var(--c-neg-text)',
-    }}>
-      {up ? <ArrowUp size={9} /> : <ArrowDown size={9} />}
-      {Math.abs(pct)}%
-    </span>
-  );
+// "143300 COOP PRIX BALESTRA" — terminal digits first; keep the raw text but
+// mute the code so the merchant reads first.
+function splitCode(desc: string): [string, string] {
+  const m = /^(\d{4,})\s+(.+)$/.exec(desc);
+  return m ? [m[1], m[2]] : ['', desc];
 }
 
-function SkeletonCard() {
+function HeroSkeleton() {
   return (
-    <div className="stat-card" style={{ animation: 'pulse 1.5s infinite' }}>
-      <div style={{ height: 13, width: '50%', background: 'var(--c-hover)', borderRadius: 6, marginBottom: 14 }} />
-      <div style={{ height: 28, width: '70%', background: 'var(--c-hover)', borderRadius: 8 }} />
+    <div className="d-card d-hero">
+      <span className="skel" style={{ height: 14, width: 110 }} />
+      <span className="skel" style={{ height: 64, width: '70%', marginTop: 12 }} />
+      <span className="skel" style={{ height: 34, width: '80%', marginTop: 14, borderRadius: 999 }} />
+      <span className="d-grow" />
+      <div className="d-hfoot">
+        <div><span className="skel" style={{ height: 12, width: 70 }} /><span className="skel" style={{ height: 20, width: 90, marginTop: 8 }} /></div>
+        <div><span className="skel" style={{ height: 12, width: 70 }} /><span className="skel" style={{ height: 20, width: 90, marginTop: 8 }} /></div>
+      </div>
     </div>
   );
 }
 
-// Chart cards used to render as bare titles while /api/stats was in flight
-// (several seconds against a remote DB), which read as a blank gap in the page.
-function ChartSkeleton({ height }: { height: number }) {
-  return <div style={{ height, borderRadius: 12, background: 'var(--c-hover)', animation: 'pulse 1.5s infinite' }} />;
+function StatSkeleton() {
+  return (
+    <div className="d-card d-stat">
+      <span className="d-chip skel" />
+      <div style={{ flex: 1 }}>
+        <span className="skel" style={{ height: 12, width: '50%' }} />
+        <span className="skel" style={{ height: 22, width: '75%', marginTop: 8 }} />
+      </div>
+    </div>
+  );
+}
+
+function TxSkeleton() {
+  return (
+    <div className="d-tx-list">
+      {[0, 1, 2].map(i => (
+        <div key={i} className="d-skel-row">
+          <span className="skel" style={{ width: 44, height: 44, borderRadius: '50%', flex: 'none' }} />
+          <div style={{ flex: 1 }}>
+            <span className="skel" style={{ height: 14, width: '55%' }} />
+            <span className="skel" style={{ height: 12, width: '35%', marginTop: 8 }} />
+          </div>
+          <span className="skel" style={{ height: 16, width: 64 }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// First 3 rows always visible; the rest unfold in place (height animates, rows
+// fade up with a short stagger). Clipped rows are inert so they cannot take focus.
+function RecentList({ rows, onEdit }: { rows: Tx[]; onEdit: (tx: Tx) => void }) {
+  const { formatMoney } = useCurrency();
+  const [open, setOpen] = useState(false);
+  const listRef = useRef<HTMLUListElement>(null);
+  const [h, setH] = useState<{ collapsed: number; full: number } | null>(null);
+  const extra = rows.length - TX_PREVIEW;
+
+  useLayoutEffect(() => {
+    const ul = listRef.current;
+    if (!ul) return;
+    const measure = () => {
+      const third = ul.children[TX_PREVIEW - 1] as HTMLElement | undefined;
+      setH({ full: ul.offsetHeight, collapsed: third ? third.offsetTop + third.offsetHeight : ul.offsetHeight });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(ul);
+    return () => ro.disconnect();
+  }, [rows]);
+
+  return (
+    <>
+      <div className={`d-tx-wrap${open ? ' open' : ''}`} style={extra > 0 && h ? { height: open ? h.full : h.collapsed } : undefined}>
+        <ul ref={listRef} id="recent-tx" className="d-tx-list">
+          {rows.map((tx, i) => {
+            const isExtra = i >= TX_PREVIEW;
+            const type = tx.category.type;
+            // A leading long terminal/bank code ("143300 COOP PRIX") is noise in a title: dropped for display only.
+            const cleaned = tx.details && tx.details !== '[імпорт]' ? tx.details.replace(/^\d{5,}\s+/, '').trim() : '';
+            const meaningful = !!cleaned;
+            // People-named income categories repeat the person ("Паша · Паша"): show a name once.
+            const seen = new Set<string>();
+            const meta = [meaningful ? tx.category.name : null, tx.user?.name]
+              .filter((x): x is string => !!x && !seen.has(x.toLowerCase()) && !!seen.add(x.toLowerCase())).join(' · ');
+            const date = new Date(tx.date).toLocaleDateString('uk-UA', { timeZone: 'UTC', day: 'numeric', month: 'short' });
+            const label = meaningful ? cleaned : tx.category.name;
+            return (
+              <li key={tx.id} className={`d-tx-row${isExtra ? ' extra' : ''}`} style={vars({ '--k': i - TX_PREVIEW })} inert={isExtra && !open}>
+                {/* The whole row is the edit control (button semantics): on phones a separate 40px pencil ate the width. */}
+                <button type="button" className="d-tx-hit" onClick={() => onEdit(tx)} aria-label={`Редагувати: ${label}, ${type === 'income' ? 'надходження' : type === 'expense' ? 'витрата' : 'збереження'} ${formatMoney(tx.amount)}`}>
+                  <span className="d-chip d-cat-chip" style={vars({ '--cc': displayColor(tx.category.color, tx.category.id) })}>
+                    <CategoryIcon name={tx.category.icon} color="currentColor" size={20} />
+                  </span>
+                  <span className="d-tx-main">
+                    <b>{label}</b>
+                    <small>
+                      {(tx.source === 'mono' || tx.source === 'sparebank') && <Landmark size={11} color={BANK_SYNC_COLOR} aria-label={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 5 }} />}
+                      {meta}<span className="d-date">{meta ? ' · ' : ''}{date}</span>
+                    </small>
+                  </span>
+                  {/* A savings row's sign is the POT's perspective, not the
+                      wallet's: a deposit is positive, a withdrawal negative —
+                      the same convention as the "Збереження" tile it rolls up
+                      into (found live 2026-08-29: these once disagreed). */}
+                  <span className={`d-amt ${type === 'income' ? 'inc' : type === 'expense' ? 'exp' : 'sav'}`}>
+                    {type === 'income' || (type === 'savings' && !tx.savingsWithdrawal) ? '+' : '−'}{formatMoney(tx.amount)}
+                  </span>
+                  <Pencil size={15} className="d-tx-pen" aria-hidden="true" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+      {extra > 0 && (
+        <button className="d-more" aria-expanded={open} aria-controls="recent-tx" onClick={() => setOpen(o => !o)}>
+          {open ? 'Згорнути' : `Показати ще ${extra}`}
+          <ChevronDown size={16} />
+        </button>
+      )}
+    </>
+  );
 }
 
 export default function Dashboard() {
@@ -114,10 +215,9 @@ export default function Dashboard() {
   const paramsRef = useRef({ period: 'month' as Period, year, month });
   paramsRef.current = { period, year, month };
   const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<Stats['recent'][0] | null>(null);
+  const [editing, setEditing] = useState<Tx | null>(null);
   // Collapsed by default — one of 6+ simultaneous dashboard blocks (critique
-  // 2026-08-02, P1); still one click away, nothing lost, just not competing
-  // with the stat cards and recent list for attention on first paint.
+  // 2026-08-02, P1); still one click away, nothing lost.
   const [userSectionOpen, setUserSectionOpen] = useState(false);
   const [sections] = useDashboardPrefs();
   const [pending, setPending] = useState<{ id: string; description: string; amount: number; currency: string }[]>([]);
@@ -170,7 +270,7 @@ export default function Dashboard() {
   // monoIngest.ts, they can still be declined/cancelled), but a purchase
   // that's genuinely just waiting to settle looking identical to "the sync
   // is broken" is exactly what kept generating repeat "не підтягнуло"
-  // reports. Shown separately, greyed out, never counted in any total.
+  // reports. Shown separately, never counted in any total.
   useEffect(() => {
     fetch('/api/monobank/status')
       .then(r => r.ok ? r.json() : Promise.reject())
@@ -309,6 +409,32 @@ export default function Dashboard() {
 
   useEffect(() => { loadStats(); }, [year, month, period]);
 
+  // Plans for the months the period covers. Same source as the planning page
+  // (/api/plans?year=…, one request per calendar year touched, cached for the
+  // life of the page); the per-category sum over the range is the "plan".
+  const planCache = useRef<Record<number, Promise<PlanRow[]>>>({});
+  const planKey = `${period}|${year}|${month}`;
+  const [planState, setPlanState] = useState<{ key: string; rows: PlanRow[] | 'error' | null }>({ key: '', rows: null });
+  useEffect(() => {
+    const months = planMonths(period, year, month);
+    if (!months) { setPlanState({ key: planKey, rows: [] }); return; }
+    setPlanState({ key: planKey, rows: null });
+    let cancelled = false;
+    const years = [...new Set(months.map(m => m.y))];
+    Promise.all(years.map(y => {
+      planCache.current[y] ??= fetch(`/api/plans?year=${y}`)
+        .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json() as Promise<PlanRow[]>; })
+        .catch(e => { delete planCache.current[y]; throw e; });
+      return planCache.current[y];
+    }))
+      .then(lists => {
+        if (cancelled) return;
+        setPlanState({ key: planKey, rows: lists.flat().filter(p => months.some(m => m.y === p.year && m.m === p.month)) });
+      })
+      .catch(() => { if (!cancelled) setPlanState({ key: planKey, rows: 'error' }); });
+    return () => { cancelled = true; };
+  }, [planKey]);
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.altKey && (e.key === 'n' || e.key === 'N')) {
@@ -338,48 +464,157 @@ export default function Dashboard() {
     return 'Весь час';
   }
 
-  const cardDefs = [
-    { label: 'Дохід',           key: 'income'    as const, color: TYPE_COLORS.income,   icon: TrendingUp,     bg: 'rgba(34,197,94,0.08)',   invertGood: false },
-    { label: 'Витрати',         key: 'expenses'  as const, color: TYPE_COLORS.expense,  icon: TrendingDown,   bg: 'rgba(239,68,68,0.08)',   invertGood: true  },
-    { label: 'Збереження',      key: 'savings'   as const, color: TYPE_COLORS.savings,  icon: PiggyBank,      bg: 'rgba(245,158,11,0.08)',  invertGood: false },
-    // Neutral, not "good"/"bad" — money moving between your own accounts
-    // isn't a budget outcome, so DeltaBadge's usual up-is-good/down-is-good
-    // framing doesn't apply. invertGood is arbitrary either way here.
-    { label: 'Перекази',        key: 'transfers' as const, color: TYPE_COLORS.transfer, icon: ArrowLeftRight, bg: 'rgba(100,116,139,0.08)', invertGood: false },
-  ];
-
   // Hero "Вільний залишок": words instead of a % pill — a % of a negative or
   // sign-flipping base ("↓560%") says nothing, a krone amount always does.
   const PREV_LABEL: Partial<Record<Period, string>> = { month: 'минулого місяця', quarter: 'попереднього кварталу', '6m': 'попередніх 6 міс.', year: 'минулого року' };
   const balanceDiff = stats?.prev ? Math.round(stats.balance - stats.prev.balance) : null;
 
-  const categoriesWithPlan = stats?.byCategory.filter(c => c.planned > 0) ?? [];
+  // "Подушка": the standing balance of the pillow pot(s) as of the period end
+  // (stats.pools). No pot named like a pillow -> all pots as "Накопичення";
+  // no pots at all -> the card falls back to Перекази.
+  const pools = stats?.pools ?? [];
+  const pillow = pools.filter(p => /подушк/i.test(p.name));
+  const poolCard = pillow.length || pools.length
+    ? { label: pillow.length ? 'Подушка' : 'Накопичення', value: (pillow.length ? pillow : pools).reduce((s, p) => s + p.balance, 0) }
+    : null;
+  const statCards: { key: string; label: string; icon: typeof TrendingUp; tone: string; value: number; signed: boolean }[] = stats ? [
+    { key: 'income',   label: 'Дохід',      icon: TrendingUp,   tone: 'gr', value: stats.income,   signed: false },
+    { key: 'expenses', label: 'Витрати',    icon: TrendingDown, tone: 'rd', value: stats.expenses, signed: false },
+    // "Збереження" can net negative (more withdrawals than deposits) and
+    // formatMoney() drops the sign — found live 2026-09-07.
+    { key: 'savings',  label: 'Збереження', icon: PiggyBank,    tone: 'am', value: stats.savings,  signed: true },
+    poolCard
+      ? { key: 'pool', label: poolCard.label, icon: Layers, tone: 'vi', value: poolCard.value, signed: poolCard.value < 0 }
+      : { key: 'transfers', label: 'Перекази', icon: ArrowLeftRight, tone: '', value: stats.transfers, signed: false },
+  ] : [];
+
+  // Plan vs fact: every expense category with a plan in the period.
+  const planReady = !loading && stats && planState.key === planKey && planState.rows !== null;
+  let planRows: { id: number; name: string; color: string; planned: number; fact: number }[] = [];
+  if (stats && planReady && Array.isArray(planState.rows)) {
+    const planned = new Map<number, { cat: PlanRow['category']; sum: number }>();
+    for (const p of planState.rows) {
+      if (p.category?.type !== 'expense' || !(p.plannedAmount > 0)) continue;
+      const cur = planned.get(p.categoryId);
+      if (cur) cur.sum += p.plannedAmount; else planned.set(p.categoryId, { cat: p.category, sum: p.plannedAmount });
+    }
+    const fact = new Map(stats.byCategory.map(c => [c.categoryId, c.amount]));
+    planRows = [...planned.entries()]
+      .map(([id, { cat, sum }]) => ({ id, name: cat.name, color: displayColor(cat.color, id), planned: sum, fact: fact.get(id) ?? 0 }))
+      .sort((a, b) => b.fact / b.planned - a.fact / a.planned);
+  }
+
+  const donutData = stats?.byCategory.map(c => ({ name: c.name, amount: c.amount, color: displayColor(c.color, c.categoryId) })) ?? [];
+  const showDonut = sections.charts;
+  const showPlan = sections.budget;
+  const hasTwo = showDonut || showPlan;
+  const showByUser = sections.byUser && !!stats && stats.byUser.length > 0 && (stats.byUser.length > 1 || stats.byUser[0].name !== 'Спільні');
+  const failed = !loading && !stats;
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+    <div className="dash dash-stack">
       {/* Header */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 28 }}>
-        <div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Головна</h1>
-          <p style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>Огляд фінансів · {periodLabel()}</p>
+      <div className="dash-head">
+        <div className="dash-title">
+          <h1>{periodLabel()}</h1>
+          {(period === 'month' || period === '6m') && (
+            <>
+              <button onClick={prevMonth} className="d-round" title="Попередній місяць" aria-label="Попередній місяць"><ChevronLeft size={18} /></button>
+              <button onClick={nextMonth} className="d-round" title="Наступний місяць" aria-label="Наступний місяць"><ChevronRight size={18} /></button>
+            </>
+          )}
+
+          {/* Quarter is a fixed calendar quarter (Січ-Бер / Кві-Чер / Лип-Вер
+              / Жов-Гру), not "3 months back from wherever the month stepper
+              happens to be". Picking quarter N just sets month=N*3, which
+              api/stats already treats as a rolling 3-month window ending
+              there, so no backend change was needed. */}
+          {period === 'quarter' && (
+            <div ref={quarterRef} style={{ position: 'relative' }}>
+              <button onClick={() => setQuarterMenuOpen(o => !o)} className="d-btn" style={{ height: 36, padding: '0 14px', fontSize: 13 }} aria-expanded={quarterMenuOpen}>
+                {Math.ceil(month / 3)} квартал · {year}
+                <ChevronDown size={14} />
+              </button>
+              {quarterMenuOpen && (
+                <div className="header-dropdown" style={{
+                  position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 20,
+                  background: 'var(--c-raised)', border: '1px solid var(--c-border-hi)', borderRadius: 16,
+                  padding: 10, minWidth: 200, boxShadow: '0 12px 32px -8px rgba(0,0,0,0.45)',
+                }}>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                    {[year - 1, year, year + 1].map(y => (
+                      <button
+                        key={y}
+                        onClick={() => setYear(y)}
+                        className="btn-ghost"
+                        style={{
+                          // .btn-ghost is inline-flex with no justify-content,
+                          // so the label sat at flex-start once the horizontal
+                          // padding was zeroed out.
+                          flex: 1, justifyContent: 'center',
+                          padding: '5px 0', borderRadius: 999, fontSize: 12, fontWeight: 600,
+                          background: year === y ? 'var(--c-brand)' : 'transparent',
+                          color: year === y ? 'var(--c-on-brand)' : 'var(--c-text-muted)',
+                        }}
+                      >
+                        {y}
+                      </button>
+                    ))}
+                  </div>
+                  {[1, 2, 3, 4].map(q => (
+                    <button
+                      key={q}
+                      onClick={() => { setMonth(q * 3); setQuarterMenuOpen(false); }}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px',
+                        borderRadius: 12, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                        fontSize: 13, fontWeight: 600,
+                        background: Math.ceil(month / 3) === q ? 'var(--c-brand)' : 'transparent',
+                        color: Math.ceil(month / 3) === q ? 'var(--c-on-brand)' : 'var(--c-text-sec)',
+                      }}
+                    >
+                      {q} квартал · {MONTH_SHORT[q * 3 - 3]}–{MONTH_SHORT[q * 3 - 1]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {period === 'year' && (
+            <div className="d-pills">
+              {[now.getUTCFullYear() - 1, now.getUTCFullYear(), now.getUTCFullYear() + 1].map(y => (
+                <button key={y} aria-pressed={year === y} onClick={() => setYear(y)} style={{ padding: '0 14px', fontSize: 13 }}>{y}</button>
+              ))}
+            </div>
+          )}
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' }}>
+
+        {/* 5 labels measured ~393px, wider than a 375px phone: on mobile the
+            buttons tighten so they fit at 360+, and the pill row still
+            scrolls (scrollbar hidden) on anything narrower. */}
+        <div className="d-pills">
+          {PERIODS.map(p => (
+            <button key={p} aria-pressed={period === p} onClick={() => setPeriod(p)}>{PERIOD_LABELS[p]}</button>
+          ))}
+        </div>
+
+        <div className="dash-actions">
           {bankConnections.length > 0 && (
             <div ref={syncRef} style={{ position: 'relative' }}>
               <button
                 onClick={() => setSyncMenuOpen(o => !o)}
-                className="btn-ghost"
-                title="Синхронізувати" aria-label="Синхронізувати"
-                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}
+                className="d-btn"
+                title="Синхронізувати" aria-label="Синхронізувати" aria-expanded={syncMenuOpen}
               >
-                <RefreshCw size={15} className={syncing ? 'spin' : undefined} />
+                <RefreshCw size={16} className={syncing ? 'spin' : undefined} />
                 <span className="hide-on-xs">Синхронізувати</span>
               </button>
               {syncMenuOpen && (
                 <div className="header-dropdown" style={{
                   position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 20,
-                  background: 'var(--c-raised)', border: '1px solid var(--c-border-hi)', borderRadius: 10,
-                  padding: 12, minWidth: 220, boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+                  background: 'var(--c-raised)', border: '1px solid var(--c-border-hi)', borderRadius: 16,
+                  padding: 14, minWidth: 220, boxShadow: '0 12px 32px -8px rgba(0,0,0,0.45)',
                 }}>
                   {bankConnections.map(c => (
                     <label key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '10px 0', cursor: 'pointer', color: 'var(--c-text-sec)' }}>
@@ -419,19 +654,15 @@ export default function Dashboard() {
             >
               <button
                 onClick={() => setWarnPinned(p => !p)}
-                className="attn-btn" title="Потрібна увага" aria-label="Потрібна увага" aria-expanded={warnHover || warnPinned}
-                style={{
-                  width: 36, height: 36, borderRadius: '50%', border: 'none', padding: 0, background: '#EF4444', color: 'white',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                }}
+                className="attn-btn d-attn" title="Потрібна увага" aria-label="Потрібна увага" aria-expanded={warnHover || warnPinned}
               >
-                <AlertCircle size={20} />
+                <AlertCircle size={22} />
               </button>
               {(warnHover || warnPinned) && (
                 <div className="header-dropdown" role="status" style={{
                   position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 20,
-                  background: 'var(--c-raised)', border: '1px solid rgba(239,68,68,0.55)', borderRadius: 10,
-                  padding: 12, width: 300, maxWidth: 'calc(100vw - 32px)', boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+                  background: 'var(--c-raised)', border: '1px solid rgba(239,68,68,0.55)', borderRadius: 16,
+                  padding: 14, width: 300, maxWidth: 'calc(100vw - 32px)', boxShadow: '0 12px 32px -8px rgba(0,0,0,0.45)',
                 }}>
                   <ul style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, color: 'var(--c-text)' }}>
                     {issues.map(i => <li key={i}>{i}</li>)}
@@ -441,487 +672,291 @@ export default function Dashboard() {
               )}
             </div>
           )}
-          <button className="btn-primary" onClick={() => { setEditing(null); setShowForm(true); }} title="Додати (Alt+N)">
-            <Plus size={16} /> Додати
+          <button className="d-btn pr" onClick={() => { setEditing(null); setShowForm(true); }} title="Додати (Alt+N)">
+            <Plus size={18} /> Додати
           </button>
         </div>
       </div>
 
-      {/* Period selector */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 24, alignItems: 'center', flexWrap: 'wrap' }}>
-        {/* 5 labels measured ~393px, wider than a 375px phone: .period-pills
-            tightens the buttons on mobile so they fit at 360+, and still
-            scrolls (scrollbar hidden) on anything narrower. */}
-        <div className="period-pills" style={{
-          display: 'flex', gap: 2, padding: 4,
-          background: 'var(--c-elevated)', border: '1px solid var(--c-border)', borderRadius: 12,
-          overflowX: 'auto', maxWidth: '100%',
-        }}>
-          {PERIODS.map(p => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              style={{
-                borderRadius: 8, border: 'none', cursor: 'pointer',
-                fontSize: 13, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.2s',
-                background: period === p ? 'var(--c-accent-fill)' : 'transparent',
-                color:      period === p ? 'white' : 'var(--c-text-muted)',
-                flexShrink: 0,
-              }}
-            >
-              {PERIOD_LABELS[p]}
-            </button>
-          ))}
-        </div>
-
-        {(period === 'month' || period === '6m') && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 2,
-            background: 'var(--c-elevated)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 4,
-          }}>
-            <button onClick={prevMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }} title="Попередній місяць" aria-label="Попередній місяць">
-              <ChevronLeft size={16} />
-            </button>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-sec)', padding: '0 8px', minWidth: 128, textAlign: 'center' }}>
-              {MONTH_NAMES[month - 1]} {year}
-            </span>
-            <button onClick={nextMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }} title="Наступний місяць" aria-label="Наступний місяць">
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        )}
-
-        {/* Quarter is a fixed calendar quarter (Січ-Бер / Кві-Чер / Лип-Вер
-            / Жов-Гру), not "3 months back from wherever the month stepper
-            happens to be" — a dropdown picking the quarter directly is both
-            clearer and matches the label ("N квартал") the header already
-            shows. Reuses the exact same rangeStart/rangeEnd math api/stats
-            already has for period==='quarter' (rolling 3 months ending at
-            `month`): picking quarter N just sets month=N*3, which only ever
-            lands on a calendar-quarter-ending month, so no backend change
-            was needed here. */}
-        {period === 'quarter' && (
-          <div ref={quarterRef} style={{ position: 'relative' }}>
-            <button
-              onClick={() => setQuarterMenuOpen(o => !o)}
-              className="btn-ghost"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                background: 'var(--c-elevated)', border: '1px solid var(--c-border)', borderRadius: 12,
-                padding: '9px 14px', fontSize: 13, fontWeight: 600, color: 'var(--c-text-sec)',
-              }}
-            >
-              {Math.ceil(month / 3)} квартал · {year}
-              <ChevronDown size={14} />
-            </button>
-            {quarterMenuOpen && (
-              <div className="header-dropdown" style={{
-                position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 20,
-                background: 'var(--c-raised)', border: '1px solid var(--c-border-hi)', borderRadius: 10,
-                padding: 10, minWidth: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
-              }}>
-                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                  {[year - 1, year, year + 1].map(y => (
-                    <button
-                      key={y}
-                      onClick={() => setYear(y)}
-                      className="btn-ghost"
-                      style={{
-                        // .btn-ghost is inline-flex with no justify-content, so
-                        // its content sits at flex-start; with the horizontal
-                        // padding zeroed out here the year label ended up flush
-                        // against the left edge of each flex:1 button.
-                        flex: 1, justifyContent: 'center',
-                        padding: '5px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                        background: year === y ? 'var(--c-accent-fill)' : 'transparent',
-                        color: year === y ? 'white' : 'var(--c-text-muted)',
-                      }}
-                    >
-                      {y}
-                    </button>
-                  ))}
-                </div>
-                {[1, 2, 3, 4].map(q => (
-                  <button
-                    key={q}
-                    onClick={() => { setMonth(q * 3); setQuarterMenuOpen(false); }}
-                    style={{
-                      display: 'block', width: '100%', textAlign: 'left', padding: '10px 10px',
-                      borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                      fontSize: 13, fontWeight: 600,
-                      background: Math.ceil(month / 3) === q ? 'var(--c-accent-fill)' : 'transparent',
-                      color: Math.ceil(month / 3) === q ? 'white' : 'var(--c-text-sec)',
-                    }}
-                  >
-                    {q} квартал · {MONTH_SHORT[q * 3 - 3]}–{MONTH_SHORT[q * 3 - 1]}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {period === 'year' && (
-          <div style={{ display: 'flex', gap: 6 }}>
-            {[now.getUTCFullYear() - 1, now.getUTCFullYear(), now.getUTCFullYear() + 1].map(y => (
-              <button
-                key={y}
-                onClick={() => setYear(y)}
-                className="btn-ghost"
-                style={{
-                  background: year === y ? 'rgba(249,115,22,0.2)' : undefined,
-                  color: year === y ? 'var(--c-accent-hi)' : undefined,
-                  fontWeight: year === y ? 700 : undefined,
-                  fontSize: 13,
-                }}
-              >
-                {y}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Stat cards: the free balance is the hero (full width, first), the
-          four period flows sit in a row below it. */}
-      {loading ? (
-        <>
-          <div style={{ marginBottom: 16 }}><SkeletonCard /></div>
-          <div className="grid-4" style={{ marginBottom: 24 }}>
-            {cardDefs.map(c => <SkeletonCard key={c.label} />)}
-          </div>
-        </>
-      ) : !stats ? (
-        <div className="stat-card" style={{ marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      {failed ? (
+        <div className="d-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>
             {loadError ? 'Не вдалося завантажити дані за цей період' : 'Немає даних'}
           </span>
-          <button className="btn-ghost" onClick={loadStats}>Спробувати ще раз</button>
+          <button className="d-btn" onClick={loadStats}>Спробувати ще раз</button>
         </div>
       ) : (
         <>
-          <div className="stat-card" style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-              <span style={{ fontSize: 13, color: 'var(--c-text-muted)', fontWeight: 600 }}>Вільний залишок</span>
-              <div style={{ background: 'rgba(249,115,22,0.08)', borderRadius: 9, padding: 8 }}>
-                <Wallet size={16} color={stats.balance >= 0 ? TYPE_COLORS.income : TYPE_COLORS.expense} />
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px 32px', alignItems: 'end' }}>
-              <div>
-                {/* formatMoney() alone drops the sign (Math.abs inside) — a
-                    net-negative period must read "-", so the signed variant. */}
-                <div style={{ fontSize: 28, lineHeight: 1.2, fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginBottom: 6, color: stats.balance >= 0 ? 'var(--c-income-num)' : 'var(--c-expense-num)' }}>
-                  {formatMoneySign(stats.balance)}
-                </div>
-                {balanceDiff !== null && PREV_LABEL[period] && (
-                  <div style={{ fontSize: 14, fontWeight: 600, color: balanceDiff === 0 ? 'var(--c-text-muted)' : balanceDiff > 0 ? 'var(--c-pos-text)' : 'var(--c-neg-text)' }}>
-                    {balanceDiff === 0
-                      ? `Так само, як ${PREV_LABEL[period]}`
-                      : `На ${formatMoney(balanceDiff)} ${balanceDiff > 0 ? 'більше' : 'менше'}, ніж ${PREV_LABEL[period]}`}
+          <div className={`dash-grid${hasTwo ? ' wide' : ''}`}>
+            {/* Left: free balance hero over the four period figures. */}
+            <div className="dash-col">
+              {loading || !stats ? (
+                <>
+                  <HeroSkeleton />
+                  <div className="d-stats">{[0, 1, 2, 3].map(i => <StatSkeleton key={i} />)}</div>
+                </>
+              ) : (
+                <>
+                  <section className="d-card d-hero d-rise" style={vars({ '--i': 0 })}>
+                    <span className="d-lb">Вільний залишок</span>
+                    {/* formatMoney() alone drops the sign (Math.abs inside) — a
+                        net-negative period must read "−", so the signed variant. */}
+                    <div className="d-big"><CountUp value={stats.balance} signed={stats.balance < 0} /></div>
+                    {balanceDiff !== null && PREV_LABEL[period] && (
+                      <span className={`d-delta ${balanceDiff === 0 ? 'zero' : balanceDiff > 0 ? 'pos' : 'neg'}`}>
+                        {balanceDiff !== 0 && (balanceDiff > 0 ? <ArrowUp size={16} /> : <ArrowDown size={16} />)}
+                        {balanceDiff === 0
+                          ? `Так само, як ${PREV_LABEL[period]}`
+                          : `На ${formatMoney(balanceDiff)} ${balanceDiff > 0 ? 'більше' : 'менше'}, ніж ${PREV_LABEL[period]}`}
+                      </span>
+                    )}
+                    {/* Cumulative (all-time) balance + transfers: readable second
+                        numbers, not footnotes. "З початку" hides with the
+                        "Накопичений залишок" dashboard preference; Перекази moves
+                        here only while the fourth card is the pool. */}
+                    {(sections.banners || poolCard) && <span className="d-grow" />}
+                    {(sections.banners || poolCard) && (
+                      <div className="d-hfoot">
+                        {sections.banners && (
+                          <div>
+                            <span className="d-lb">З початку</span>
+                            <b><CountUp value={stats.cumBalance} signed /></b>
+                          </div>
+                        )}
+                        {poolCard && (
+                          <div>
+                            <span className="d-lb">Перекази</span>
+                            <b><CountUp value={stats.transfers} /></b>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </section>
+                  <div className="d-stats">
+                    {statCards.map((c, i) => (
+                      <section key={c.key} className="d-card d-stat d-rise" style={vars({ '--i': i + 1 })}>
+                        <span className={`d-chip ${c.tone}`}><c.icon size={20} /></span>
+                        <div>
+                          <span className="d-lb">{c.label}</span>
+                          <b><CountUp value={c.value} signed={c.signed} /></b>
+                        </div>
+                      </section>
+                    ))}
                   </div>
-                )}
-              </div>
-              {/* Cumulative (all-time) balance: a readable second number on the
-                  hero, not a footnote (critique 2026-11). Hidden with the
-                  "Накопичений залишок" dashboard preference, as before. */}
-              {sections.banners && (
-                <div>
-                  <div style={{ fontSize: 13, color: 'var(--c-text-muted)', fontWeight: 600, marginBottom: 4 }}>З початку</div>
-                  <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: stats.cumBalance >= 0 ? 'var(--c-text-sec)' : 'var(--c-neg-text)' }}>
-                    {formatMoneySign(stats.cumBalance)}
-                  </div>
-                </div>
+                </>
               )}
             </div>
-          </div>
-          <div className="grid-4" style={{ marginBottom: 24 }}>
-            {cardDefs.map(c => {
-              const val = stats[c.key];
-              const numColor = c.key === 'income' ? 'var(--c-income-num)' : c.key === 'expenses' ? 'var(--c-expense-num)'
-                : c.key === 'savings' ? 'var(--c-savings-num)' : 'var(--c-transfer-num)';
-              return (
-                <div key={c.label} className="stat-card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                    <span style={{ fontSize: 13, color: 'var(--c-text-muted)', fontWeight: 600 }}>{c.label}</span>
-                    <div style={{ background: c.bg, borderRadius: 9, padding: 8 }}>
-                      <c.icon size={16} color={c.color} />
-                    </div>
-                  </div>
-                  {/* Перекази are not a budget outcome — quieter than the rest. */}
-                  <div style={{ fontSize: c.key === 'transfers' ? 18 : 22, fontWeight: c.key === 'transfers' ? 700 : 800, color: numColor, fontVariantNumeric: 'tabular-nums', marginBottom: 8 }}>
-                    {/* "Збереження" can net negative (more withdrawals than
-                        deposits), and formatMoney() drops the sign — that
-                        once showed a net withdrawal month as a plain
-                        positive amount (found live 2026-09-07). Income /
-                        expenses / transfers are sums of same-signed rows,
-                        never negative. Colour stays the card's own
-                        regardless of sign. */}
-                    {c.key === 'savings' ? formatMoneySign(val) : formatMoney(val)}
-                  </div>
-                  {stats.prev && (
-                    <DeltaBadge current={val} prev={stats.prev[c.key]} invertGood={c.invertGood} neutral={c.key === 'transfers'} />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
 
-      {/* Budget progress bars (month view only, when plans exist) */}
-      {sections.budget && stats && period === 'month' && categoriesWithPlan.length > 0 && (
-        <div className="card card-pad" style={{ marginBottom: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
-            <Target size={16} color="var(--c-accent-hi)" />
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Бюджет по категоріях</h2>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
-            {categoriesWithPlan.map(cat => {
-              const pct = Math.min((cat.amount / cat.planned) * 100, 100);
-              const over = cat.amount > cat.planned;
-              return (
-                <div key={cat.name}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <CategoryIcon name={cat.icon} color={cat.color} size={14} />
-                      <span style={{ fontSize: 13, color: 'var(--c-text-sec)', fontWeight: 500 }}>{cat.name}</span>
-                    </div>
-                    <span style={{ fontSize: 12, color: over ? 'var(--c-neg-text)' : 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                      {formatMoney(cat.amount)} / {formatMoney(cat.planned)}
-                    </span>
-                  </div>
-                  <div style={{ height: 6, borderRadius: 4, background: 'var(--c-border-mid)', overflow: 'hidden' }}>
-                    {/* transform: scaleX(), not width — animating width
-                        forces layout recalculation on every frame (detector
-                        finding, 2026-08-02); scaleX is compositor-only. */}
-                    <div style={{
-                      height: '100%', width: '100%', borderRadius: 4,
-                      transform: `scaleX(${pct / 100})`, transformOrigin: 'left',
-                      background: over
-                        ? 'linear-gradient(90deg, #EF4444, #F97316)'
-                        : pct > 80
-                        ? 'linear-gradient(90deg, #EAB308, #F97316)'
-                        : `linear-gradient(90deg, ${cat.color}, ${cat.color}99)`,
-                      transition: 'transform 0.6s cubic-bezier(0.4,0,0.2,1)',
-                    }} />
-                  </div>
-                  <div style={{ fontSize: 12, color: over ? 'var(--c-neg-text)' : pct > 80 ? 'var(--c-warn-text)' : 'var(--c-pos-text)', marginTop: 4, fontWeight: 600 }}>
-                    {over ? `Перевищення на ${formatMoney(cat.amount - cat.planned)}` : `${Math.round(pct)}% використано`}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-
-      {/* Charts row */}
-      {sections.charts && (
-        <div className="grid-2" style={{ marginBottom: 24 }}>
-          <div className="card card-pad">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
-              <PieChart size={16} color="var(--c-accent-hi)" />
-              <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Витрати по категоріях</h2>
-            </div>
-            {stats ? <ExpenseDonut data={stats.byCategory} total={stats.expenses} /> : loading && <ChartSkeleton height={240} />}
-          </div>
-          <div className="card card-pad">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
-              <LineChart size={16} color="var(--c-accent-hi)" />
-              <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Дохід та витрати</h2>
-            </div>
-            {stats ? <BalanceTrend data={stats.trend} /> : loading && <ChartSkeleton height={220} />}
-          </div>
-        </div>
-      )}
-
-      {/* Хто скільки — per-user breakdown, collapsible */}
-      {sections.byUser && stats && stats.byUser.length > 0 && (stats.byUser.length > 1 || stats.byUser[0].name !== 'Спільні') && (
-        <div className="card" style={{ marginBottom: 24, overflow: 'hidden' }}>
-          <button
-            onClick={() => setUserSectionOpen(v => !v)}
-            aria-expanded={userSectionOpen}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-              padding: 'var(--card-pad)', background: 'none', border: 'none', cursor: 'pointer',
-              textAlign: 'left', paddingBottom: userSectionOpen ? 4 : 'var(--card-pad)',
-            }}
-          >
-            <Wallet size={16} color="var(--c-accent-hi)" />
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', flex: 1 }}>Хто скільки</h2>
-            {userSectionOpen
-              ? <ChevronUp size={16} color="var(--c-text-muted)" />
-              : <ChevronDown size={16} color="var(--c-text-muted)" />}
-          </button>
-          {userSectionOpen && (
-            <div style={{ padding: '0 var(--card-pad) var(--card-pad)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
-              {stats.byUser.map((u, i) => {
-                // Literal, not var(--c-text-muted): this value feeds a
-                // `${uColor}22` hex-alpha concat below, which a CSS var
-                // reference can't do — safe to hardcode here specifically
-                // because --c-text-muted is #64748B in both themes.
-                const uColor = u.name === 'Спільні' ? '#64748B' : USER_COLORS[i % USER_COLORS.length];
-                // Absolute values: a net savings withdrawal is negative and would push the bar past 100%.
-                const flow = Math.abs(u.income) + Math.abs(u.expenses) + Math.abs(u.savings);
-                const incPct = flow > 0 ? (Math.abs(u.income)   / flow) * 100 : 0;
-                const expPct = flow > 0 ? (Math.abs(u.expenses) / flow) * 100 : 0;
-                const savPct = flow > 0 ? (Math.abs(u.savings)  / flow) * 100 : 0;
-                return (
-                  <div key={u.name} style={{
-                    border: '1px solid var(--c-border)', borderRadius: 14, padding: 16,
-                    background: 'var(--c-elevated)',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                      <div style={{
-                        width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-                        background: `${uColor}22`, color: uColor,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 13, fontWeight: 800,
-                      }}>{u.name.charAt(0)}</div>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text)' }}>{u.name}</span>
-                      <span style={{
-                        marginLeft: 'auto', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-                        color: u.net >= 0 ? 'var(--c-pos-text)' : 'var(--c-neg-text)',
-                      }}>{formatMoneySign(u.net)}</span>
-                    </div>
-                    <div style={{ display: 'flex', height: 6, borderRadius: 4, overflow: 'hidden', marginBottom: 12, background: 'var(--c-border-mid)' }}>
-                      <div style={{ width: `${incPct}%`, background: '#22C55E' }} />
-                      <div style={{ width: `${expPct}%`, background: '#EF4444' }} />
-                      <div style={{ width: `${savPct}%`, background: '#F59E0B' }} />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                      {[
-                        { label: 'Дохід',      val: u.income,   c: 'var(--c-pos-text)' },
-                        { label: 'Витрати',    val: u.expenses, c: 'var(--c-neg-text)' },
-                        { label: 'Збереження', val: u.savings,  c: 'var(--c-warn-text)' },
-                      ].filter(r => r.val !== 0).map(r => (
-                        <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                          <span style={{ color: 'var(--c-text-muted)' }}>{r.label}</span>
-                          <span style={{ color: r.c, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{r.val < 0 ? formatMoneySign(r.val) : formatMoney(r.val)}</span>
+            {/* Right: where the money went + how each category stands against its plan. */}
+            {hasTwo && (
+              <div className={`dash-two${showDonut && showPlan ? ' both' : ''}`}>
+                {showDonut && (
+                  <section className={`d-card d-pane${loading ? '' : ' d-rise'}`} style={vars({ '--i': 5 })}>
+                    <div className="d-ch"><h2>Витрати за категоріями</h2></div>
+                    {loading || !stats ? (
+                      <>
+                        <span className="skel" style={{ width: '100%', maxWidth: 244, aspectRatio: '1', margin: '6px auto 0', borderRadius: '50%' }} />
+                        <div style={{ marginTop: 22, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {[0, 1, 2, 3].map(i => <span key={i} className="skel" style={{ height: 16 }} />)}
                         </div>
-                      ))}
+                      </>
+                    ) : <ExpenseDonut data={donutData} total={stats.expenses} />}
+                  </section>
+                )}
+                {showPlan && (
+                  <section className={`d-card d-pane${loading ? '' : ' d-rise'}`} style={vars({ '--i': 6 })}>
+                    <div className="d-ch">
+                      <h2>Категорії проти плану</h2>
+                      {planRows.length > 0 && <Link href="/planning" aria-label="Відкрити Планування">План →</Link>}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Recent transactions */}
-      {sections.recent && (
-      <div className="card card-pad">
-        <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 20 }}>
-          Останні транзакції
-        </h2>
-        {stats?.recent.length === 0 && (
-          <div style={{ textAlign: 'center', color: 'var(--c-text-sub)', padding: '32px 0', fontSize: 14 }}>
-            Немає транзакцій за цей період
+                    {!planReady ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+                        {[0, 1, 2, 3].map(i => <span key={i} className="skel" style={{ height: 38 }} />)}
+                      </div>
+                    ) : period === 'all' ? (
+                      <div className="d-empty top"><span className="d-chip or"><Target size={20} /></span><span>План рахується по місяцях — оберіть місяць, квартал, півріччя або рік.</span></div>
+                    ) : planState.rows === 'error' ? (
+                      <div className="d-empty top"><span className="d-chip rd"><AlertCircle size={20} /></span><span>Не вдалося завантажити план.</span></div>
+                    ) : planRows.length === 0 ? (
+                      <div className="d-empty top"><span className="d-chip or"><Target size={20} /></span><b>На цей період плану ще немає</b><span>Задай суми на сторінці Планування — тут з&apos;явиться, скільки лишилось по кожній категорії.</span><Link href="/planning" className="d-link">Задати план</Link></div>
+                    ) : (
+                      <>
+                        {period !== 'month' && <p className="d-note" style={{ marginBottom: 12 }}>План за період — сума по місяцях.</p>}
+                        <div className="d-plan">
+                          {planRows.slice(0, PLAN_ROWS_MAX).map((r, i) => {
+                            const left = r.planned - r.fact;
+                            const over = r.fact - r.planned >= 0.5;
+                            const near = !over && r.fact / r.planned >= 0.9;
+                            const planX = over ? (r.planned / r.fact) * 100 : 100;
+                            return (
+                              <div key={r.id} className="d-plan-row">
+                                <div className="d-ct">
+                                  <span><i className="d-cdot" style={{ background: r.color }} />{r.name}</span>
+                                  <span><b>{formatMoney(r.fact)}</b> / {formatMoney(r.planned)}</span>
+                                </div>
+                                <div className="d-trkw">
+                                  {/* Honest scale: the track spans max(fact, plan); past the plan tick the bar is red. */}
+                                  <div className="d-trk">
+                                    {over ? (
+                                      <>
+                                        <div className="d-fill sq" style={vars({ '--p': planX, '--i': i, background: 'var(--c-bar)' })} />
+                                        <div className="d-fill ov" style={vars({ '--l': planX, '--p': 100 - planX, '--i': i + 5, background: 'var(--chip-rd-fg)' })} />
+                                      </>
+                                    ) : (
+                                      <div className="d-fill" style={vars({ '--p': (r.fact / r.planned) * 100, '--i': i, background: near ? 'var(--chip-am-fg)' : 'var(--c-bar)' })} />
+                                    )}
+                                  </div>
+                                  {over && <i className="d-tick" style={{ left: `${planX}%` }} aria-hidden="true" />}
+                                </div>
+                                <div className={`d-rm${over ? ' ov' : near ? ' am' : ''}`}>
+                                  {over ? `+${formatMoney(-left)} понад план` : `залишилось ${formatMoney(Math.max(0, left))}${near ? ' · майже ліміт' : ''}`}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {planRows.length > PLAN_ROWS_MAX && (
+                          <Link href="/planning" className="d-link" style={{ marginTop: 10, alignSelf: 'flex-start' }}>
+                            Ще {planRows.length - PLAN_ROWS_MAX} у Плануванні
+                          </Link>
+                        )}
+                      </>
+                    )}
+                  </section>
+                )}
+              </div>
+            )}
           </div>
-        )}
-        {loading && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {[...Array(4)].map((_, i) => (
-              <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--c-hover)' }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ height: 13, width: '40%', background: 'var(--c-hover)', borderRadius: 6, marginBottom: 6 }} />
-                  <div style={{ height: 11, width: '25%', background: 'rgba(255,255,255,0.03)', borderRadius: 6 }} />
+
+          {/* Recent transactions — 3 rows, unfolds in place to the latest 20 of the period. */}
+          {sections.recent && (
+            <section className={`d-card d-tx${loading ? '' : ' d-rise'}`} style={vars({ '--i': 7 })}>
+              <div className="d-ch">
+                <h2>Останні транзакції</h2>
+                <Link href="/transactions">Усі транзакції</Link>
+              </div>
+              {loading || !stats ? <TxSkeleton /> : stats.recent.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--c-text-sub)', padding: '32px 0', fontSize: 14 }}>
+                  Немає транзакцій за цей період
                 </div>
-                <div style={{ height: 16, width: 80, background: 'var(--c-hover)', borderRadius: 6 }} />
-              </div>
-            ))}
-          </div>
-        )}
-        {!loading && stats?.recent.map(tx => (
-          <div key={tx.id} className="table-row" style={{ display: 'flex', alignItems: 'center', padding: '12px 0', gap: 12 }}>
-            <CategoryIcon name={tx.category.icon} color={tx.category.color} size={16} tile />
+              ) : (
+                <RecentList rows={stats.recent} onEdit={tx => { setEditing(tx); setShowForm(true); }} />
+              )}
 
-            {/* minWidth: 0 + nowrap ellipsis: a long details string
-                ("364+460+1200+89+250+75") has no break opportunity and used
-                to push the row wider and wrap the amount. */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                {tx.category.name}
-                {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex', flexShrink: 0 }}><Landmark size={11} color={BANK_SYNC_COLOR} /></span>}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--c-text-sub)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {new Date(tx.date).toLocaleDateString('uk-UA', { timeZone: 'UTC' })}
-                {tx.details && tx.details !== '[імпорт]' && ` · ${tx.details}`}
-                {tx.user && ` · ${tx.user.name}`}
-              </div>
-            </div>
-            {/* A savings row's sign is the POT's perspective, not the
-                wallet's: the row is labelled with the pot's own category
-                name, and the "Збереження" tile it rolls up into already
-                sums it that way (savingsAmount() — deposit positive,
-                withdrawal negative). These used to be inverted against
-                each other: a 300 kr withdrawal FROM "Фінансова подушка"
-                rendered "+300" green while the tile counted it as -300,
-                so the same event read as a gain in the list and a drop in
-                the total. Found live 2026-08-29. Savings keeps its own
-                colour either way — a pot growing isn't income. */}
-            <span style={{
-              fontSize: 15, fontWeight: 700, fontVariantNumeric: 'tabular-nums', flexShrink: 0, whiteSpace: 'nowrap',
-              color: tx.category.type === 'income' ? 'var(--c-pos-text)'
-                   : tx.category.type === 'expense' ? 'var(--c-neg-text)' : 'var(--c-warn-text)',
-            }}>
-              {tx.category.type === 'income' || (tx.category.type === 'savings' && !tx.savingsWithdrawal) ? '+' : '-'}{formatMoney(tx.amount)}
-            </span>
-            <button
-              className="btn-ghost"
-              onClick={() => { setEditing(tx); setShowForm(true); }}
-              style={{ padding: '6px', border: 'none', borderRadius: 8, opacity: 0.5 }}
-              title="Редагувати" aria-label="Редагувати"
-            >
-              <Pencil size={14} />
-            </button>
-          </div>
-        ))}
+              {/* All-time per-user last entry — deliberately NOT scoped to the
+                  period filter: the point is "did someone forget to log
+                  something recently", which a period-filtered answer would
+                  silently hide if it's been longer than the current view. */}
+              {!loading && stats && stats.lastByUser.length > 0 && (
+                <div className="d-lastby">
+                  <b>Останнє додавання:</b>
+                  {stats.lastByUser.map(u => (
+                    <span key={u.userId}>
+                      {u.name} — {u.date ? new Date(u.date).toLocaleDateString('uk-UA', { timeZone: 'UTC' }) : 'ще немає транзакцій'}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
-        {/* All-time per-user last entry — deliberately NOT scoped to the
-            period filter above (stats.lastByUser is computed all-time
-            server-side): the point is "did someone forget to log
-            something recently", which a period-filtered answer would
-            silently hide if it's been longer than the current view. */}
-        {!loading && stats && stats.lastByUser.length > 0 && (
-          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--c-border)', fontSize: 13, color: 'var(--c-text-muted)' }}>
-            <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--c-text-sec)' }}>Останнє додавання:</div>
-            {stats.lastByUser.map(u => (
-              <div key={u.userId}>
-                {u.name} — {u.date ? new Date(u.date).toLocaleDateString('uk-UA', { timeZone: 'UTC' }) : 'ще немає транзакцій'}
+          {/* Pending Monobank holds — not counted anywhere, purely informational.
+              Sits below everything that matters and loads async, so it can never
+              shift the stats above it. */}
+          {pending.length > 0 && (
+            <section className="d-card d-pend d-rise" style={vars({ '--i': 7 })} aria-label="Очікують підтвердження">
+              <div className="d-ch" style={{ marginBottom: 6 }}>
+                <h2><span className="d-dot" aria-hidden="true" />Очікують підтвердження<span className="d-count">{pending.length}</span></h2>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-      )}
+              <p className="d-note">Банк ще не підтвердив ці покупки — не входять у підсумки, з&apos;являться автоматично після підтвердження.</p>
+              <ul className="d-pend-list">
+                {pending.map(p => {
+                  const [code, name] = splitCode(p.description || 'Без опису');
+                  return (
+                    <li key={p.id} className="d-pend-row">
+                      <span className="d-chip am"><Clock size={17} /></span>
+                      <div className="d-tx-main">
+                        <b title={p.description}>{code && <span className="code">{code}</span>}{name}</b>
+                      </div>
+                      <span className="d-hold">
+                        <span className="d-amt">&minus;{formatMoney(p.amount)}</span>
+                        <small>очікує</small>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
 
-      {/* Pending Monobank holds — not counted anywhere, purely informational. Last on the page: they load async, so nothing above can shift when they arrive */}
-      {pending.length > 0 && (
-        <div className="card card-pad" style={{ marginTop: 24, opacity: 0.75 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4 }}>
-            Очікують підтвердження
-          </h2>
-          <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginBottom: 16 }}>
-            Банк ще не підтвердив ці покупки — не входять у підсумки, з'являться автоматично після підтвердження.
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {pending.map(p => (
-              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13 }}>
-                <span style={{ color: 'var(--c-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {p.description || 'Без опису'}
-                </span>
-                <span style={{ color: 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                  -{formatMoney(p.amount)}
-                </span>
+          {/* Хто скільки — per-user breakdown, collapsible */}
+          {showByUser && stats && (
+            <section className="d-card">
+              <button className="d-user-toggle" onClick={() => setUserSectionOpen(v => !v)} aria-expanded={userSectionOpen}>
+                <h2>Хто скільки</h2>
+                {userSectionOpen ? <ChevronUp size={18} color="var(--c-text-muted)" /> : <ChevronDown size={18} color="var(--c-text-muted)" />}
+              </button>
+              {userSectionOpen && (
+                <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+                  {stats.byUser.map((u, i) => {
+                    const uColor = u.name === 'Спільні' ? 'var(--c-text-muted)' : USER_COLORS[i % USER_COLORS.length];
+                    // Absolute values: a net savings withdrawal is negative and would push the bar past 100%.
+                    const flow = Math.abs(u.income) + Math.abs(u.expenses) + Math.abs(u.savings);
+                    const incPct = flow > 0 ? (Math.abs(u.income)   / flow) * 100 : 0;
+                    const expPct = flow > 0 ? (Math.abs(u.expenses) / flow) * 100 : 0;
+                    const savPct = flow > 0 ? (Math.abs(u.savings)  / flow) * 100 : 0;
+                    return (
+                      <div key={u.name} style={{ borderRadius: 18, padding: 16, background: 'var(--c-raised)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                          <div style={{
+                            width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                            background: `color-mix(in srgb, ${uColor} 18%, transparent)`, color: uColor,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 13, fontWeight: 800,
+                          }}>{u.name.charAt(0)}</div>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text)' }}>{u.name}</span>
+                          <span style={{
+                            marginLeft: 'auto', fontSize: 13, fontWeight: 700,
+                            color: u.net >= 0 ? 'var(--c-pos-text)' : 'var(--c-neg-text)',
+                          }}>{formatMoneySign(u.net)}</span>
+                        </div>
+                        <div style={{ display: 'flex', height: 6, borderRadius: 4, overflow: 'hidden', marginBottom: 12, background: 'var(--c-border-mid)' }}>
+                          <div style={{ width: `${incPct}%`, background: 'var(--chip-gr-fg)' }} />
+                          <div style={{ width: `${expPct}%`, background: 'var(--chip-rd-fg)' }} />
+                          <div style={{ width: `${savPct}%`, background: 'var(--chip-am-fg)' }} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          {[
+                            { label: 'Дохід',      val: u.income,   c: 'var(--c-pos-text)' },
+                            { label: 'Витрати',    val: u.expenses, c: 'var(--c-neg-text)' },
+                            { label: 'Збереження', val: u.savings,  c: 'var(--c-warn-text)' },
+                          ].filter(r => r.val !== 0).map(r => (
+                            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                              <span style={{ color: 'var(--c-text-muted)' }}>{r.label}</span>
+                              <span style={{ color: r.c, fontWeight: 600 }}>{r.val < 0 ? formatMoneySign(r.val) : formatMoney(r.val)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* Income / expenses trend (part of the "Графіки" preference with the donut). */}
+          {sections.charts && (
+            <section className="d-card">
+              <div className="d-ch" style={{ marginBottom: 18 }}>
+                <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <LineChart size={18} color="var(--c-accent-hi)" />Дохід та витрати
+                </h2>
               </div>
-            ))}
-          </div>
-        </div>
+              {stats ? <BalanceTrend data={stats.trend} /> : <span className="skel" style={{ height: 220 }} />}
+            </section>
+          )}
+        </>
       )}
 
       {showForm && (

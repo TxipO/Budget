@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Manrope } from 'next/font/google';
 import { headers } from 'next/headers';
 import './globals.css';
 import Sidebar from '@/components/Sidebar';
@@ -9,7 +9,9 @@ import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 
 
-const inter = Inter({ subsets: ['latin', 'cyrillic'], variable: '--font-inter' });
+// Variable font: the whole 200-800 range ships as one file per subset, so the
+// 400-800 weights the UI uses cost no extra request.
+const manrope = Manrope({ subsets: ['latin', 'cyrillic'], display: 'swap', variable: '--font-manrope' });
 
 export const metadata: Metadata = {
   title: 'Бюджет',
@@ -31,11 +33,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // (see middleware.ts) instead of one baked in at build time.
   const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
-    <html lang="uk" suppressHydrationWarning>
+    <html lang="uk" className={manrope.variable} suppressHydrationWarning>
       <head>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: `(function(){var t=localStorage.getItem('theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();` }} />
       </head>
-      <body className={inter.className} style={{ display: 'flex', minHeight: '100vh', position: 'relative' }}>
+      <body className={manrope.className} style={{ display: 'flex', minHeight: '100vh', position: 'relative' }}>
         <Particles />
         <div className="sidebar-wrap"><Sidebar /></div>
         {/* No zIndex here on purpose (found live 2026-09-19, mobile audit):

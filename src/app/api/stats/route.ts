@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireHouseholdId } from '@/lib/household';
 import { savingsAmount, isBudgetRelevant, comparableCutoffDay } from '@/lib/budgetRules';
+import { computeSavingsByCategory } from '@/lib/savingsBreakdown';
 
 const MONTHS_SHORT = ['Січ','Лют','Бер','Кві','Тра','Чер','Лип','Сер','Вер','Жов','Лис','Гру'];
 
@@ -126,10 +127,10 @@ export async function GET(req: NextRequest) {
   }, 0);
 
   // Category breakdown (expenses) + plan
-  const expenseByCategory: Record<number, { name: string; amount: number; color: string; icon: string; planned: number }> = {};
+  const expenseByCategory: Record<number, { categoryId: number; name: string; amount: number; color: string; icon: string; planned: number }> = {};
   txs.filter(t => t.category.type === 'expense').forEach(t => {
     if (!expenseByCategory[t.categoryId]) {
-      expenseByCategory[t.categoryId] = { name: t.category.name, amount: 0, color: t.category.color, icon: t.category.icon, planned: 0 };
+      expenseByCategory[t.categoryId] = { categoryId: t.categoryId, name: t.category.name, amount: 0, color: t.category.color, icon: t.category.icon, planned: 0 };
     }
     expenseByCategory[t.categoryId].amount += t.amount;
   });
@@ -186,7 +187,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Recent (last 8) — date alone ties for every transaction on the same
+  // Recent (last 20, the dashboard shows 3 and expands in place) — date alone ties for every transaction on the same
   // calendar day (it's truncated to UTC midnight/noon, see monoIngest.ts),
   // so without a tiebreaker Postgres returns same-date rows in whatever
   // order it happens to find them, not the order they were actually added.
@@ -196,13 +197,13 @@ export async function GET(req: NextRequest) {
     // Transaction.isTransfer's schema comment) isn't budget activity, and
     // showing it here reads as an unexplained duplicate of its counted
     // counterpart. Filtered at the query itself, not just hidden in the UI,
-    // so it can't also silently push a real transaction out of the top 8.
+    // so it can't also silently push a real transaction out of the list.
     // category.type 'transfer' excluded too, independent of isTransfer — see
     // isBudgetRelevant's own comment on why both checks matter.
     where: { householdId, date: { gte: rangeStart, lt: rangeEnd }, isTransfer: false, poolCorrection: false, category: { type: { not: 'transfer' } } },
     include: { category: true, user: { select: { id: true, name: true } } },
     orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-    take: 8,
+    take: 20,
   });
 
   // Per-user last-transaction date — deliberately ALL-TIME, not scoped to
@@ -224,8 +225,12 @@ export async function GET(req: NextRequest) {
     date: lastDatesByUser.find(d => d.userId === u.id)?._max.date ?? null,
   }));
 
+  // Standing balance of every savings pot as of the period end (dashboard "Подушка" card).
+  // allTxs is already loaded for cumBalance, so this costs no extra query.
+  const pools = computeSavingsByCategory(allTxs).map(({ categoryId, name, balance }) => ({ categoryId, name, balance }));
+
   return NextResponse.json({
-    income, expenses, savings, transfers, balance, cumBalance,
+    income, expenses, savings, transfers, balance, cumBalance, pools,
     byCategory, byUser, trend, recent, lastByUser,
     prev: prev ? { income: prev.income, expenses: prev.expenses, savings: prev.savings, transfers: prev.transfers, balance: prev.balance } : null,
   });

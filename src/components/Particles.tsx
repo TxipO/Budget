@@ -1,153 +1,175 @@
 'use client';
 import { useEffect, useRef } from 'react';
 
-interface Particle {
-  x: number; y: number;
-  vx: number; vy: number;
-  size: number;
-  opacity: number;
-  opacityDir: number;
-  color: string;
-  isOrb: boolean;
+// Warm ember field behind the whole app: small glowing embers drifting upward
+// with a slight sway and twinkle, plus a few large soft bokeh motes.
+//
+// Performance (phones are a red line): one canvas 2D context, one rAF loop,
+// glow comes from pre-rendered sprites + drawImage (no shadowBlur, no gradients
+// per frame), typed arrays and no allocation inside the loop. The loop only
+// runs while the tab is visible, the canvas intersects the viewport and the
+// user has not asked for reduced motion (then a single faint static frame is
+// drawn). DPR is capped (2 on desktop, 1.25 on phones — the glow is soft, it
+// gains nothing from more pixels) and the particle count scales with area.
+
+const MAX = 48;
+const SPRITE = 64; // px, square; ember and bokeh share the size and are scaled on draw
+
+type Sprites = HTMLCanvasElement[]; // [ember orange, ember amber, bokeh orange, bokeh amber]
+
+function sprite(stops: [number, string][]): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = c.height = SPRITE;
+  const g = c.getContext('2d')!;
+  const gr = g.createRadialGradient(SPRITE / 2, SPRITE / 2, 0, SPRITE / 2, SPRITE / 2, SPRITE / 2);
+  for (const [o, col] of stops) gr.addColorStop(o, col);
+  g.fillStyle = gr;
+  g.fillRect(0, 0, SPRITE, SPRITE);
+  return c;
 }
 
-const DOT_COLORS = [
-  'rgba(249,115,22,',
-  'rgba(251,146,60,',
-  'rgba(245,158,11,',
-  'rgba(253,224,71,',
-  'rgba(255,255,255,',
-];
-const ORB_COLORS = [
-  'rgba(249,115,22,',
-  'rgba(251,146,60,',
-  'rgba(245,158,11,',
-  'rgba(234,88,12,',
-];
-
-function makeParticle(w: number, h: number, isOrb: boolean): Particle {
-  const palette = isOrb ? ORB_COLORS : DOT_COLORS;
-  return {
-    x: Math.random() * w,
-    y: Math.random() * h,
-    vx: (Math.random() - 0.5) * (isOrb ? 0.12 : 0.28),
-    vy: -(Math.random() * 0.18 + 0.04),
-    size: isOrb ? Math.random() * 3.5 + 3 : Math.random() * 1.6 + 0.5,
-    opacity: Math.random() * 0.35 + 0.08,
-    opacityDir: (Math.random() > 0.5 ? 1 : -1) * (isOrb ? 0.0025 : 0.0035),
-    color: palette[Math.floor(Math.random() * palette.length)],
-    isOrb,
-  };
+function buildSprites(light: boolean): Sprites {
+  // Dark ground: pale-hot cores blended additively. Light ground: saturated
+  // deeper oranges with normal blending (a pale core would vanish).
+  const ember = (core: string, mid: string, glow: string) => sprite(light
+    ? [[0, core], [0.22, mid], [0.55, glow], [1, 'rgba(249,115,22,0)']]
+    : [[0, core], [0.16, mid], [0.42, glow], [1, 'rgba(249,115,22,0)']]);
+  // Bokeh: a pure radial falloff (no rim, no visible edge) in a warm orange; alpha is set per particle, <= 0.06 at the centre.
+  const bokeh = (rgb: string) => sprite([[0, `rgba(${rgb},1)`], [0.4, `rgba(${rgb},0.5)`], [0.75, `rgba(${rgb},0.12)`], [1, `rgba(${rgb},0)`]]);
+  return light
+    ? [
+        ember('rgba(234,88,12,0.95)', 'rgba(249,115,22,0.6)', 'rgba(249,115,22,0.18)'),
+        ember('rgba(217,119,6,0.95)', 'rgba(245,158,11,0.6)', 'rgba(245,158,11,0.18)'),
+        bokeh('234,88,12'),
+        bokeh('217,119,6'),
+      ]
+    : [
+        ember('rgba(255,236,200,1)', 'rgba(255,170,80,0.85)', 'rgba(249,115,22,0.3)'),
+        ember('rgba(255,244,200,1)', 'rgba(253,200,80,0.85)', 'rgba(245,158,11,0.3)'),
+        bokeh('249,115,22'),
+        bokeh('245,158,11'),
+      ];
 }
 
 export default function Particles() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const mouse     = useRef({ x: -9999, y: -9999 });
 
   useEffect(() => {
-    const canvasEl = canvasRef.current;
-    if (!canvasEl) return;
-    const canvas = canvasEl;
-    const ctx2d = canvas.getContext('2d');
-    if (!ctx2d) return;
-    const ctx = ctx2d;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
 
-    let w = window.innerWidth;
-    let h = window.innerHeight;
-    canvas.width  = w;
-    canvas.height = h;
+    const x = new Float32Array(MAX), y = new Float32Array(MAX);
+    const size = new Float32Array(MAX), speed = new Float32Array(MAX);
+    const phase = new Float32Array(MAX), swayA = new Float32Array(MAX), swayF = new Float32Array(MAX);
+    const twF = new Float32Array(MAX), base = new Float32Array(MAX);
+    const kind = new Uint8Array(MAX);
 
-    const particles: Particle[] = [
-      ...Array.from({ length: 52 }, () => makeParticle(w, h, false)),
-      ...Array.from({ length: 18 }, () => makeParticle(w, h, true)),
-    ];
+    let w = 0, h = 0, dpr = 1, count = 0, seeded = 0;
+    let light = document.documentElement.getAttribute('data-theme') === 'light';
+    let sprites = buildSprites(light);
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let reduced = mq.matches;
+    let tabVisible = !document.hidden;
+    let inView = true;
+    let raf = 0, prev = 0, t = 0;
 
-    let raf: number;
+    function seed(i: number, anywhere: boolean) {
+      const bokeh = i < 3; // exactly three soft warm motes
+      kind[i] = (bokeh ? 2 : 0) + (Math.random() < 0.35 ? 1 : 0);
+      size[i] = bokeh ? 40 + Math.random() * 30 : 5 + Math.random() * 6;
+      speed[i] = bokeh ? 4 + Math.random() * 8 : 9 + Math.random() * 20;
+      swayA[i] = 6 + Math.random() * 18;
+      swayF[i] = 0.25 + Math.random() * 0.45;
+      twF[i] = 0.8 + Math.random() * 1.4;
+      phase[i] = Math.random() * 6.283;
+      base[i] = bokeh ? 0.035 + Math.random() * 0.025 : 0.35 + Math.random() * 0.45;
+      x[i] = Math.random() * w;
+      y[i] = anywhere ? Math.random() * h : h + size[i];
+    }
+
+    function resize() {
+      const narrow = window.innerWidth <= 768;
+      dpr = Math.min(window.devicePixelRatio || 1, narrow ? 1.25 : 2);
+      w = window.innerWidth; h = window.innerHeight;
+      canvas!.width = Math.round(w * dpr); canvas!.height = Math.round(h * dpr);
+      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+      count = Math.min(narrow ? 22 : MAX, Math.max(8, Math.round((w * h) / (narrow ? 15000 : 36000))));
+      for (let i = seeded; i < count; i++) seed(i, true);
+      seeded = Math.max(seeded, count);
+      for (let i = 0; i < count; i++) if (x[i] > w) x[i] = Math.random() * w;
+      if (!running()) draw(); // keep a static frame correct after resize
+    }
 
     function draw() {
-      ctx.clearRect(0, 0, w, h);
-
-      const mx = mouse.current.x;
-      const my = mouse.current.y;
-
-      // Constellation lines
-      ctx.lineWidth = 0.5;
-      for (let i = 0; i < particles.length; i++) {
-        const a = particles[i];
-        for (let j = i + 1; j < particles.length; j++) {
-          const b = particles[j];
-          const dx = a.x - b.x, dy = a.y - b.y;
-          const d = dx * dx + dy * dy;
-          if (d < 10000) { // 100px
-            const alpha = (1 - Math.sqrt(d) / 100) * 0.13;
-            ctx.strokeStyle = `rgba(249,115,22,${alpha.toFixed(3)})`;
-            ctx.beginPath();
-            ctx.moveTo(a.x, a.y);
-            ctx.lineTo(b.x, b.y);
-            ctx.stroke();
-          }
-        }
+      ctx!.clearRect(0, 0, w, h);
+      ctx!.globalCompositeOperation = light ? 'source-over' : 'lighter';
+      const scale = (light ? 0.55 : 1) * (reduced ? 0.5 : 1);
+      for (let i = 0; i < count; i++) {
+        const s = size[i];
+        const px = x[i] + Math.sin(t * swayF[i] + phase[i]) * swayA[i];
+        const fy = y[i] / h;
+        // Fade in from the bottom edge and out at the top so respawns never pop.
+        const edge = Math.min(1, Math.max(0, fy) * 5, Math.max(0, 1.04 - fy) * 12);
+        const a = base[i] * (0.62 + 0.38 * Math.sin(t * twF[i] + phase[i] * 1.7)) * edge * scale;
+        if (a < 0.01) continue;
+        ctx!.globalAlpha = a;
+        ctx!.drawImage(sprites[kind[i]], px - s, y[i] - s, s * 2, s * 2);
       }
+      ctx!.globalAlpha = 1;
+    }
 
-      // Particles
-      for (const p of particles) {
-        // Mouse repulsion
-        const dx = p.x - mx, dy = p.y - my;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < 10000 && d2 > 0) {
-          const d = Math.sqrt(d2);
-          const force = (1 - d / 100) * 0.45;
-          p.x += (dx / d) * force;
-          p.y += (dy / d) * force;
-        }
-
-        p.x += p.vx;
-        p.y += p.vy;
-        p.opacity += p.opacityDir;
-
-        const maxOp = p.isOrb ? 0.58 : 0.44;
-        if (p.opacity > maxOp || p.opacity < 0.05) p.opacityDir *= -1;
-
-        if (p.y < -12)    p.y = h + 12;
-        if (p.x < -12)    p.x = w + 12;
-        if (p.x > w + 12) p.x = -12;
-
-        ctx.fillStyle   = p.color + p.opacity.toFixed(3) + ')';
-        ctx.shadowColor = p.color + (p.isOrb ? '0.7' : '0.5') + ')';
-        ctx.shadowBlur  = p.isOrb ? 14 : 5;
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
+    function frame(ts: number) {
+      const dt = prev ? Math.min(0.05, (ts - prev) / 1000) : 0;
+      prev = ts; t += dt;
+      for (let i = 0; i < count; i++) {
+        y[i] -= speed[i] * dt;
+        if (y[i] < -size[i] * 2) seed(i, false);
       }
-
-      ctx.shadowBlur = 0;
-      raf = requestAnimationFrame(draw);
+      draw();
+      raf = requestAnimationFrame(frame);
     }
 
-    draw();
-
-    function onResize() {
-      w = canvas.width  = window.innerWidth;
-      h = canvas.height = window.innerHeight;
-    }
-    function onMouseMove(e: MouseEvent) {
-      mouse.current = { x: e.clientX, y: e.clientY };
+    function running() { return raf !== 0; }
+    function sync() {
+      const want = tabVisible && inView && !reduced;
+      if (want && !raf) { prev = 0; raf = requestAnimationFrame(frame); }
+      else if (!want && raf) { cancelAnimationFrame(raf); raf = 0; }
+      if (!want) draw();
     }
 
+    let rt = 0;
+    const onResize = () => { clearTimeout(rt); rt = window.setTimeout(resize, 150); };
+    const onVis = () => { tabVisible = !document.hidden; sync(); };
+    const onMotion = () => { reduced = mq.matches; sync(); };
+    const io = new IntersectionObserver(([e]) => { inView = e.isIntersecting; sync(); });
+    const mo = new MutationObserver(() => {
+      const nowLight = document.documentElement.getAttribute('data-theme') === 'light';
+      if (nowLight !== light) { light = nowLight; sprites = buildSprites(light); if (!running()) draw(); }
+    });
+
+    resize();
+    sync();
+    io.observe(canvas);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     window.addEventListener('resize', onResize);
-    window.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('visibilitychange', onVis);
+    mq.addEventListener('change', onMotion);
     return () => {
-      cancelAnimationFrame(raf);
+      cancelAnimationFrame(raf); raf = 0;
+      clearTimeout(rt);
+      io.disconnect(); mo.disconnect();
       window.removeEventListener('resize', onResize);
-      window.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('visibilitychange', onVis);
+      mq.removeEventListener('change', onMotion);
     };
   }, []);
 
   return (
     <canvas
       ref={canvasRef}
-      style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0, opacity: 0.9 }}
+      aria-hidden="true"
+      style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 0 }}
     />
   );
 }

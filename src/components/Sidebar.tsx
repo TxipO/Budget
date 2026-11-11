@@ -93,96 +93,43 @@ export default function Sidebar() {
   if (APP_SHELL_HIDDEN_ROUTES.includes(pathname)) return null;
 
   return (
-    <aside style={{
-      width: 220,
-      // `height`, not `minHeight` — the sidebar sits in a flex row next to
-      // main content that's often much taller than the viewport (a long
-      // dashboard), and align-items:stretch (.sidebar-wrap's default) was
-      // stretching this aside to match THAT height. `position: sticky` only
-      // keeps the TOP of a box pinned while scrolling — it doesn't stop the
-      // box itself from being taller than the viewport, so the theme/user/
-      // logout controls (pushed to the bottom via nav's flex:1) ended up
-      // scrolled far below the fold on any long page. Capping height at the
-      // viewport keeps the whole sidebar, controls included, always in view.
-      height: '100vh',
-      background: 'var(--c-sidebar)',
-      borderRight: '1px solid var(--c-border)',
-      display: 'flex',
-      flexDirection: 'column',
-      padding: '24px 12px',
-      gap: 4,
-      position: 'sticky',
-      top: 0,
-      flexShrink: 0,
-      zIndex: 2,
-    }}>
+    // Transparent on purpose: the ember field (Particles) drifts behind the
+    // sidebar too; the active nav item and the who-card carry the surfaces.
+    <aside className="side">
       {/* Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 10px 20px' }}>
-        <div style={{
-          width: 34, height: 34, borderRadius: 10,
-          background: 'linear-gradient(135deg, #F97316, #F59E0B)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Wallet size={18} color="white" />
-        </div>
-        <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--c-text)' }}>Бюджет</span>
+      <div className="side-brand">
+        <div className="side-logo"><Wallet size={18} /></div>
+        <span>Бюджет</span>
       </div>
 
       {/* Navigation */}
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+      <nav className="side-nav" aria-label="Основна навігація">
         {NAV.map(({ href, icon: Icon, label }) => (
           <Link
             key={href}
             href={href}
+            aria-current={pathname === href ? 'page' : undefined}
             className={`nav-link${pathname === href ? ' active' : ''}`}
           >
-            <Icon size={17} />
+            <Icon size={20} />
             {label}
           </Link>
         ))}
       </nav>
 
       {/* Theme toggle */}
-      <button
-        onClick={toggleTheme}
-        className="nav-link"
-        style={{ width: '100%', justifyContent: 'space-between', marginBottom: 4 }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-          {theme === 'dark' ? 'Світла тема' : 'Темна тема'}
-        </span>
+      <button onClick={toggleTheme} className="nav-link" style={{ width: '100%', border: 0, background: 'transparent' }}>
+        {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+        {theme === 'dark' ? 'Світла тема' : 'Темна тема'}
       </button>
 
-      {/* User switcher */}
+      {/* Who is entering on this device (localStorage currentUser stays the source of truth) */}
       {users.length > 0 && (
-        <div style={{
-          borderTop: '1px solid var(--c-border)',
-          paddingTop: 16,
-          marginTop: 4,
-        }}>
-          <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginBottom: 8, paddingLeft: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-            Активний
-          </p>
-          <div style={{ display: 'flex', gap: 6 }}>
+        <div className="who">
+          <p>Хто вносить</p>
+          <div className="seg" role="group" aria-label="Хто вносить">
             {users.map(u => (
-              <button
-                key={u.id}
-                onClick={() => switchUser(u.name)}
-                style={{
-                  flex: 1,
-                  padding: '7px 4px',
-                  borderRadius: 8,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  fontFamily: 'inherit',
-                  transition: 'all 0.15s',
-                  background: user === u.name ? 'rgba(249,115,22,0.2)' : 'var(--c-hover)',
-                  color: user === u.name ? 'var(--c-accent-hi)' : 'var(--c-text-muted)',
-                }}
-              >
+              <button key={u.id} type="button" aria-pressed={user === u.name} onClick={() => switchUser(u.name)} title={u.name}>
                 {u.name}
               </button>
             ))}
@@ -196,9 +143,9 @@ export default function Sidebar() {
         onClick={logout}
         disabled={loggingOut}
         className="nav-link"
-        style={{ width: '100%', justifyContent: 'flex-start', marginTop: 8, color: 'var(--c-text-muted)' }}
+        style={{ width: '100%', border: 0, background: 'transparent' }}
       >
-        <LogOut size={17} />
+        <LogOut size={20} />
         {loggingOut ? 'Вихід…' : 'Вийти'}
       </button>
     </aside>
