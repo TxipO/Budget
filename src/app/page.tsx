@@ -2,7 +2,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { Plus, TrendingUp, TrendingDown, PiggyBank, Layers, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Pencil, RefreshCw, AlertCircle, Landmark, LineChart, ArrowLeftRight, Clock, Target } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, PiggyBank, Layers, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, RefreshCw, AlertCircle, Landmark, LineChart, ArrowLeftRight, Clock, Target } from 'lucide-react';
 import { MONTH_NAMES, MONTH_SHORT, CATEGORY_PALETTE, BANK_SYNC_COLOR, type Period, PERIOD_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import { displayColor } from '@/lib/displayColor';
@@ -464,10 +464,6 @@ export default function Dashboard() {
     return 'Весь час';
   }
 
-  // Hero "Вільний залишок": words instead of a % pill — a % of a negative or
-  // sign-flipping base ("↓560%") says nothing, a krone amount always does.
-  const PREV_LABEL: Partial<Record<Period, string>> = { month: 'минулого місяця', quarter: 'попереднього кварталу', '6m': 'попередніх 6 міс.', year: 'минулого року' };
-  const balanceDiff = stats?.prev ? Math.round(stats.balance - stats.prev.balance) : null;
 
   // "Подушка": the standing balance of the pillow pot(s) as of the period end
   // (stats.pools). No pot named like a pillow -> all pots as "Накопичення";
@@ -702,14 +698,6 @@ export default function Dashboard() {
                     {/* formatMoney() alone drops the sign (Math.abs inside) — a
                         net-negative period must read "−", so the signed variant. */}
                     <div className="d-big"><CountUp value={stats.balance} signed={stats.balance < 0} /></div>
-                    {balanceDiff !== null && PREV_LABEL[period] && (
-                      <span className={`d-delta ${balanceDiff === 0 ? 'zero' : balanceDiff > 0 ? 'pos' : 'neg'}`}>
-                        {balanceDiff !== 0 && (balanceDiff > 0 ? <ArrowUp size={16} /> : <ArrowDown size={16} />)}
-                        {balanceDiff === 0
-                          ? `Так само, як ${PREV_LABEL[period]}`
-                          : `На ${formatMoney(balanceDiff)} ${balanceDiff > 0 ? 'більше' : 'менше'}, ніж ${PREV_LABEL[period]}`}
-                      </span>
-                    )}
                     {/* Cumulative (all-time) balance + transfers: readable second
                         numbers, not footnotes. "З початку" hides with the
                         "Накопичений залишок" dashboard preference; Перекази moves
