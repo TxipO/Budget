@@ -620,16 +620,16 @@ select.input-field option {
    style, so hover transforms still work. 7 steps x 20ms + 260ms = 400ms max. */
 .d-rise { animation: d-rise 260ms var(--ease-out) backwards; animation-delay: calc(min(var(--i, 0), 7) * 20ms); }
 
-.d-hero { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 280px; container-type: inline-size; background: radial-gradient(120% 140% at 100% 0, var(--hero-glow), transparent 55%), var(--c-elevated); }
+.d-hero { display: flex; flex-direction: column; flex: 0 0 auto; min-height: 0; container-type: inline-size; background: radial-gradient(120% 140% at 100% 0, var(--hero-glow), transparent 55%), var(--c-elevated); }
 .d-lb { color: var(--c-text-muted); font-weight: 600; font-size: 14px; }
-.d-big { margin-top: 6px; font-size: clamp(40px, 17cqw, 68px); line-height: 1.05; font-weight: 800; letter-spacing: -0.035em; color: var(--c-text); white-space: nowrap; }
+.d-big { margin-top: 6px; font-size: clamp(44px, min(5vw, 17cqw), 60px); line-height: 1.05; font-weight: 800; letter-spacing: -0.035em; color: var(--c-text); white-space: nowrap; }
 .d-big small, .d-stat b small, .d-ring-c b small { font-size: max(11px, 0.42em); font-weight: 600; color: var(--c-text-muted); letter-spacing: 0; margin-left: 0.2em; }
 .d-delta { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; padding: 8px 14px 8px 10px; border-radius: 999px; align-self: flex-start; max-width: 100%; font-size: 13px; font-weight: 600; line-height: 1.3; }
 .d-delta svg { flex: none; }
 .d-delta.pos { background: var(--chip-gr-bg); color: var(--chip-gr-fg); }
 .d-delta.neg { background: var(--chip-rd-bg); color: var(--chip-rd-fg); }
 .d-delta.zero { background: var(--c-hover); color: var(--c-text-muted); }
-.d-grow { flex: 1 1 0; min-height: 16px; }
+.d-grow { flex: 0 0 18px; }
 .d-hfoot { display: flex; padding-top: 18px; border-top: 1px solid var(--c-line); }
 .d-hfoot > div { flex: 1; min-width: 0; }
 .d-hfoot > div + div { padding-left: 24px; border-left: 1px solid var(--c-line); }
@@ -729,7 +729,7 @@ select.input-field option {
 .d-pend-row .d-chip { width: 44px; height: 44px; border: 1px dashed color-mix(in srgb, var(--chip-am-fg) 55%, transparent); }
 .d-pend-row .d-tx-main b { font-weight: 600; font-size: 14px; white-space: normal; overflow-wrap: anywhere; }
 .d-pend-row .code { color: var(--c-text-muted); font-weight: 500; font-size: 0.86em; margin-right: 6px; }
-.d-pend-row .d-amt { font-size: 15px; font-style: italic; color: var(--c-text-sec); }
+.d-pend-row .d-amt { font-size: 15px; color: var(--c-text-muted); }
 
 .d-user-toggle { width: 100%; display: flex; align-items: center; gap: 10px; padding: 0; border: 0; background: none; text-align: left; color: var(--c-text); }
 .d-user-toggle h2 { flex: 1; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
@@ -779,3 +779,35 @@ select.input-field option {
 
 .dash-two { align-content: stretch; align-items: stretch; }
 @media (min-width: 900px) { .dash-two.both { grid-auto-rows: 1fr; } }
+
+/* ── Dashboard follow-ups ── */
+/* Wide layout: the stat cards absorb the row height so the hero never opens a void. */
+.dash-grid.wide .d-stats { flex: 1 1 auto; grid-auto-rows: 1fr; }
+.d-donut { container-type: inline-size; }
+.d-donut-body { display: flex; flex-direction: column; align-items: center; }
+.d-ring-c { transition: opacity 0.15s; }
+.d-ring-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.d-ring .recharts-sector { transition: opacity 0.15s; }
+.d-ring.has-active .recharts-pie-sector .recharts-sector:not(.on) { opacity: 0.35; }
+.d-lg { width: 100%; max-width: 420px; margin-inline: auto; }
+.d-lg > div { padding: 0 8px; border-radius: 10px; transition: background 0.15s, opacity 0.15s; }
+.d-lg > div.on, .d-lg > div:focus-visible { background: var(--c-raised); }
+.d-lg > div:focus-visible { outline-offset: -2px; }
+.d-lg.has-active > div:not(.on) { opacity: 0.55; }
+/* Wide donut card: ring left, legend right (never stretched across the whole card). */
+@container (min-width: 640px) {
+  .d-donut-body { flex-direction: row; justify-content: center; align-items: center; gap: 48px; }
+  .d-ring { margin: 0; width: 244px; }
+  .d-lg { margin: 0; flex: 1 1 0; }
+}
+@media (prefers-reduced-motion: reduce) { .d-ring-c, .d-ring .recharts-sector, .d-lg > div { transition: none; } }
+
+/* Analytics: savings pools in the new style */
+.pool-list { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.pool-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: 10px; row-gap: 3px; align-items: center; }
+.pool-chip { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--chip-vi-bg); color: var(--chip-vi-fg); }
+.pool-name { min-width: 0; font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--c-text-sec); overflow-wrap: anywhere; }
+.pool-amt { font-size: 13px; font-weight: 700; color: var(--c-text); white-space: nowrap; }
+.pool-bank { grid-column: 2 / -1; font-size: 12px; line-height: 1.4; color: var(--c-text-muted); }
+.pool-bank span { white-space: nowrap; }
+.pool-bank .diff { color: var(--c-warn-text); }

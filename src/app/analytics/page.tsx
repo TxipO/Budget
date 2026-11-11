@@ -6,7 +6,6 @@ import { MONTH_SHORT } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import { formatCompact, roundCompact, formatMoney as formatMoneyIn } from '@/lib/currencies';
 import { toast } from '@/lib/toast';
-import CategoryIcon from '@/components/CategoryIcon';
 
 const MonthlyBarChart = dynamic(() => import('@/components/charts/MonthlyBarChart'), { ssr: false });
 
@@ -41,7 +40,7 @@ const formatDdMm = (iso: string) => {
 };
 
 export default function AnalyticsPage() {
-  const { formatMoney, formatMoneySign } = useCurrency();
+  const { currency, formatMoney, formatMoneySign } = useCurrency();
   // UTC, like the server's year boundaries and the planning page.
   const thisYear = new Date().getUTCFullYear();
   const [year, setYear] = useState(thisYear);
@@ -131,53 +130,30 @@ export default function AnalyticsPage() {
                 selected year, the answer to "скільки лежить у подушці,
                 скільки в Dual Invest" (asked live 2026-09-18, previously
                 answerable only via a direct DB query — nowhere in the UI).
-                Chips over a joined text line so each pool reads as a
-                distinct, scannable unit — color comes from the category
-                itself (Three-Tier Tint Rule's data-color case, same `${color}20`
-                formula CategoryIcon's own tile mode uses), radius 6px
-                matches the badge/chip step of the radius scale. One per row
-                (not wrapped inline) — this card sits in a 4-column grid, and
-                a full pool name ("Фінансова подушка") needs the card's full
-                width to read without truncating; ellipsis + title stay as a
-                fallback for a genuinely long category name. */}
+                One row per pool (round violet icon chip, name, amount right, optional bank-balance line) — this card sits in a 4-column grid (~240px), so the rows are full-width and the name wraps instead of truncating. */}
             {c.label === 'Всього збереження' && !loading && savingsByCategory.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 10 }}>
-                {savingsByCategory.map(s => (
-                  <div
-                    key={s.name}
-                    style={{ background: `${s.color}20`, borderRadius: 6, padding: '5px 9px' }}
-                  >
-                   <div style={{ display: 'flex', alignItems: 'flex-start', columnGap: 6, rowGap: 2, flexWrap: 'wrap', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5, minWidth: 0 }}>
-                      <div style={{ marginTop: 1, flexShrink: 0 }}>
-                        <CategoryIcon name={s.icon} color={s.color} size={12} />
-                      </div>
-                      {/* Wraps instead of truncating — this card is one of
-                          four equal columns (~240px), too narrow to fit an
-                          18-char name like "Фінансова подушка" on one line
-                          alongside the icon and amount; a wrapped pool name
-                          stays fully readable, an ellipsis would just hide
-                          the answer to the question this chip exists to
-                          answer. */}
-                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-sec)', lineHeight: 1.35 }}>
-                        {s.name}
-                      </span>
+              <div className="pool-list">
+                {savingsByCategory.map(s => {
+                  // Difference only when the bank balance is in the ledger currency (no conversion here).
+                  const diff = s.bank && s.bank.currency === currency ? Math.round(s.bank.amount - s.balance) : 0;
+                  return (
+                    <div key={s.name} className="pool-row">
+                      <span className="pool-chip"><PiggyBank size={15} /></span>
+                      <span className="pool-name">{s.name}</span>
+                      <span className="pool-amt">{formatMoneySign(s.balance)}</span>
+                      {s.bank && (
+                        // Secondary line: the bank's own stored balance for the account(s) mapped
+                        // to this pool, dated by the (UTC) fetch day. Each fragment is nowrap so a
+                        // wrap can only fall between them, never orphaning "· 11.11".
+                        <div className="pool-bank">
+                          <span>На рахунку SpareBank {formatMoneyIn(s.bank.amount, s.bank.currency)}</span>{' '}
+                          <span>· {formatDdMm(s.bank.fetchedAt)}</span>
+                          {diff !== 0 && <>{' '}<span className="diff">· різниця {diff > 0 ? '+' : '−'}{formatMoneyIn(diff, s.bank.currency)}</span></>}
+                        </div>
+                      )}
                     </div>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: `color-mix(in srgb, ${s.color} 55%, var(--c-text))`, fontVariantNumeric: 'tabular-nums', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                      {formatMoneySign(s.balance)}
-                    </span>
-                   </div>
-                   {s.bank && (
-                    // Secondary line: the bank's own stored balance for the
-                    // account(s) mapped to this pool, in the bank's currency,
-                    // dated by the (UTC) fetch day. Muted micro text (DESIGN.md
-                    // micro 10px), wraps instead of overflowing at 375px.
-                    <div style={{ marginTop: 2, paddingLeft: 17, fontSize: 12, fontWeight: 500, color: 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.35 }}>
-                      з них SpareBank: {formatMoneyIn(s.bank.amount, s.bank.currency)} · {formatDdMm(s.bank.fetchedAt)}
-                    </div>
-                   )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

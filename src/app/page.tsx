@@ -751,7 +751,7 @@ export default function Dashboard() {
             {hasTwo && (
               <div className={`dash-two${showDonut && showPlan ? ' both' : ''}`}>
                 {showDonut && (
-                  <section className={`d-card d-pane${loading ? '' : ' d-rise'}`} style={vars({ '--i': 5 })}>
+                  <section className={`d-card d-pane d-donut${loading ? '' : ' d-rise'}`} style={vars({ '--i': 5 })}>
                     <div className="d-ch"><h2>Витрати за категоріями</h2></div>
                     {loading || !stats ? (
                       <>
