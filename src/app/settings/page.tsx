@@ -52,6 +52,10 @@ export default function SettingsPage() {
   const [monoTokenInput, setMonoTokenInput] = useState<Record<number, string>>({});
   const [monoConnecting, setMonoConnecting] = useState<number | null>(null);
   const [monoSyncing, setMonoSyncing] = useState<number | null>(null);
+  // Card picker: accounts are loaded on demand (one Monobank call), per user.
+  const [monoCards, setMonoCards] = useState<Record<number, { id: string; type: string; currency: string; maskedPan: string | null; balance: number; isCurrent: boolean }[]>>({});
+  const [monoCardPick, setMonoCardPick] = useState<Record<number, string>>({});
+  const [monoCardBusy, setMonoCardBusy] = useState<number | null>(null);
 
   interface SbAccount { id: number; label: string; iban: string | null; syncEnabled: boolean; lastSyncedAt: string | null; balanceAmount: number | null; balanceCurrency: string | null; balanceFetchedAt: string | null; categoryId: number | null }
   const [sbStatus, setSbStatus] = useState<{ userId: number; name: string; connected: boolean; expired: boolean; validUntil: string | null; autoSync: boolean; lastAutoSyncAt: string | null; lastAutoSyncOkAt: string | null; autoSyncFailCount: number; lastSyncError: string | null; accounts: SbAccount[] }[]>([]);
@@ -165,6 +169,43 @@ export default function SettingsPage() {
       toast('Помилка з’єднання', 'error');
     } finally {
       setMonoSyncing(null);
+    }
+  }
+
+  async function loadMonoCards(userId: number) {
+    if (monoCardBusy) return;
+    setMonoCardBusy(userId);
+    try {
+      const res = await fetch(`/api/monobank/accounts?userId=${userId}`);
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { toast(data?.error || 'Не вдалося завантажити картки', 'error'); return; }
+      setMonoCards(prev => ({ ...prev, [userId]: data }));
+      setMonoCardPick(prev => ({ ...prev, [userId]: data.find((a: { isCurrent: boolean }) => a.isCurrent)?.id ?? data[0]?.id ?? '' }));
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setMonoCardBusy(null);
+    }
+  }
+
+  async function saveMonoCard(userId: number) {
+    const accountId = monoCardPick[userId];
+    if (!accountId || monoCardBusy) return;
+    setMonoCardBusy(userId);
+    try {
+      const res = await fetch('/api/monobank/account', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, accountId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { toast(data?.error || 'Не вдалося зберегти картку', 'error'); return; }
+      toast('Картку збережено. Натисніть «Синхронізувати», щоб підтягнути транзакції');
+      setMonoCards(prev => { const { [userId]: _drop, ...rest } = prev; return rest; });
+      loadMonoStatus();
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setMonoCardBusy(null);
     }
   }
 
@@ -910,6 +951,42 @@ export default function SettingsPage() {
                     )}
                   </div>
                 )}
+                {monoConnected && (() => {
+                  const cards = monoCards[u.id];
+                  const broken = !!mono?.lastSyncError && /invalid 'account'|не знайдено/.test(mono.lastSyncError);
+                  return (
+                    <div style={{ marginTop: 6, fontSize: 12, ...(broken ? { padding: '8px 10px', borderRadius: 8, border: '1px solid var(--c-accent-text)', color: 'var(--c-accent-text)' } : {}) }}>
+                      {broken && <div style={{ marginBottom: 6 }}><AlertTriangle size={13} style={{ verticalAlign: -2 }} /> Картку, з якої беруться транзакції, треба вибрати знову.</div>}
+                      {!cards ? (
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0 8px' }}>
+                          <span style={{ color: broken ? undefined : 'var(--c-text-muted)' }}>Картка: {mono?.balanceCurrency ?? '—'}</span>
+                          <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, minHeight: 40 }} disabled={monoCardBusy === u.id} onClick={() => loadMonoCards(u.id)}>
+                            {monoCardBusy === u.id ? 'Завантаження…' : broken ? 'Вибрати картку' : 'змінити'}
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <select
+                            className="input-field" style={{ minHeight: 44, fontSize: 14 }} aria-label="Картка Monobank"
+                            value={monoCardPick[u.id] ?? ''} onChange={e => setMonoCardPick(prev => ({ ...prev, [u.id]: e.target.value }))}
+                          >
+                            {cards.map(a => (
+                              <option key={a.id} value={a.id}>
+                                {a.type} {a.currency}{a.maskedPan ? ` ••${a.maskedPan}` : ''} — {fmtBalance(a.balance, a.currency)}{a.isCurrent ? ' (поточна)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button className="btn-primary" style={{ minHeight: 40 }} disabled={monoCardBusy === u.id || !monoCardPick[u.id]} onClick={() => saveMonoCard(u.id)}>
+                              {monoCardBusy === u.id ? 'Збереження…' : 'Зберегти'}
+                            </button>
+                            <button className="btn-ghost" style={{ minHeight: 40 }} onClick={() => setMonoCards(prev => { const { [u.id]: _drop, ...rest } = prev; return rest; })}>Скасувати</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {sbConnected && sb && (
                   <div>

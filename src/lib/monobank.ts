@@ -67,6 +67,7 @@ export interface MonoAccount {
   currencyCode: number; // ISO 4217 numeric, 980 = UAH
   type: string;         // 'black' | 'white' | 'platinum' | 'iron' | 'fop' | ...
   balance: number;      // kopecks
+  maskedPan?: string[]; // e.g. "537541******1234"
 }
 
 export interface MonoClientInfo {
@@ -90,12 +91,37 @@ export function getClientInfo(token: string): Promise<MonoClientInfo> {
   return call('/personal/client-info', token);
 }
 
-// Which of a token's accounts this app tracks: "black" is Monobank's primary
-// UAH card type; falls back to the token's first account (FOP/business tokens
-// use other types). One rule for connect and for the balance refresh, so the
-// balance shown is always for the same card whose statement gets synced.
+// client-info is limited to ~1 request/60s per token, and the settings picker
+// needs it twice in a row (list, then save + balance refresh). Cached briefly
+// in AppSetting with only the fields needed (first masked PAN, never the token).
+const CLIENT_INFO_CACHE_MS = 3 * 60 * 1000;
+export async function getClientInfoCached(userId: number, token: string): Promise<MonoClientInfo> {
+  const key = `monoClientInfo:${userId}`;
+  const row = await prisma.appSetting.findUnique({ where: { key } });
+  if (row) {
+    const c = JSON.parse(row.value) as { at: number; info: MonoClientInfo };
+    if (Date.now() - c.at < CLIENT_INFO_CACHE_MS) return c.info;
+  }
+  const raw = await getClientInfo(token);
+  const info: MonoClientInfo = {
+    clientId: raw.clientId, name: raw.name,
+    accounts: (raw.accounts ?? []).map(a => ({ id: a.id, currencyCode: a.currencyCode, type: a.type, balance: a.balance, maskedPan: a.maskedPan?.slice(0, 1) })),
+  };
+  const value = JSON.stringify({ at: Date.now(), info });
+  await prisma.appSetting.upsert({ where: { key }, create: { key, value }, update: { value } });
+  return info;
+}
+
+// Which of a token's accounts this app tracks by default: the UAH "black" card
+// is the primary one; falls back to any UAH card, any black, then the first
+// (FOP/business tokens use other types). UAH goes first because a reissued
+// card made a EUR "black" account win over the main UAH card (2026-11-11).
+// Only a default for connect — the settings picker lets the user choose explicitly.
 export function pickMonoAccount(accounts: MonoAccount[]): MonoAccount | undefined {
-  return accounts.find(a => a.type === 'black') ?? accounts[0];
+  return accounts.find(a => a.type === 'black' && a.currencyCode === ISO_4217.UAH)
+    ?? accounts.find(a => a.currencyCode === ISO_4217.UAH)
+    ?? accounts.find(a => a.type === 'black')
+    ?? accounts[0];
 }
 
 // Registers (or replaces) the webhook URL Monobank pushes new-transaction

@@ -84,6 +84,8 @@ export async function POST(req: NextRequest) {
         monoClientId: clientInfo.clientId || null,
       },
     });
+    // New token: a client-info snapshot cached for the old one would be wrong.
+    await prisma.appSetting.deleteMany({ where: { key: `monoClientInfo:${Number(userId)}` } });
 
     // A chosen start date means the user wants that history pulled in NOW,
     // not after a separate manual "Синхронізувати" click. The connection

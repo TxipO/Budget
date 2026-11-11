@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { decrypt } from '@/lib/crypto';
-import { getClientInfo, pickMonoAccount, findMonoClientConflict, recordMonoSyncError, MonobankError } from '@/lib/monobank';
+import { getClientInfo, pickMonoAccount, findMonoClientConflict, recordMonoSyncError, MonobankError, type MonoClientInfo } from '@/lib/monobank';
 import { notifyHousehold } from '@/lib/telegramBot';
 import { MONO_CCY_NAMES } from '@/lib/monoIngest';
 
@@ -17,11 +17,12 @@ export interface MonoBalanceResult {
   error?: string;
 }
 
-export async function refreshMonoBalance(userId: number): Promise<MonoBalanceResult> {
+// `prefetched`: a client-info the caller just fetched (saves a call into Monobank's 1/60s limit).
+export async function refreshMonoBalance(userId: number, prefetched?: MonoClientInfo): Promise<MonoBalanceResult> {
   try {
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { monoTokenEnc: true, monoAccountId: true, monoClientId: true, householdId: true, name: true } });
     if (!user?.monoTokenEnc) return { ok: false, amount: null, currency: null, error: 'not connected' };
-    const info = await getClientInfo(decrypt(user.monoTokenEnc));
+    const info = prefetched ?? await getClientInfo(decrypt(user.monoTokenEnc));
     // Backfill/guard for users connected before monoClientId existed (both rows
     // were null, so connect's conflict check could never fire). Fail-open: a
     // clash only alerts (once per user+clientId), it never blocks the sync.
