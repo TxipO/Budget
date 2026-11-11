@@ -23,6 +23,10 @@ jobs:
     steps:
       - name: Trigger sync
         run: |
-          curl --fail-with-body -sS \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            https://budget-tracker-budget0.vercel.app/api/cron/sparebank-sync
+          # Public repo: never print the response body (user ids, counts, errors).
+          code=$(curl -sS -o response.json -w '%{http_code}'             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"             https://budget-tracker-budget0.vercel.app/api/cron/sparebank-sync)
+          echo "HTTP $code"
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "Sync request failed"
+            exit 1
+          fi

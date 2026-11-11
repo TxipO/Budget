@@ -265,7 +265,7 @@ async function flipPartner(id: number): Promise<void> {
 // transfers made over the weekend (500, 500, 200) arrived Sat 10-10 / Sun 10-11
 // as "Overførsel mellom egne konti i Mobilbank, forfall i dag"; on Monday 10-12
 // the bank re-delivered the SAME movements as booked items with
-// booking_date 10-12 and the real name "Yevheniia Romanenko". The content key
+// booking_date 10-12 and the account holder's own legal name. The content key
 // holds the date, and the text is deliberately not in it (see
 // buildSbContentKeyBase), so nothing matched and every one became a NEW row —
 // 1 200 counted twice in the pool. The 5 kr pair of 2026-09-05 -> 09-07 was the

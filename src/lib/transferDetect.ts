@@ -27,7 +27,7 @@ import { prisma } from '@/lib/prisma';
 //      and all but the user's own top-ups are ordinary "Від: <stranger>" P2P.
 //      "Own name" is LEARNED, not compared with User.name: the app's
 //      User.name is a Cyrillic nickname ("Женя") while the bank prints the
-//      legal Latin name ("Від: Romanenko, Yevheniia"), so no string rule can
+//      legal Latin name ("Від: Surname, Firstname"), so no string rule can
 //      relate them. Instead a sender counts as the user's own once ANY of
 //      this user's MCC-6012 mono rows from that exact sender is already an
 //      isTransfer row (a prior matched pair or a hand flag) — see

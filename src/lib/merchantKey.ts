@@ -28,7 +28,7 @@ const GENERIC_KEY =
 function normalizeOnce(raw: string): string {
   let s = raw.trim().toLowerCase().replace(/\s+/g, ' ');
   // "Betalt: 11.09.26" / any standalone dd.mm.yy(yy) stamp. The lookarounds
-  // keep Norwegian account numbers ("3705.68.62367") from being read as dates.
+  // keep Norwegian account numbers ("1234.56.78901") from being read as dates.
   s = s.replace(/\s*betalt:\s*\d{1,2}[./]\d{1,2}[./]\d{2,4}/g, '');
   s = s.replace(/(?<![\d.])\d{1,2}\.\d{1,2}\.\d{2,4}(?![\d.])/g, '');
   // Amounts inside the text ("Виведення кешбеку 170.69₴").
