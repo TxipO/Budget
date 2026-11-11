@@ -32,6 +32,8 @@ const NUM_VAR: Record<string, string> = {
   '#22C55E': 'var(--c-income-num)', '#EF4444': 'var(--c-expense-num)', '#F59E0B': 'var(--c-savings-num)',
 };
 
+const BAR_SERIES = [['Дохід', '#22C55E'], ['Витрати', '#EF4444'], ['Збереження', '#F59E0B']];
+
 // "DD.MM" of the UTC calendar day (balanceFetchedAt is a UTC instant).
 const formatDdMm = (iso: string) => {
   const d = new Date(iso);
@@ -46,10 +48,14 @@ export default function AnalyticsPage() {
   const [data, setData] = useState<MonthData[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [savingsByCategory, setSavingsByCategory] = useState<SavingsCategoryBalance[]>([]);
+  // True until the first response for the selected year lands (or fails): without it the
+  // empty initial state reads as a real year of zeroes and "Немає даних".
+  const [loading, setLoading] = useState(true);
 
   const loadSeq = useRef(0); // a slower response for a previously picked year must not overwrite the current one
   useEffect(() => {
     const seq = ++loadSeq.current;
+    setLoading(true);
     fetch(`/api/analytics?year=${year}`)
       .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
       .then((res: { months: { income: number; expenses: number; savings: number; balance: number }[]; insights: Insight[]; savingsByCategory: SavingsCategoryBalance[] }) => {
@@ -57,10 +63,12 @@ export default function AnalyticsPage() {
         if (Array.isArray(res.months)) setData(res.months.map((m, i) => ({ month: MONTH_SHORT[i], ...m })));
         setInsights(Array.isArray(res.insights) ? res.insights : []);
         setSavingsByCategory(Array.isArray(res.savingsByCategory) ? res.savingsByCategory : []);
+        setLoading(false);
       })
       .catch(() => {
         if (seq !== loadSeq.current) return;
         setData([]); setInsights([]); setSavingsByCategory([]); // not the previous year's numbers under this heading
+        setLoading(false);
         toast('Помилка завантаження аналітики', 'error');
       });
   }, [year]);
@@ -112,9 +120,11 @@ export default function AnalyticsPage() {
                 <c.icon size={16} color={c.color} />
               </div>
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: NUM_VAR[c.color] ?? c.color, fontVariantNumeric: 'tabular-nums' }}>
-              {c.signed ? formatMoneySign(c.value) : formatMoney(c.value)}
-            </div>
+            {loading ? <div className="skel" style={{ height: 28, width: '70%' }} /> : (
+              <div style={{ fontSize: 22, fontWeight: 800, color: NUM_VAR[c.color] ?? c.color, fontVariantNumeric: 'tabular-nums' }}>
+                {c.signed ? formatMoneySign(c.value) : formatMoney(c.value)}
+              </div>
+            )}
             {/* Per-pool chips, savings card only — "Всього збереження" above
                 is a within-year FLOW (deposits minus withdrawals); this is
                 each pool's actual standing balance as of the end of the
@@ -130,7 +140,7 @@ export default function AnalyticsPage() {
                 a full pool name ("Фінансова подушка") needs the card's full
                 width to read without truncating; ellipsis + title stay as a
                 fallback for a genuinely long category name. */}
-            {c.label === 'Всього збереження' && savingsByCategory.length > 0 && (
+            {c.label === 'Всього збереження' && !loading && savingsByCategory.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 10 }}>
                 {savingsByCategory.map(s => (
                   <div
@@ -153,7 +163,7 @@ export default function AnalyticsPage() {
                         {s.name}
                       </span>
                     </div>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: `color-mix(in srgb, ${s.color} 55%, var(--c-text))`, fontVariantNumeric: 'tabular-nums', flexShrink: 0, whiteSpace: 'nowrap' }}>
                       {formatMoneySign(s.balance)}
                     </span>
                    </div>
@@ -175,7 +185,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Insights */}
-      {insights.length > 0 && (
+      {!loading && insights.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 28 }}>
           {insights.map((ins, i) => {
             const s = INSIGHT_STYLE[ins.tone];
@@ -195,29 +205,42 @@ export default function AnalyticsPage() {
 
       {/* Monthly income vs expenses bar chart */}
       <div className="card card-pad" style={{ marginBottom: 20 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 20 }}>
-          Дохід vs Витрати по місяцях
-        </h3>
-        <MonthlyBarChart data={data} />
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px 16px', marginBottom: 20 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>
+            Дохід vs Витрати по місяцях
+          </h2>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
+            {BAR_SERIES.map(([name, color]) => (
+              <span key={name} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--c-text-muted)' }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: color }} />
+                {name}
+              </span>
+            ))}
+          </div>
+        </div>
+        {loading ? <div className="skel" style={{ height: 280, borderRadius: 12 }} /> : <MonthlyBarChart data={data} />}
       </div>
 
       {/* Balance by month */}
       <div className="card card-pad">
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Вільний залишок по місяцях</h3>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Вільний залишок по місяцях</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {data.map(d => {
+          {loading && <div className="skel" style={{ height: 70, width: '100%', borderRadius: 10 }} />}
+          {!loading && data.map(d => {
             // Colour follows the rounded figure that's shown, so "0" is never red.
             const shown = roundCompact(d.balance);
             const good = shown >= 0;
+            // No data for the month: neutral, not the green of a real zero-or-better balance.
+            const empty = d.balance === 0;
             return (
               <div key={d.month} style={{
                 flex: '1 1 60px', minWidth: 60,
-                background: good ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
-                border: `1px solid ${good ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                background: empty ? 'var(--c-hover)' : good ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+                border: `1px solid ${empty ? 'var(--c-border)' : good ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
                 borderRadius: 10, padding: '12px 8px', textAlign: 'center',
               }}>
                 <div style={{ fontSize: 12, color: 'var(--c-text-muted)', marginBottom: 6 }}>{d.month}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: good ? 'var(--c-pos-text)' : 'var(--c-neg-text)', fontVariantNumeric: 'tabular-nums' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: empty ? 'var(--c-text-muted)' : good ? 'var(--c-pos-text)' : 'var(--c-neg-text)', fontVariantNumeric: 'tabular-nums' }}>
                   {d.balance !== 0 ? `${shown > 0 ? '+' : ''}${formatCompact(d.balance)}` : '—'}
                 </div>
               </div>

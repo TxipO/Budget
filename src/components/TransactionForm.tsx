@@ -4,6 +4,7 @@ import { X, Save, Plus, EyeOff } from 'lucide-react';
 import { TYPE_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import { toast } from '@/lib/toast';
+import { getCurrentUser, setCurrentUser } from '@/lib/currentUser';
 
 interface Category { id: number; name: string; type: string; color: string }
 interface User { id: number; name: string }
@@ -76,7 +77,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
 
   useEffect(() => {
     if (initial?.userId || editId) return; // keep original user when editing — never pre-fill the logged-in person onto an existing row
-    const currentUser = localStorage.getItem('currentUser');
+    const currentUser = getCurrentUser();
     if (currentUser && users.length) {
       const u = users.find(u => u.name === currentUser);
       if (u) setForm(f => ({ ...f, userId: String(u.id) }));
@@ -244,7 +245,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
         <form id="tx-form" onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '0 28px', overflowY: 'auto', flex: 1 }}>
           {/* Date */}
           <div>
-            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Дата
             </label>
             <input
@@ -257,7 +258,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
 
           {/* Type */}
           <div>
-            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Тип
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -289,7 +290,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
 
           {/* Category */}
           <div>
-            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Категорія
             </label>
             <select
@@ -312,7 +313,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
               double-subtracting it (see Transaction.savingsWithdrawal). */}
           {form.type === 'savings' && (
             <div>
-              <label style={{ fontSize: 12, color: '#64748B', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Напрямок
               </label>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -336,7 +337,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
 
           {/* Amount */}
           <div>
-            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Сума ({suffix}){amountParts.length > 0 ? ` — усього ${formatMoney(totalAmount)}` : ''}
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -372,7 +373,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
                     {formatMoney(part)}
                     <button
                       type="button" onClick={() => removeAmountPart(i)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', padding: 2, display: 'flex' }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-text-sub)', padding: 2, display: 'flex' }}
                       title="Прибрати суму" aria-label="Прибрати суму"
                     >
                       <X size={12} />
@@ -385,7 +386,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
 
           {/* Details */}
           <div>
-            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Коментар
             </label>
             <input
@@ -395,23 +396,40 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
             />
           </div>
 
-          {/* User */}
+          {/* User — one-tap pills (this is also the only switcher on mobile).
+              A new entry starts from the device's last explicit pick
+              (currentUser), else "не вказано"; an edit shows the row's own
+              person. Picking on a NEW entry is remembered for this device. */}
           {users.length > 0 && (
-            <div>
-              <label style={{ fontSize: 12, color: '#64748B', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div role="group" aria-labelledby="tx-user-label">
+              <div id="tx-user-label" style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Хто вносить
-              </label>
-              <select
-                className="input-field"
-                value={form.userId}
-                onChange={e => setForm(f => ({ ...f, userId: e.target.value }))}
-                disabled={ownerLocked}
-              >
-                <option value="">— не вказано —</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[{ id: '', name: 'Не вказано' }, ...users.map(u => ({ id: String(u.id), name: u.name }))].map(opt => {
+                  const on = form.userId === opt.id;
+                  return (
+                    <button
+                      key={opt.id || 'none'} type="button" aria-pressed={on} disabled={ownerLocked}
+                      onClick={() => {
+                        setForm(f => ({ ...f, userId: opt.id }));
+                        if (!editId && opt.id) setCurrentUser(opt.name);
+                      }}
+                      style={{
+                        flex: 1, padding: '11px 4px', borderRadius: 8, border: 'none', minWidth: 0,
+                        cursor: ownerLocked ? 'default' : 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.15s',
+                        opacity: ownerLocked && !on ? 0.5 : 1,
+                        background: on ? (opt.id ? 'rgba(249,115,22,0.2)' : 'var(--c-hover)') : 'rgba(255,255,255,0.04)',
+                        color: on ? (opt.id ? 'var(--c-accent-hi)' : 'var(--c-text-sec)') : 'var(--c-text-muted)',
+                      }}
+                    >
+                      {opt.name}
+                    </button>
+                  );
+                })}
+              </div>
               {ownerLocked && (
-                <p style={{ fontSize: 12, color: '#64748B', marginTop: 6 }}>з банку — власник рахунку</p>
+                <p style={{ fontSize: 12, color: 'var(--c-text-sub)', marginTop: 6 }}>з банку — власник рахунку</p>
               )}
             </div>
           )}
@@ -436,7 +454,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
               Не рахувати в загальний баланс
             </button>
             {form.isTransfer && (
-              <p style={{ fontSize: 12, color: '#64748B', marginTop: 6, textAlign: 'center' }}>
+              <p style={{ fontSize: 12, color: 'var(--c-text-sub)', marginTop: 6, textAlign: 'center' }}>
                 Транзакція лишиться у списку, але не увійде в жодну суму — дохід, витрати, збереження, накопичений залишок.
               </p>
             )}

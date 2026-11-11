@@ -5,6 +5,7 @@ import { LayoutDashboard, ArrowLeftRight, CalendarDays, BarChart3, Settings, Sun
 import { useEffect, useState } from 'react';
 import { useTheme } from '@/lib/theme';
 import { APP_SHELL_HIDDEN_ROUTES } from '@/lib/utils';
+import { CURRENT_USER_EVENT, setCurrentUser } from '@/lib/currentUser';
 
 
 const NAV = [
@@ -40,7 +41,9 @@ export default function Sidebar() {
 
     fetch('/api/users').then(r => r.ok ? r.json() : []).then((list: { id: number; name: string }[]) => {
       setUsers(list);
-      if (!saved || !list.some(u => u.name === saved)) setUser(list[0]?.name ?? '');
+      // No fallback to list[0]: showing someone active that the form won't
+      // actually use is how entries got attributed to the wrong person.
+      setUser(cur => list.some(u => u.name === cur) ? cur : '');
     }).catch(() => {});
 
     // A Telegram-linked login identifies a specific household member —
@@ -57,14 +60,23 @@ export default function Sidebar() {
       if (data.onboarded === false && pathname !== '/onboarding') { router.replace('/onboarding'); return; }
       if (!data.shared && data.user?.name) {
         setUser(data.user.name);
-        try { localStorage.setItem('currentUser', data.user.name); } catch {}
+        setCurrentUser(data.user.name);
       }
     }).catch(() => {});
   }, [pathname, router]);
 
+  // The transaction form also writes currentUser (the one source of truth) —
+  // follow it so the highlight here never disagrees with the form.
+  useEffect(() => {
+    const sync = () => { try { setUser(localStorage.getItem('currentUser') ?? ''); } catch {} };
+    window.addEventListener(CURRENT_USER_EVENT, sync);
+    window.addEventListener('storage', sync);
+    return () => { window.removeEventListener(CURRENT_USER_EVENT, sync); window.removeEventListener('storage', sync); };
+  }, []);
+
   function switchUser(u: string) {
     setUser(u);
-    try { localStorage.setItem('currentUser', u); } catch {}
+    setCurrentUser(u);
   }
 
   async function logout() {

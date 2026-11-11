@@ -809,7 +809,7 @@ export default function SettingsPage() {
         <form onSubmit={savePin} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           {account.hasPin && (
             <div style={{ flex: 1, minWidth: 140 }}>
-              <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Поточний PIN</label>
+              <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Поточний PIN</label>
               <input
                 className="input-field" type="password" inputMode="numeric" required
                 value={pinForm.current}
@@ -819,7 +819,7 @@ export default function SettingsPage() {
             </div>
           )}
           <div style={{ flex: 1, minWidth: 140 }}>
-            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>{account.hasPin ? 'Новий PIN' : 'PIN'}</label>
+            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>{account.hasPin ? 'Новий PIN' : 'PIN'}</label>
             <input
               className="input-field" type="password" inputMode="numeric" required
               value={pinForm.next}
@@ -908,7 +908,7 @@ export default function SettingsPage() {
 
                 {monoConnected && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-                    <span style={{ fontSize: 12, color: '#64748B' }}>Monobank</span>
+                    <span style={{ fontSize: 12, color: 'var(--c-text-sub)' }}>Monobank</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       {mono?.lastSyncError ? (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--c-accent-text)' }}>
@@ -991,7 +991,7 @@ export default function SettingsPage() {
                 {sbConnected && sb && (
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-                      <span style={{ fontSize: 12, color: '#64748B' }}>SpareBank 1</span>
+                      <span style={{ fontSize: 12, color: 'var(--c-text-sub)' }}>SpareBank 1</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                         {sb.expired ? (
                           <span style={{ fontSize: 12, color: 'var(--c-accent-text)' }}>Доступ прострочено</span>
@@ -1066,7 +1066,7 @@ export default function SettingsPage() {
                                 </button>
                               </>
                             )}
-                            {a.iban && <span style={{ color: '#94A3B8' }}>{a.iban}</span>}
+                            {a.iban && <span style={{ color: 'var(--c-text-muted)' }}>{a.iban}</span>}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 10px' }}>
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -1089,7 +1089,7 @@ export default function SettingsPage() {
                               the old guesswork sparebankIngest.ts used to do
                               per-transaction. "—" means an ordinary account. */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                            <span style={{ color: '#64748B' }}>Це збереження:</span>
+                            <span style={{ color: 'var(--c-text-sub)' }}>Це збереження:</span>
                             <select
                               className="input-field" style={{ fontSize: 12, padding: '3px 6px' }}
                               value={a.categoryId ?? ''}
@@ -1110,7 +1110,7 @@ export default function SettingsPage() {
 
                 {sbConnected && sb && !sb.expired && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748B', cursor: 'pointer' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--c-text-sub)', cursor: 'pointer' }}>
                       <input
                         type="checkbox"
                         checked={sb.autoSync}
@@ -1163,13 +1163,13 @@ export default function SettingsPage() {
                             {monoConnecting === u.id ? 'Підключення…' : 'Підключити'}
                           </button>
                         </div>
-                        <span style={{ fontSize: 12, color: '#64748B' }}>
+                        <span style={{ fontSize: 12, color: 'var(--c-text-sub)' }}>
                           Токен видається у{' '}
                           <a href="https://api.monobank.ua/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c-accent-text)' }}>
                             особистому кабінеті на api.monobank.ua
                           </a>
                         </span>
-                        <label style={{ fontSize: 12, color: '#64748B' }}>
+                        <label style={{ fontSize: 12, color: 'var(--c-text-sub)' }}>
                           Синхронізувати з дати (необов'язково, не більше 30 днів тому):{' '}
                           <input
                             type="date" className="input-field" style={{ fontSize: 12, padding: '3px 6px', width: 'auto', display: 'inline-block' }}
@@ -1182,7 +1182,7 @@ export default function SettingsPage() {
 
                     {choice === 'sparebank' && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
-                      <label style={{ fontSize: 12, color: '#64748B' }}>
+                      <label style={{ fontSize: 12, color: 'var(--c-text-sub)' }}>
                         Синхронізувати з дати (необов'язково):{' '}
                         <input
                           type="date" className="input-field" style={{ fontSize: 12, padding: '3px 6px', width: 'auto', display: 'inline-block' }}
@@ -1210,7 +1210,7 @@ export default function SettingsPage() {
       {/* Import section */}
       <div className="card card-pad" style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Імпорт з Excel</h2>
-        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>
+        <p style={{ fontSize: 13, color: 'var(--c-text-sub)', marginBottom: 16 }}>
           Завантажте файл Budget.xlsx — автоматично імпортуються категорії та дані з листів "Планування" і "Ведення".
         </p>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -1235,13 +1235,13 @@ export default function SettingsPage() {
         <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Додати категорію</h2>
         <form onSubmit={addCat} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div style={{ flex: '1 1 160px' }}>
-            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
+            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
               Назва
             </label>
             <input className="input-field" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required placeholder="Назва категорії" />
           </div>
           <div style={{ flex: '1 1 120px' }}>
-            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Тип</label>
+            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Тип</label>
             <select className="input-field" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
               <option value="income">Дохід</option>
               <option value="expense">Витрати</option>
@@ -1249,7 +1249,7 @@ export default function SettingsPage() {
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Колір</label>
+            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Колір</label>
             <div className="pick-grid" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {CATEGORY_PALETTE.map(c => (
                 <button
@@ -1266,7 +1266,7 @@ export default function SettingsPage() {
           </div>
           <button type="submit" className="btn-primary"><Plus size={15} /> Додати</button>
           <div style={{ flexBasis: '100%' }}>
-            <label style={{ fontSize: 12, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>Іконка</label>
+            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>Іконка</label>
             <div className="pick-grid pick-icons" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 96, overflowY: 'auto' }}>
               {ICON_KEYS.map(key => (
                 <button

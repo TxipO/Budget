@@ -63,10 +63,10 @@ img, video { max-width: 100%; height: auto; }
      values were 2.3–4.2:1 on real surfaces here, below WCAG AA's 4.5:1
      for body text. Same Tailwind slate scale the rest of the palette
      already uses, just lighter steps — muted now clears 4.5:1 on every
-     surface; sub (~3.6–4.2:1) is deliberately still the most restrained
-     tier per DESIGN.md, real placeholder/axis text, not decorative. */
+     surface. sub was 3.5–4.2:1 (#64748B); #7C8BA1 is 4.8–5.7:1 on every dark
+     surface and still the quietest tier (muted is 6.5–7.7:1). */
   --c-text-muted:  #94A3B8;
-  --c-text-sub:    #64748B;
+  --c-text-sub:    #7C8BA1;
   --c-hover:       rgba(255,255,255,0.05);
   --c-scrollbar:   #12121A;
   --c-scrollthumb: #2A2A3A;
@@ -112,7 +112,7 @@ img, video { max-width: 100%; height: auto; }
   --c-text:        #0F172A;
   --c-text-sec:    #334155;
   --c-text-muted:  #475569;
-  --c-text-sub:    #64748B;
+  --c-text-sub:    #5B6B82;
   --c-hover:       rgba(0,0,0,0.04);
   --c-scrollbar:   #E2E8F0;
   --c-scrollthumb: #CBD5E1;
@@ -349,6 +349,20 @@ select.input-field option {
   background: rgba(255,255,255,0.02);
 }
 
+/* Планування cell button: hover tint + a visible keyboard focus ring. */
+.plan-cell { cursor: pointer; transition: background 0.1s; }
+.plan-cell:hover { background: var(--c-hover) !important; }
+.plan-cell:focus-visible { outline: 2px solid var(--c-accent-text); outline-offset: -2px; }
+
+/* Loading placeholder block — same look as the dashboard skeletons. */
+.skel { display: block; background: var(--c-hover); border-radius: 8px; animation: pulse 1.5s infinite; }
+
+/* Транзакції row grid. minmax(0,1fr) lets the category column shrink instead of
+   collapsing; on the narrow-desktop band the least important columns (Тип, Хто —
+   the name moves under the category) drop out so nothing is clipped. */
+.tx-grid { display: grid; grid-template-columns: 100px minmax(0, 1fr) 120px 90px 80px 72px; gap: 8px; }
+.tx-who-inline { display: none; }
+
 /* ── Responsive ── */
 .sidebar-wrap  { display: flex; }
 .bottom-nav    { display: none; }
@@ -362,10 +376,14 @@ select.input-field option {
 /* Narrow desktop / tablet (sidebar + ~600px of content): five stat cards in one
    row clipped their figures ("+1 592 kr"). 3 + 2 on a 6-track grid instead. */
 @media (min-width: 769px) and (max-width: 1099px) {
+  .tx-filter-sep { display: none; } /* filters wrap here; a lone divider would dangle */
   .grid-5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .grid-5 > * { grid-column: span 2; }
   .grid-5 > :nth-child(n+4) { grid-column: span 3; }
   .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tx-grid { grid-template-columns: 76px minmax(0, 1fr) 90px 72px; }
+  .tx-col-wide { display: none; }
+  .tx-who-inline { display: inline; }
 }
 
 @media (max-width: 768px) {

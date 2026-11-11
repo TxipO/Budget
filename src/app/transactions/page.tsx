@@ -46,6 +46,9 @@ export default function TransactionsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Tx | null>(null);
   const [page, setPage] = useState(1);
+  // True until the first response for the current month/filters lands (or fails), so
+  // an in-flight fetch never reads as "0 записів" / "Немає транзакцій".
+  const [loading, setLoading] = useState(true);
   const pendingDels = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   // load() is also called from timers/toasts that outlive a render, so it reads
@@ -63,15 +66,16 @@ export default function TransactionsPage() {
     fetch(url)
       .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
       // Rows whose delete is still inside the undo window stay hidden on reload.
-      .then((rows: Tx[]) => { if (seq === loadSeq.current) setTxs(rows.filter(t => !pendingDels.current.has(t.id))); })
+      .then((rows: Tx[]) => { if (seq === loadSeq.current) { setTxs(rows.filter(t => !pendingDels.current.has(t.id))); setLoading(false); } })
       .catch(() => {
         if (seq !== loadSeq.current) return;
         setTxs([]); // old rows would sit under the new month's heading
+        setLoading(false);
         toast('Помилка завантаження транзакцій', 'error');
       });
   }
 
-  useEffect(() => { load(); }, [year, month, typeFilter, globalSearch]);
+  useEffect(() => { setLoading(true); load(); }, [year, month, typeFilter, globalSearch]);
 
   useEffect(() => {
     fetch('/api/users').then(r => r.ok ? r.json() : Promise.reject()).then(setUsers).catch(() => {});
@@ -217,7 +221,7 @@ export default function TransactionsPage() {
     return matchesFilters(tx) && (isBudgetRelevant(tx) || tx.poolCorrection);
   });
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const totalPages = loading ? 0 : Math.ceil(filtered.length / PAGE_SIZE);
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   // `filtered` already holds only budget-relevant rows; isBudgetRelevant is kept
@@ -246,7 +250,9 @@ export default function TransactionsPage() {
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Транзакції</h1>
-          <p style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>{filtered.length} записів</p>
+          <p style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>
+            {loading ? <span className="skel" style={{ height: 14, width: 80, marginTop: 4 }} /> : `${filtered.length} записів`}
+          </p>
         </div>
         <div className="tx-head-actions" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
           <div className="tx-stepper" style={{
@@ -331,7 +337,7 @@ export default function TransactionsPage() {
             {/* Separates the type filter's "Всі" from this group's own
                 "Всі" — two identical labels sitting flush against each
                 other read as one ambiguous control without it. */}
-            <div className="hide-on-xs" style={{ width: 1, alignSelf: 'stretch', background: 'var(--c-border-mid)' }} />
+            <div className="hide-on-xs tx-filter-sep" style={{ width: 1, alignSelf: 'stretch', background: 'var(--c-border-mid)' }} />
             <div style={{ display: 'flex', gap: 6 }}>
             {[['', 'Всі'], ...users.map(u => [String(u.id), u.name])].map(([val, label]) => (
               <button
@@ -378,10 +384,12 @@ export default function TransactionsPage() {
           { label: 'Перекази', value: transfersTotal, color: 'var(--c-text-muted)', signed: false },
         ].map(s => (
           <div key={s.label} className="card tx-summary-card" style={{ flex: '1 1 100px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 13, color: '#64748B' }}>{s.label}</span>
-            <span style={{ fontSize: 16, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums' }}>
-              {s.signed ? formatMoneySign(s.value) : formatMoney(s.value)}
-            </span>
+            <span style={{ fontSize: 13, color: 'var(--c-text-sub)' }}>{s.label}</span>
+            {loading ? <span className="skel" style={{ height: 20, width: 72 }} /> : (
+              <span style={{ fontSize: 16, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums' }}>
+                {s.signed ? formatMoneySign(s.value) : formatMoney(s.value)}
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -389,26 +397,36 @@ export default function TransactionsPage() {
       {/* Table */}
       <div className="card" style={{ overflow: 'hidden' }}>
         {/* Table header (desktop only — mobile rows are self-describing cards) */}
-        <div className="hide-on-xs" style={{
-          display: 'grid', gridTemplateColumns: '100px 1fr 120px 90px 80px 72px', gap: 8,
+        <div className="hide-on-xs tx-grid" style={{
           padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)',
           fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em',
         }}>
           <span>Дата</span>
           <span>Категорія / деталі</span>
-          <span>Тип</span>
+          <span className="tx-col-wide">Тип</span>
           <span style={{ textAlign: 'right' }}>Сума</span>
-          <span>Хто</span>
+          <span className="tx-col-wide">Хто</span>
           <span></span>
         </div>
 
-        {filtered.length === 0 && (
+        {loading && [0, 1, 2, 3, 4].map(i => (
+          <div key={i} className="table-row" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px' }}>
+            <div className="skel" style={{ width: 36, height: 36, borderRadius: 10 }} />
+            <div style={{ flex: 1 }}>
+              <div className="skel" style={{ height: 13, width: '40%', borderRadius: 6, marginBottom: 6 }} />
+              <div className="skel" style={{ height: 11, width: '25%', borderRadius: 6 }} />
+            </div>
+            <div className="skel" style={{ height: 16, width: 80, borderRadius: 6 }} />
+          </div>
+        ))}
+
+        {!loading && filtered.length === 0 && (
           <div style={{ textAlign: 'center', color: 'var(--c-text-muted)', padding: '48px 0', fontSize: 14 }}>
             Немає транзакцій
           </div>
         )}
 
-        {paged.map(tx => {
+        {(loading ? [] : paged).map(tx => {
           const dateStr = new Date(tx.date).toLocaleDateString('uk-UA', globalSearch
             ? { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'UTC' }
             : { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
@@ -431,16 +449,14 @@ export default function TransactionsPage() {
           <div key={tx.id} className="table-row">
             {/* Desktop: fixed-column grid */}
             <div
-              className="tx-row-desktop"
+              className="tx-row-desktop tx-grid"
               style={{
                 display: 'grid',
-                gridTemplateColumns: '100px 1fr 120px 90px 80px 72px',
                 padding: '14px 20px',
                 alignItems: 'center',
-                gap: 8,
               }}
             >
-              <span style={{ fontSize: 13, color: '#64748B' }}>{dateStr}</span>
+              <span style={{ fontSize: 13, color: 'var(--c-text-sub)' }}>{dateStr}</span>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                 <CategoryIcon name={tx.category.icon} color={tx.category.color} size={15} />
@@ -450,9 +466,10 @@ export default function TransactionsPage() {
                     {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex' }}><AlertTriangle size={11} color="#FBBF24" /></span>}
                     {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex' }}><Landmark size={11} color={BANK_SYNC_COLOR} /></span>}
                   </div>
-                  {tx.details && (
+                  {(tx.details || tx.user) && (
                     <div style={{ fontSize: 12, color: 'var(--c-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {tx.details}
+                      {tx.user && <span className="tx-who-inline">{tx.details && ' · '}{tx.user.name}</span>}
                     </div>
                   )}
                 </div>
@@ -462,7 +479,7 @@ export default function TransactionsPage() {
                   to hug its content, but as a direct CSS Grid child it
                   otherwise stretches to fill the full 120px column
                   (Grid's justify-items: stretch default). */}
-              <span className={`badge badge-${tx.category.type}`} style={{ justifySelf: 'start' }}>
+              <span className={`badge badge-${tx.category.type} tx-col-wide`} style={{ justifySelf: 'start' }}>
                 {TYPE_LABELS[tx.category.type]}
               </span>
 
@@ -470,7 +487,7 @@ export default function TransactionsPage() {
                 {amountStr}
               </span>
 
-              <span style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>{tx.user?.name || '—'}</span>
+              <span className="tx-col-wide" style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>{tx.user?.name || '—'}</span>
 
               <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                 <button

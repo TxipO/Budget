@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import { MessageSquare } from 'lucide-react';
-import { MONTH_SHORT, TYPE_LABELS } from '@/lib/utils';
+import { MONTH_NAMES, MONTH_SHORT, TYPE_LABELS } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { useCurrency } from '@/lib/useCurrency';
 import { formatCompact } from '@/lib/currencies';
@@ -21,6 +21,8 @@ function planStatus(type: string, actual: number, planned: number, periodDone: b
   if (actual >= planned) return 'good';
   return periodDone && actual !== 0 ? 'bad' : null;
 }
+// Whole amounts for the screen-reader label of a cell (the visible figures are "к"-abbreviated).
+const num = (n: number) => Math.round(n).toLocaleString('uk-UA');
 const STATUS_COLOR = { good: 'var(--c-pos-text)', bad: 'var(--c-neg-text)' } as const;
 
 export default function PlanningPage() {
@@ -36,7 +38,13 @@ export default function PlanningPage() {
   const { plans, actuals } = grid;
   const gridYear = grid.year;
   const gridSeq = useRef(0);
-  const [editCell, setEditCell] = useState<{ catId: number; month: number; year: number } | null>(null);
+  // `up`: the popover opens above its cell (set when there is no room below it).
+  const [editCell, setEditCell] = useState<{ catId: number; month: number; year: number; up: boolean } | null>(null);
+  // True until the first plans+transactions response lands (or fails), so the empty
+  // grid never reads as a year with no plans.
+  const [loading, setLoading] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
   const [editVal,  setEditVal]  = useState('');
   const [editNote, setEditNote] = useState('');
   const amountRef = useRef<HTMLInputElement>(null);
@@ -45,13 +53,14 @@ export default function PlanningPage() {
     // includeInactive: a deleted category keeps its transactions, which stats still count.
     fetch('/api/categories?includeInactive=1')
       .then(r => r.ok ? r.json() : Promise.reject())
-      .then((all: Category[]) => setCats(all))
-      .catch(() => toast('Помилка завантаження категорій', 'error'));
+      .then((all: Category[]) => { setCats(all); if (!all.length) setLoading(false); })
+      .catch(() => { setLoading(false); toast('Помилка завантаження категорій', 'error'); });
   }, []);
 
   useEffect(() => {
     if (!cats.length) return;
     const seq = ++gridSeq.current;
+    setLoading(true);
     Promise.all([
       fetch(`/api/plans?year=${year}`).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); }),
       fetch(`/api/transactions?year=${year}`).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); }),
@@ -88,10 +97,12 @@ export default function PlanningPage() {
             return { categoryId: catId, month, actual };
           }),
         });
+        setLoading(false);
       })
       .catch(() => {
         if (seq !== gridSeq.current) return;
         setGrid({ year, plans: [], actuals: [] }); // not another year's numbers under this heading
+        setLoading(false);
         toast('Помилка завантаження планів і транзакцій', 'error');
       });
   }, [year, cats]);
@@ -127,18 +138,38 @@ export default function PlanningPage() {
     toast('План збережено');
   }
 
-  function startEdit(catId: number, month: number) {
-    setEditCell({ catId, month, year: gridYear });
+  // Land on the current month: on a phone the 12 columns scroll sideways and
+  // January would otherwise be all that is visible.
+  useEffect(() => {
+    const box = scrollRef.current;
+    const th = box?.querySelector<HTMLElement>('th[aria-current]');
+    if (box && th) box.scrollLeft = th.offsetLeft - (box.clientWidth - th.offsetWidth) / 2;
+  }, [loading, gridYear]);
+
+  function startEdit(catId: number, month: number, el: HTMLElement) {
+    openerRef.current = el;
+    // The popover is ~220px tall: open it upward when the card/viewport has less
+    // room below the cell than above it (the bottom rows used to overflow).
+    const r = el.getBoundingClientRect();
+    const box = scrollRef.current?.getBoundingClientRect();
+    const below = Math.min(window.innerHeight, box?.bottom ?? Infinity) - r.top;
+    const above = r.bottom - Math.max(0, box?.top ?? 0);
+    setEditCell({ catId, month, year: gridYear, up: below < 240 && above > below });
     setEditVal(String(getPlanned(catId, month) || ''));
     setEditNote(getNotes(catId, month));
     setTimeout(() => amountRef.current?.focus(), 30);
+  }
+
+  function closeEdit() {
+    setEditCell(null);
+    openerRef.current?.focus(); // keyboard users land back on the cell they opened
   }
 
   async function commitEdit() {
     if (!editCell) return;
     try {
       await savePlan(editCell.year, editCell.catId, editCell.month, parseFloat(editVal) || 0, editNote);
-      setEditCell(null);
+      closeEdit();
     } catch {
       toast('Помилка збереження плану', 'error');
     }
@@ -146,6 +177,9 @@ export default function PlanningPage() {
 
   const monthDone = (m: number) => gridYear < thisYear || (gridYear === thisYear && m < thisMonth);
   const yearDone  = gridYear < thisYear;
+  const isCur = (m: number) => gridYear === thisYear && m === thisMonth;
+  // Current-month column: the 5% "zone" tint (DESIGN.md Three-Tier Tint Rule).
+  const curBg = (m: number) => isCur(m) ? 'rgba(249,115,22,0.05)' : undefined;
 
   const sections = [
     { type: 'income',  label: 'Дохід' },
@@ -180,7 +214,18 @@ export default function PlanningPage() {
         </div>
       </div>
 
-      <div className="card h-scroll-hint" style={{ overflow: 'auto' }}>
+      <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--c-text-muted)' }}>
+        Жирне = факт, сіре = план · Зелений = в межах · Червоний = перевитрата ·
+        <MessageSquare size={10} color="#F97316" style={{ verticalAlign: 'middle', margin: '0 3px' }} />
+        = є коментар (видно у вікні клітинки)
+      </div>
+
+      {loading ? (
+        <div className="card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {[...Array(8)].map((_, i) => <div key={i} className="skel" style={{ height: 36 }} />)}
+        </div>
+      ) : (
+      <div ref={scrollRef} className="card h-scroll-hint" style={{ overflow: 'auto' }}>
         <table className="plan-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
@@ -190,7 +235,8 @@ export default function PlanningPage() {
                 boxShadow: '1px 0 0 var(--c-border)',
               }}>Категорія</th>
               {MONTH_SHORT.map((m, i) => (
-                <th key={i} style={{ ...headerStyle, width: 72 }}>{m}</th>
+                <th key={i} aria-current={isCur(i + 1) ? 'date' : undefined}
+                  style={{ ...headerStyle, width: 72, color: isCur(i + 1) ? 'var(--c-accent-text)' : headerStyle.color, background: curBg(i + 1) }}>{m}</th>
               ))}
               <th style={{ ...headerStyle, width: 90 }}>Рік</th>
             </tr>
@@ -247,28 +293,34 @@ export default function PlanningPage() {
                         const status = planStatus(type, actual, planned, monthDone(m));
 
                         return (
-                          <td key={m} style={{ padding: '4px', textAlign: 'center', position: 'relative' }}>
+                          <td key={m} style={{ padding: '4px', textAlign: 'center', position: 'relative', background: curBg(m) }}>
                             {isEdit ? (
-                              <div className="plan-edit-popover" style={{
-                                position: 'absolute', zIndex: 20, top: 0, left: '50%', transform: 'translateX(-50%)',
+                              <div className="plan-edit-popover" role="dialog" aria-label={`${cat.name}, ${MONTH_NAMES[m - 1].toLowerCase()}`} style={{
+                                position: 'absolute', zIndex: 20, left: '50%',
+                                ...(editCell?.up ? { top: '100%', transform: 'translate(-50%, -100%)' } : { top: 0, transform: 'translateX(-50%)' }),
                                 background: 'var(--c-elevated)', border: '1px solid #F97316', borderRadius: 10,
                                 padding: 10, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 180,
                                 boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
                               }}>
+                                {/* Which cell this is + its fact: on a phone the popover is a centred sheet, detached from the cell. */}
+                                <div style={{ fontSize: 12, color: 'var(--c-text-muted)', textAlign: 'left' }}>
+                                  {cat.name} · {MONTH_NAMES[m - 1].toLowerCase()}{actual !== 0 && ` · факт ${num(actual)}`}
+                                </div>
                                 <input
                                   ref={amountRef}
                                   type="number" value={editVal}
                                   onChange={e => setEditVal(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditCell(null); }}
+                                  onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') closeEdit(); }}
                                   placeholder={`Сума (${suffix})`}
                                   className="input-field" style={{ padding: '6px 10px' }}
                                 />
-                                <input
-                                  type="text" value={editNote}
+                                {/* Textarea so a long comment is readable in full, not cut off in a one-line field. */}
+                                <textarea
+                                  rows={2} value={editNote}
                                   onChange={e => setEditNote(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditCell(null); }}
+                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commitEdit(); } if (e.key === 'Escape') closeEdit(); }}
                                   placeholder="Коментар…"
-                                  className="input-field" style={{ padding: '6px 10px' }}
+                                  className="input-field" style={{ padding: '6px 10px', resize: 'none' }}
                                 />
                                 <div style={{ display: 'flex', gap: 6 }}>
                                   <button
@@ -280,11 +332,12 @@ export default function PlanningPage() {
                                     }}
                                   >Зберегти</button>
                                   <button
-                                    onClick={() => setEditCell(null)}
+                                    onClick={closeEdit}
+                                    aria-label="Скасувати"
                                     style={{
                                       padding: '5px 10px', borderRadius: 6,
-                                      border: '1px solid rgba(255,255,255,0.1)',
-                                      background: 'transparent', color: '#64748B', fontSize: 12,
+                                      border: '1px solid var(--c-border-hi)',
+                                      background: 'transparent', color: 'var(--c-text-muted)', fontSize: 12,
                                       cursor: 'pointer', fontFamily: 'inherit',
                                     }}
                                   >✕</button>
@@ -292,17 +345,19 @@ export default function PlanningPage() {
                               </div>
                             ) : null}
 
-                            <div
-                              onClick={() => startEdit(cat.id, m)}
+                            <button
+                              type="button"
+                              className="plan-cell"
+                              onClick={e => startEdit(cat.id, m, e.currentTarget)}
                               title={notes || undefined}
+                              aria-label={`${cat.name}, ${MONTH_NAMES[m - 1].toLowerCase()}: ${actual !== 0 ? `факт ${num(actual)}` : 'факту немає'}, ${planned > 0 ? `план ${num(planned)}` : 'плану немає'}${notes ? `, коментар: ${notes}` : ''}`}
                               style={{
-                                cursor: 'pointer', borderRadius: 6, padding: '4px 2px',
+                                width: '100%', border: 'none', background: 'transparent', color: 'inherit',
+                                borderRadius: 6, padding: '4px 2px',
                                 minHeight: 36, display: 'flex', flexDirection: 'column',
                                 justifyContent: 'center', alignItems: 'center', gap: 1,
-                                transition: 'background 0.1s', position: 'relative',
+                                position: 'relative',
                               }}
-                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--c-hover)')}
-                              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                             >
                               {actual !== 0 && (
                                 <span style={{
@@ -322,11 +377,11 @@ export default function PlanningPage() {
                               )}
                               {notes && (
                                 <MessageSquare
-                                  size={8} color="#F97316"
+                                  size={8} color="#F97316" aria-hidden
                                   style={{ position: 'absolute', top: 2, right: 2 }}
                                 />
                               )}
-                            </div>
+                            </button>
                           </td>
                         );
                       })}
@@ -359,7 +414,7 @@ export default function PlanningPage() {
                   {sectionTotalByMonth.map((tot, i) => {
                     const st = planStatus(type, tot.actual, tot.planned, monthDone(i + 1));
                     return (
-                      <td key={i} style={{ padding: '10px 4px', textAlign: 'center' }}>
+                      <td key={i} style={{ padding: '10px 4px', textAlign: 'center', background: curBg(i + 1) }}>
                         {tot.actual !== 0 ? (
                           <div style={{ fontSize: 12, fontWeight: 700, color: st ? STATUS_COLOR[st] : typeColor, fontVariantNumeric: 'tabular-nums' }}>
                             {formatCompact(tot.actual)}
@@ -392,12 +447,7 @@ export default function PlanningPage() {
           </tbody>
         </table>
       </div>
-
-      <div style={{ marginTop: 12, fontSize: 12, color: 'var(--c-text-muted)' }}>
-        Жирне = факт, сіре = план · Зелений = в межах · Червоний = перевитрата ·
-        <MessageSquare size={10} color="#F97316" style={{ verticalAlign: 'middle', margin: '0 3px' }} />
-        = є коментар (наведіть курсор)
-      </div>
+      )}
     </div>
   );
 }

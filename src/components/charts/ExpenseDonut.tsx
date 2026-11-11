@@ -21,7 +21,7 @@ const CustomTooltip = ({ active, payload }: any) => {
     }}>
       <p style={{ color: p.color, fontWeight: 600 }}>{name}</p>
       <p style={{ color: 'var(--c-text)' }}>{formatMoney(value)}</p>
-      <p style={{ color: '#64748B' }}>{pct}% від витрат</p>
+      <p style={{ color: 'var(--c-text-muted)' }}>{pct}% від витрат</p>
     </div>
   );
 };
@@ -37,7 +37,7 @@ export default function ExpenseDonut({ data, total }: Props) {
   const chartData = data.map(d => ({ ...d, value: d.amount, total }));
 
   return (
-    <div className="donut-row" style={{ display: 'flex', gap: 20, alignItems: 'center', minHeight: 240 }}>
+    <div className="donut-row" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 20, alignItems: 'center', minHeight: 240 }}>
       {/* Pie */}
       <div className="donut-chart-box" style={{ width: 180, height: 180, flexShrink: 0 }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -62,7 +62,8 @@ export default function ExpenseDonut({ data, total }: Props) {
 
       {/* Custom legend */}
       <div className="donut-legend" style={{
-        flex: 1, minWidth: 0, overflowY: 'auto', maxHeight: 240,
+        // minWidth is what makes a narrow card wrap the legend under the pie instead of squeezing it to nothing.
+        flex: 1, minWidth: 'min(220px, 100%)', overflowY: 'auto', maxHeight: 240,
         display: 'flex', flexDirection: 'column', gap: 5,
       }}>
         {chartData.map(item => {
@@ -80,7 +81,7 @@ export default function ExpenseDonut({ data, total }: Props) {
                 {item.name}
               </span>
               <span style={{
-                fontSize: 12, color: '#64748B',
+                fontSize: 12, color: 'var(--c-text-muted)',
                 fontVariantNumeric: 'tabular-nums', flexShrink: 0,
               }}>
                 {formatMoney(item.amount)}
@@ -88,7 +89,7 @@ export default function ExpenseDonut({ data, total }: Props) {
               <span style={{
                 fontSize: 12, fontWeight: 700, flexShrink: 0,
                 padding: '1px 6px', borderRadius: 4,
-                background: 'rgba(255,255,255,0.06)', color: '#94A3B8',
+                background: 'var(--c-hover)', color: 'var(--c-text-muted)',
                 minWidth: 34, textAlign: 'center',
               }}>
                 {pct}%

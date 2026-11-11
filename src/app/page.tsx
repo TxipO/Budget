@@ -346,8 +346,12 @@ export default function Dashboard() {
     // isn't a budget outcome, so DeltaBadge's usual up-is-good/down-is-good
     // framing doesn't apply. invertGood is arbitrary either way here.
     { label: 'Перекази',        key: 'transfers' as const, color: TYPE_COLORS.transfer, icon: ArrowLeftRight, bg: 'rgba(100,116,139,0.08)', invertGood: false },
-    { label: 'Вільний залишок', key: 'balance'   as const, color: 'var(--c-accent-hi)',            icon: Wallet,         bg: 'rgba(249,115,22,0.08)',  invertGood: false },
   ];
+
+  // Hero "Вільний залишок": words instead of a % pill — a % of a negative or
+  // sign-flipping base ("↓560%") says nothing, a krone amount always does.
+  const PREV_LABEL: Partial<Record<Period, string>> = { month: 'минулого місяця', quarter: 'попереднього кварталу', '6m': 'попередніх 6 міс.', year: 'минулого року' };
+  const balanceDiff = stats?.prev ? Math.round(stats.balance - stats.prev.balance) : null;
 
   const categoriesWithPlan = stats?.byCategory.filter(c => c.planned > 0) ?? [];
 
@@ -578,88 +582,99 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Stat cards */}
-      <div className="grid-5" style={{ marginBottom: 24 }}>
-        {loading
-          ? cardDefs.map(c => <SkeletonCard key={c.label} />)
-          : !stats
-          ? (
-            <div className="stat-card" style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <span style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>
-                {loadError ? 'Не вдалося завантажити дані за цей період' : 'Немає даних'}
-              </span>
-              <button className="btn-ghost" onClick={loadStats}>Спробувати ще раз</button>
+      {/* Stat cards: the free balance is the hero (full width, first), the
+          four period flows sit in a row below it. */}
+      {loading ? (
+        <>
+          <div style={{ marginBottom: 16 }}><SkeletonCard /></div>
+          <div className="grid-4" style={{ marginBottom: 24 }}>
+            {cardDefs.map(c => <SkeletonCard key={c.label} />)}
+          </div>
+        </>
+      ) : !stats ? (
+        <div className="stat-card" style={{ marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>
+            {loadError ? 'Не вдалося завантажити дані за цей період' : 'Немає даних'}
+          </span>
+          <button className="btn-ghost" onClick={loadStats}>Спробувати ще раз</button>
+        </div>
+      ) : (
+        <>
+          <div className="stat-card" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+              <span style={{ fontSize: 13, color: 'var(--c-text-muted)', fontWeight: 600 }}>Вільний залишок</span>
+              <div style={{ background: 'rgba(249,115,22,0.08)', borderRadius: 9, padding: 8 }}>
+                <Wallet size={16} color={stats.balance >= 0 ? TYPE_COLORS.income : TYPE_COLORS.expense} />
+              </div>
             </div>
-          )
-          : cardDefs.map(c => {
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px 32px', alignItems: 'end' }}>
+              <div>
+                {/* formatMoney() alone drops the sign (Math.abs inside) — a
+                    net-negative period must read "-", so the signed variant. */}
+                <div style={{ fontSize: 28, lineHeight: 1.2, fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginBottom: 6, color: stats.balance >= 0 ? 'var(--c-income-num)' : 'var(--c-expense-num)' }}>
+                  {formatMoneySign(stats.balance)}
+                </div>
+                {balanceDiff !== null && PREV_LABEL[period] && (
+                  <div style={{ fontSize: 14, fontWeight: 600, color: balanceDiff === 0 ? 'var(--c-text-muted)' : balanceDiff > 0 ? 'var(--c-pos-text)' : 'var(--c-neg-text)' }}>
+                    {balanceDiff === 0
+                      ? `Так само, як ${PREV_LABEL[period]}`
+                      : `На ${formatMoney(balanceDiff)} ${balanceDiff > 0 ? 'більше' : 'менше'}, ніж ${PREV_LABEL[period]}`}
+                  </div>
+                )}
+              </div>
+              {/* Cumulative (all-time) balance: a readable second number on the
+                  hero, not a footnote (critique 2026-11). Hidden with the
+                  "Накопичений залишок" dashboard preference, as before. */}
+              {sections.banners && (
+                <div>
+                  <div style={{ fontSize: 13, color: 'var(--c-text-muted)', fontWeight: 600, marginBottom: 4 }}>З початку</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: stats.cumBalance >= 0 ? 'var(--c-text-sec)' : 'var(--c-neg-text)' }}>
+                    {formatMoneySign(stats.cumBalance)}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="grid-4" style={{ marginBottom: 24 }}>
+            {cardDefs.map(c => {
               const val = stats[c.key];
-              const numColor = c.key === 'balance' ? (val >= 0 ? 'var(--c-income-num)' : 'var(--c-expense-num)')
-                : c.key === 'income' ? 'var(--c-income-num)' : c.key === 'expenses' ? 'var(--c-expense-num)'
+              const numColor = c.key === 'income' ? 'var(--c-income-num)' : c.key === 'expenses' ? 'var(--c-expense-num)'
                 : c.key === 'savings' ? 'var(--c-savings-num)' : 'var(--c-transfer-num)';
-              const cardColor = c.key === 'balance'
-                ? (val >= 0 ? TYPE_COLORS.income : TYPE_COLORS.expense)
-                : c.color;
               return (
                 <div key={c.label} className="stat-card">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                     <span style={{ fontSize: 13, color: 'var(--c-text-muted)', fontWeight: 600 }}>{c.label}</span>
                     <div style={{ background: c.bg, borderRadius: 9, padding: 8 }}>
-                      <c.icon size={16} color={cardColor} />
+                      <c.icon size={16} color={c.color} />
                     </div>
                   </div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: numColor, fontVariantNumeric: 'tabular-nums', marginBottom: 8 }}>
-                    {/* "Вільний залишок" and "Збереження" are the two cards
-                        that can genuinely go negative — a period with more
-                        withdrawals than deposits nets negative, same as a
-                        period spending more than it earns. formatMoney()
-                        alone silently drops the sign (Math.abs under the
-                        hood), which used to show a real net WITHDRAWAL
-                        month as a plain positive "110 kr" in savings-orange
-                        — reading as a deposit. Found live 2026-09-07: the
-                        first month this household's savings activity ever
-                        netted negative. Income/expenses/transfers never
-                        need this — each is already a sum of same-signed
-                        rows by construction, never negative. Colour stays
-                        each card's own regardless of sign (see the
-                        per-row sign fix's own comment from 2026-08-29 —
-                        a pot shrinking isn't a "bad" colour event the way
-                        overspending is). */}
-                    {c.key === 'balance' || c.key === 'savings' ? formatMoneySign(val) : formatMoney(val)}
+                  {/* Перекази are not a budget outcome — quieter than the rest. */}
+                  <div style={{ fontSize: c.key === 'transfers' ? 18 : 22, fontWeight: c.key === 'transfers' ? 700 : 800, color: numColor, fontVariantNumeric: 'tabular-nums', marginBottom: 8 }}>
+                    {/* "Збереження" can net negative (more withdrawals than
+                        deposits), and formatMoney() drops the sign — that
+                        once showed a net withdrawal month as a plain
+                        positive amount (found live 2026-09-07). Income /
+                        expenses / transfers are sums of same-signed rows,
+                        never negative. Colour stays the card's own
+                        regardless of sign. */}
+                    {c.key === 'savings' ? formatMoneySign(val) : formatMoney(val)}
                   </div>
                   {stats.prev && (
                     <DeltaBadge current={val} prev={stats.prev[c.key]} invertGood={c.invertGood} neutral={c.key === 'transfers'} />
                   )}
-                  {/* Cumulative (all-time) balance rides along as a quiet
-                      second line on the one card it's related to, instead of
-                      its own full-width banner competing with it for "the"
-                      hero number — see critique 2026-08-02, P1. */}
-                  {c.key === 'balance' && sections.banners && stats && (
-                    <div style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--c-border)',
-                      fontSize: 12, color: 'var(--c-text-muted)',
-                    }}>
-                      <span>З початку</span>
-                      <span style={{
-                        fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-                        color: stats.cumBalance >= 0 ? 'var(--c-text-sec)' : 'var(--c-neg-text)',
-                      }}>
-                        {formatMoneySign(stats.cumBalance)}
-                      </span>
-                    </div>
-                  )}
                 </div>
               );
-            })
-        }
-      </div>
+            })}
+          </div>
+        </>
+      )}
 
       {/* Budget progress bars (month view only, when plans exist) */}
       {sections.budget && stats && period === 'month' && categoriesWithPlan.length > 0 && (
         <div className="card card-pad" style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
             <Target size={16} color="var(--c-accent-hi)" />
-            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Бюджет по категоріях</h3>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Бюджет по категоріях</h2>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
             {categoriesWithPlan.map(cat => {
@@ -708,14 +723,14 @@ export default function Dashboard() {
           <div className="card card-pad">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
               <PieChart size={16} color="var(--c-accent-hi)" />
-              <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Витрати по категоріях</h3>
+              <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Витрати по категоріях</h2>
             </div>
             {stats ? <ExpenseDonut data={stats.byCategory} total={stats.expenses} /> : loading && <ChartSkeleton height={240} />}
           </div>
           <div className="card card-pad">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
               <LineChart size={16} color="var(--c-accent-hi)" />
-              <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Дохід та витрати</h3>
+              <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)' }}>Дохід та витрати</h2>
             </div>
             {stats ? <BalanceTrend data={stats.trend} /> : loading && <ChartSkeleton height={220} />}
           </div>
@@ -735,7 +750,7 @@ export default function Dashboard() {
             }}
           >
             <Wallet size={16} color="var(--c-accent-hi)" />
-            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', flex: 1 }}>Хто скільки</h3>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', flex: 1 }}>Хто скільки</h2>
             {userSectionOpen
               ? <ChevronUp size={16} color="var(--c-text-muted)" />
               : <ChevronDown size={16} color="var(--c-text-muted)" />}
@@ -796,36 +811,12 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Pending Monobank holds — not counted anywhere, purely informational */}
-      {pending.length > 0 && (
-        <div className="card card-pad" style={{ marginBottom: 24, opacity: 0.75 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4 }}>
-            Очікують підтвердження
-          </h3>
-          <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginBottom: 16 }}>
-            Банк ще не підтвердив ці покупки — не входять у підсумки, з'являться автоматично після підтвердження.
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {pending.map(p => (
-              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13 }}>
-                <span style={{ color: 'var(--c-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {p.description || 'Без опису'}
-                </span>
-                <span style={{ color: 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                  -{formatMoney(p.amount)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Recent transactions */}
       {sections.recent && (
       <div className="card card-pad">
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 20 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 20 }}>
           Останні транзакції
-        </h3>
+        </h2>
         {stats?.recent.length === 0 && (
           <div style={{ textAlign: 'center', color: 'var(--c-text-sub)', padding: '32px 0', fontSize: 14 }}>
             Немає транзакцій за цей період
@@ -907,6 +898,30 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      )}
+
+      {/* Pending Monobank holds — not counted anywhere, purely informational. Last on the page: they load async, so nothing above can shift when they arrive */}
+      {pending.length > 0 && (
+        <div className="card card-pad" style={{ marginTop: 24, opacity: 0.75 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4 }}>
+            Очікують підтвердження
+          </h2>
+          <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginBottom: 16 }}>
+            Банк ще не підтвердив ці покупки — не входять у підсумки, з'являться автоматично після підтвердження.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {pending.map(p => (
+              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13 }}>
+                <span style={{ color: 'var(--c-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {p.description || 'Без опису'}
+                </span>
+                <span style={{ color: 'var(--c-text-muted)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                  -{formatMoney(p.amount)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {showForm && (

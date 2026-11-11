@@ -22,7 +22,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       background: 'var(--c-raised)', border: '1px solid var(--c-border-hi)',
       borderRadius: 10, padding: '10px 14px', fontSize: 13, minWidth: 160,
     }}>
-      <p style={{ color: '#94A3B8', marginBottom: 8, fontWeight: 600 }}>{label}</p>
+      <p style={{ color: 'var(--c-text-muted)', marginBottom: 8, fontWeight: 600 }}>{label}</p>
       {payload.map((p: any) => (
         <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 4 }}>
           <span style={{ color: p.color }}>{p.name}</span>
