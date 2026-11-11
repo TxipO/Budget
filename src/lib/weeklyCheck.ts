@@ -84,6 +84,44 @@ async function collectProblems(householdIds?: number[]): Promise<Map<number, str
     for (const u of mono) add(u.householdId, `Баланс Monobank (${u.name}) не оновлюється: ${age(u.monoBalanceFetchedAt)}. Перевір крон і токен Monobank.`);
   });
 
+  // «Connected, no errors, but silently empty»: 2026-11-11 Monobank was bound to an empty
+  // EUR account, every sync "succeeded" with 0 rows while the real card kept spending.
+  // Snapshot {balanceAmount, fetchedAt} per feed in AppSetting 'balanceCheck:<mono:userId|sb:accountId>';
+  // once a fresher balance differs by >= 1 unit but the feed produced no row (created or
+  // dated) since the snapshot, the selected card/account is probably the wrong one.
+  // First run only seeds. ponytail: a feed that is really idle but earns/loses >= 1 unit
+  // (interest, fees) alerts once per change; raise MIN_DELTA if that gets noisy.
+  await safe('баланс без транзакцій', async () => {
+    const check = async (key: string, balance: number, fetchedAt: Date, rowsSince: (since: Date) => Promise<number>) => {
+      const prev = await prisma.appSetting.findUnique({ where: { key } });
+      const snap = prev ? JSON.parse(prev.value) : null;
+      if (snap && fetchedAt <= new Date(snap.fetchedAt)) return null; // no fresher balance yet
+      const since = snap ? new Date(snap.fetchedAt) : null;
+      const alert = since && Math.abs(balance - snap.balanceAmount) >= 1 && (await rowsSince(since)) === 0
+        ? Math.max(1, Math.round((fetchedAt.getTime() - since.getTime()) / 864e5)) : null;
+      const value = JSON.stringify({ balanceAmount: balance, fetchedAt: fetchedAt.toISOString() });
+      await prisma.appSetting.upsert({ where: { key }, create: { key, value }, update: { value } });
+      return alert;
+    };
+    const win = (since: Date) => ({ OR: [{ createdAt: { gt: since } }, { date: { gte: new Date(since.getTime() - 864e5) } }] });
+    const monoUsers = await prisma.user.findMany({
+      where: { householdId: inHh, monoTokenEnc: { not: null }, monoAccountId: { not: null }, monoBalanceAmount: { not: null }, monoBalanceFetchedAt: { not: null } },
+      select: { id: true, name: true, householdId: true, monoBalanceAmount: true, monoBalanceFetchedAt: true },
+    });
+    for (const u of monoUsers) {
+      const days = await check(`balanceCheck:mono:${u.id}`, u.monoBalanceAmount!, u.monoBalanceFetchedAt!, since => prisma.transaction.count({ where: { userId: u.id, source: 'mono', ...win(since) } }));
+      if (days) add(u.householdId, `Monobank ${u.name}: баланс змінився, а транзакцій за ${days} дн. немає — перевірте вибрану картку в Налаштуваннях.`);
+    }
+    const sbAccts = await prisma.sparebankAccount.findMany({
+      where: { syncEnabled: true, balanceAmount: { not: null }, balanceFetchedAt: { not: null }, user: { householdId: inHh } },
+      select: { id: true, label: true, balanceAmount: true, balanceFetchedAt: true, user: { select: { name: true, householdId: true } } },
+    });
+    for (const a of sbAccts) {
+      const days = await check(`balanceCheck:sb:${a.id}`, a.balanceAmount!, a.balanceFetchedAt!, since => prisma.transaction.count({ where: { source: 'sparebank', sbTransactionId: { startsWith: `sb${a.id}|` }, ...win(since) } }));
+      if (days) add(a.user.householdId, `SpareBank «${a.label}» (${a.user.name}): баланс змінився, а транзакцій за ${days} дн. немає — перевірте, що синхронізується потрібний рахунок.`);
+    }
+  });
+
   // Sync health: the cron alerts on its own failures, but only on the 2nd/3rd/... one
   // and only when Telegram delivery works; this is the independent weekly backstop.
   // SpareBank only for users whose consent is still valid (an expired one is the

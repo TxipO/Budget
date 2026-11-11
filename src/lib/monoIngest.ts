@@ -110,6 +110,11 @@ const REVERSAL_PREFIX = /^Скасування\.\s*(.+)$/i;
 const REVERSAL_WINDOW_DAYS = 30;
 const REVERSAL_AMOUNT_TOLERANCE = 0.01;
 
+// The bank's own system text for an account migration: a debit + a credit of the same
+// amount the same day, both just the money moving to the new account. Matched on the
+// text (not a merchant) and excluded as a transfer by itself, so either leg order works.
+const MIGRATION_TEXT = /в рамках міграції рахунку/i;
+
 const DAY_MS = 24 * 3600 * 1000;
 
 function reversalWhere(userId: number, amountOriginal: number, date: Date) {
@@ -226,8 +231,9 @@ export async function ingestStatementItem(userId: number, householdId: number, i
 
   // Is this the household moving money between Паша's and Женя's own
   // connected Monobank accounts? See findMonoTransferMatch's own comment.
-  const matchedTransferId = reversalOriginal ? null : await findMonoTransferMatch(householdId, userId, txType, amount, date);
-  let isTransfer = matchedTransferId !== null || reversalOriginal !== null;
+  const migration = MIGRATION_TEXT.test(item.description || '');
+  const matchedTransferId = reversalOriginal || migration ? null : await findMonoTransferMatch(householdId, userId, txType, amount, date);
+  let isTransfer = migration || matchedTransferId !== null || reversalOriginal !== null;
 
   let categoryId: number;
   let categorySource: string | null = null; // only the non-transfer branch below actually runs resolveCategoryId
@@ -360,6 +366,14 @@ export async function ingestStatementItem(userId: number, householdId: number, i
     await prisma.transaction.updateMany({
       where: { id: pairedReversalId, AND: [NOT_MANUAL] },
       data: { categoryId, categorySource: 'reversal', isTransfer: true },
+    });
+  }
+  // Account migration: an opposite leg stored before this rule existed (or counted by
+  // an older ingest) is excluded too. Same user + same day only.
+  if (migration) {
+    await prisma.transaction.updateMany({
+      where: { userId, source: 'mono', isTransfer: false, date, id: { not: createdId }, monoMerchant: { contains: 'в рамках міграції рахунку', mode: 'insensitive' as const }, AND: [NOT_MANUAL] },
+      data: { categoryId, isTransfer: true },
     });
   }
   // Cross-bank match: only flip isTransfer on the other leg, never its

@@ -91,6 +91,15 @@ async function main() {
   if (halfConnected.length) fail(`${halfConnected.length} user(s) have a Monobank token but no webhookSecret — sync is silently broken: ${halfConnected.map(u => u.name).join(', ')}. Reconnect via Settings.`);
   else pass('every user with a stored Monobank token also has a webhookSecret');
 
+  // ── Step 4d2: Monobank account-migration legs must be excluded ──────────
+  step('4d2', 'Monobank account-migration legs counted');
+  // 2026-11-11: «Списання/Зарахування коштів в рамках міграції рахунку» (same amount, same
+  // day) were imported as an expense + an income, inflating both. monoIngest now marks
+  // such items isTransfer; a counted one is a row that predates it or slipped past it.
+  const migCounted = txs.filter(t => t.source === 'mono' && !t.isTransfer && /в рамках міграції рахунку/i.test(t.monoMerchant ?? ''));
+  if (migCounted.length) fail(`${migCounted.length} counted Monobank account-migration row(s) (set isTransfer): ${migCounted.map(t => `#${t.id}`).join(', ')}`);
+  else pass('no counted Monobank account-migration rows');
+
   // ── Step 4e: undetected SpareBank same-person internal transfers ────────
   step('4e', 'SpareBank same-person transfer detection');
   // FOUND LIVE 2026-08-28: a checking<->pillow transfer's first sync landed
