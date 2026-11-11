@@ -28,6 +28,17 @@ async function call(path: string, token: string, init?: RequestInit) {
     ...init,
     headers: { 'X-Token': token, ...(init?.headers ?? {}) },
   });
+  // Monobank answers errors with {"errorDescription": "..."} — keep it (short,
+  // one line, token scrubbed) instead of a bare status, and log it with the
+  // account id masked.
+  let desc = '';
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    let raw = text;
+    try { raw = JSON.parse(text)?.errorDescription ?? text; } catch { /* not JSON */ }
+    desc = String(raw).split(token).join('***').replace(/\s+/g, ' ').trim().slice(0, 150);
+    console.error('[monobank]', init?.method ?? 'GET', path.replace(/(\/statement\/)([^/]+)/, (_, p, id) => `${p}…${id.slice(-4)}`), res.status, desc);
+  }
   if (res.status === 429) {
     throw new MonobankError('Забагато запитів до Monobank — спробуйте за хвилину', 429);
   }
@@ -35,9 +46,20 @@ async function call(path: string, token: string, init?: RequestInit) {
     throw new MonobankError('Невалідний токен Monobank', 403);
   }
   if (!res.ok) {
-    throw new MonobankError(`Monobank API помилка: ${res.status}`, res.status);
+    throw new MonobankError(`Monobank API помилка: ${res.status}${desc ? ` — ${desc}` : ''}`, res.status);
   }
   return res.json();
+}
+
+// Never throws; null clears. Surfaced in /api/monobank/status and the dashboard
+// badge — before this a failing statement fetch was swallowed by fallbacks.
+export async function recordMonoSyncError(userId: number, error: string | null) {
+  try {
+    if (error === null) await prisma.user.updateMany({ where: { id: userId, monoLastSyncError: { not: null } }, data: { monoLastSyncError: null } });
+    else await prisma.user.update({ where: { id: userId }, data: { monoLastSyncError: error } });
+  } catch (e) {
+    console.error('[monobank] recordMonoSyncError failed for user', userId, e);
+  }
 }
 
 export interface MonoAccount {

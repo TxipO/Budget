@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { decrypt } from '@/lib/crypto';
-import { getStatement, MonobankError, getCachedExchangeRate } from '@/lib/monobank';
+import { getStatement, MonobankError, getCachedExchangeRate, recordMonoSyncError } from '@/lib/monobank';
 import { MONO_CCY_NAMES, ingestStatementItem } from '@/lib/monoIngest';
 import { requireHouseholdId } from '@/lib/household';
 import { roundMoney } from '@/lib/validate';
@@ -36,6 +36,10 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // holds don't need to be fresher than this,
 // there once settled), leaving the purchase invisible in both places — the
 // exact "чому не бачу транзакцій" confusion this route exists to prevent.
 const LOOKBACK_DAYS = 14;
+// A stale cache only cushions a transient Monobank blip. Past this it is
+// worse than nothing: 2026-11-11 the same week-old holds were shown as current
+// for 8 days while the statement call was failing every time.
+const STALE_CACHE_MAX_MS = 24 * 3600 * 1000;
 
 interface PendingItem {
   id: string;
@@ -91,13 +95,21 @@ export async function GET(req: NextRequest) {
       const from = to - LOOKBACK_DAYS * 24 * 3600;
       statement = await getStatement(token, user.monoAccountId, from, to);
     } catch (e) {
+      // 429 is the rate limit, not a broken link — don't flag it on the dashboard.
+      if (e instanceof MonobankError && e.status !== 429) await recordMonoSyncError(userId, e.message);
       // Serve stale cache rather than fail the dashboard over a transient
       // Monobank error or rate-limit — the dashboard showing yesterday's
       // pending list a few minutes late is fine; showing an error isn't.
-      if (cached) return NextResponse.json((JSON.parse(cached.value) as { items: PendingItem[] }).items);
+      // But only while it is recent (STALE_CACHE_MAX_MS).
+      if (cached) {
+        const { items, fetchedAt } = JSON.parse(cached.value) as { items: PendingItem[]; fetchedAt: number };
+        return NextResponse.json(Date.now() - fetchedAt < STALE_CACHE_MAX_MS ? items : []);
+      }
       if (e instanceof MonobankError) return NextResponse.json([]);
       throw e;
     }
+
+    await recordMonoSyncError(userId, null);
 
     const holds: PendingItem[] = [];
     for (const i of statement) {

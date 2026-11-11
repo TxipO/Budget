@@ -47,7 +47,7 @@ export default function SettingsPage() {
 
   const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
 
-  const [monoStatus, setMonoStatus] = useState<{ userId: number; name: string; connected: boolean; accountId: string | null; balanceAmount: number | null; balanceCurrency: string | null; balanceFetchedAt: string | null }[]>([]);
+  const [monoStatus, setMonoStatus] = useState<{ userId: number; name: string; connected: boolean; accountId: string | null; balanceAmount: number | null; balanceCurrency: string | null; balanceFetchedAt: string | null; lastSyncError: string | null }[]>([]);
   const [llmStatus, setLlmStatus] = useState<{ status: 'alive' | 'dead' | 'unknown'; llmCount: number; fallbackCount: number; lookbackDays: number } | null>(null);
   const [monoTokenInput, setMonoTokenInput] = useState<Record<number, string>>({});
   const [monoConnecting, setMonoConnecting] = useState<number | null>(null);
@@ -869,9 +869,15 @@ export default function SettingsPage() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                     <span style={{ fontSize: 12, color: '#64748B' }}>Monobank</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--c-pos-text)' }}>
-                        <CheckCircle size={13} /> Підключено
-                      </span>
+                      {mono?.lastSyncError ? (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--c-accent-text)' }}>
+                          <AlertTriangle size={13} /> Помилка синхронізації
+                        </span>
+                      ) : (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--c-pos-text)' }}>
+                          <CheckCircle size={13} /> Підключено
+                        </span>
+                      )}
                       <button
                         className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
                         disabled={monoSyncing === u.id} onClick={() => syncMono(u.id)}
@@ -884,11 +890,17 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 )}
+                {monoConnected && mono?.lastSyncError && (
+                  <div style={{ marginTop: 4, fontSize: 12, color: 'var(--c-accent-text)' }}>
+                    Не вдається отримати виписку — {mono.lastSyncError}
+                    {!mono.lastSyncError.includes('перепідключіть') && ' Якщо не минає — відключіть і підключіть Monobank знову.'}
+                  </div>
+                )}
                 {monoConnected && (
                   // Account currency (UAH), not the household's — own line so it
                   // wraps under the buttons instead of widening the row at 360px.
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '2px 8px', marginTop: 4, fontSize: 12 }}>
-                    {mono?.balanceAmount != null ? (
+                    {mono?.balanceAmount != null && !mono.lastSyncError?.includes('не знайдено') ? (
                       <>
                         <span style={{ color: 'var(--c-text-sec)' }}>Баланс: {fmtBalance(mono.balanceAmount, mono.balanceCurrency)}</span>
                         <BalanceAge fetchedAt={mono.balanceFetchedAt} />

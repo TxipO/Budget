@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isPositiveInt } from '@/lib/validate';
 import { decrypt } from '@/lib/crypto';
-import { getStatement, MonobankError } from '@/lib/monobank';
+import { getStatement, MonobankError, recordMonoSyncError } from '@/lib/monobank';
 import { ingestStatementItem, MonoStatementItem } from '@/lib/monoIngest';
 import { requireHouseholdId } from '@/lib/household';
 import { refreshMonoBalance } from '@/lib/monoBalance';
@@ -57,9 +57,13 @@ export async function POST(req: NextRequest) {
     try {
       items = await getStatement(token, user.monoAccountId, from, to);
     } catch (e) {
-      if (e instanceof MonobankError) return NextResponse.json({ error: e.message }, { status: e.status === 429 ? 429 : 400 });
+      if (e instanceof MonobankError) {
+        if (e.status !== 429) await recordMonoSyncError(user.id, e.message); // 429 = rate limit, not a broken link
+        return NextResponse.json({ error: e.message }, { status: e.status === 429 ? 429 : 400 });
+      }
       throw e;
     }
+    await recordMonoSyncError(user.id, null);
 
     let created = 0;
     let skippedHold = 0;

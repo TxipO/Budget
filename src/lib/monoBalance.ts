@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { decrypt } from '@/lib/crypto';
-import { getClientInfo, pickMonoAccount, findMonoClientConflict, MonobankError } from '@/lib/monobank';
+import { getClientInfo, pickMonoAccount, findMonoClientConflict, recordMonoSyncError, MonobankError } from '@/lib/monobank';
 import { notifyHousehold } from '@/lib/telegramBot';
 import { MONO_CCY_NAMES } from '@/lib/monoIngest';
 
@@ -44,7 +44,22 @@ export async function refreshMonoBalance(userId: number): Promise<MonoBalanceRes
       }
     }
     const accounts = info.accounts ?? [];
-    const account = accounts.find(a => a.id === user.monoAccountId) ?? pickMonoAccount(accounts);
+    // A stored card id that client-info no longer lists (reissued/closed card) must
+    // NOT silently fall back to another account — that masked a dead statement id
+    // for 8 days (2026-11-11). pickMonoAccount only for users with no stored id.
+    const account = user.monoAccountId ? accounts.find(a => a.id === user.monoAccountId) : pickMonoAccount(accounts);
+    if (user.monoAccountId && !account) {
+      const msg = 'картку/рахунок Monobank не знайдено — перепідключіть Monobank у Налаштуваннях';
+      console.error('[monoBalance] stored account …' + user.monoAccountId.slice(-4), 'not in client-info for user', userId);
+      await recordMonoSyncError(userId, msg);
+      const key = `monoAccountMissing:${userId}`;
+      const seen = await prisma.appSetting.findUnique({ where: { key } });
+      if (user.householdId && seen?.value !== user.monoAccountId) {
+        await notifyHousehold(user.householdId, `⚠️ Monobank (${user.name}): ${msg}.`);
+        await prisma.appSetting.upsert({ where: { key }, create: { key, value: user.monoAccountId }, update: { value: user.monoAccountId } });
+      }
+      return { ok: false, amount: null, currency: null, error: msg };
+    }
     if (!account || !Number.isFinite(account.balance)) return { ok: false, amount: null, currency: null, error: 'no account' };
     const amount = Math.round(account.balance) / 100; // kopecks -> UAH, exactly 2 decimals
     const currency = MONO_CCY_NAMES[account.currencyCode] ?? String(account.currencyCode);

@@ -191,7 +191,7 @@ export default function Dashboard() {
       fetch('/api/monobank/status').then(r => r.ok ? r.json() : []).catch(() => []),
       fetch('/api/sparebank/status').then(r => r.ok ? r.json() : []).catch(() => []),
     ]).then(([mono, sb]: [
-      { userId: number; name: string; connected: boolean; balanceFetchedAt: string | null }[],
+      { userId: number; name: string; connected: boolean; balanceFetchedAt: string | null; lastSyncError: string | null }[],
       { userId: number; name: string; connected: boolean; expired: boolean; validUntil: string | null; autoSync: boolean; lastAutoSyncAt: string | null; autoSyncFailCount: number; lastSyncError: string | null; accounts: { syncEnabled: boolean; balanceFetchedAt: string | null }[] }[],
     ]) => {
       const conns: BankConnection[] = [
@@ -213,6 +213,7 @@ export default function Dashboard() {
         const old = s.accounts.filter(a => a.syncEnabled && a.balanceFetchedAt && t - new Date(a.balanceFetchedAt).getTime() > BALANCE_ISSUE_MS).map(a => new Date(a.balanceFetchedAt!).getTime());
         if (old.length) found.push(`${s.name}: баланс SpareBank 1 не оновлювався з ${dm(Math.min(...old))}`);
       }
+      for (const m of mono.filter(m => m.connected && m.lastSyncError)) found.push(`Monobank ${m.name}: не вдається отримати виписку — ${m.lastSyncError}`);
       for (const m of mono.filter(m => m.connected && m.balanceFetchedAt && t - new Date(m.balanceFetchedAt).getTime() > BALANCE_ISSUE_MS)) {
         found.push(`${m.name}: баланс Monobank не оновлювався з ${dm(m.balanceFetchedAt!)}`);
       }
