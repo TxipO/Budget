@@ -1,0 +1,49 @@
+name: DB backup
+
+# Offsite copy of the production DB, independent of the laptop. The repo is PUBLIC and
+# artifacts/logs are readable by any logged-in GitHub user, so the dump is encrypted
+# before upload and the logs carry only sizes and row counts. See scripts/restore-backup.md.
+on:
+  schedule:
+    - cron: '30 2 * * *' # daily, 02:30 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci # postinstall runs `prisma generate`
+
+      - name: Dump, encrypt, discard plaintext
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          [ -n "$DATABASE_URL" ] || { echo "::error::Repo secret DATABASE_URL is not set"; exit 1; }
+          [ -n "$BACKUP_PASSPHRASE" ] || { echo "::error::Repo secret BACKUP_PASSPHRASE is not set"; exit 1; }
+          out="$RUNNER_TEMP/backup"; mkdir -p "$out"
+          node scripts/backup-db.mjs "$out"
+          plain=$(ls "$out"/budget-*.json.gz)
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:BACKUP_PASSPHRASE -in "$plain" -out "$plain.enc"
+          # prove the encrypted file decrypts to the same bytes before the plaintext goes away
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:BACKUP_PASSPHRASE -in "$plain.enc" | cmp - "$plain"
+          rm -f "$plain"
+          echo "encrypted backup: $(stat -c %s "$plain.enc") bytes"
+          echo "BACKUP_FILE=$plain.enc" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: ${{ env.BACKUP_FILE }}
+          retention-days: 90
+          if-no-files-found: error

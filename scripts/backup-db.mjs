@@ -1,5 +1,6 @@
 // Full logical backup of the production Postgres (read-only: findMany only).
-// Usage: node scripts/backup-db.mjs   (run by scripts/backup-db.ps1 / BudgetDbBackup task)
+// Usage: node scripts/backup-db.mjs [outDir]   (run by scripts/backup-db.ps1 / BudgetDbBackup task)
+// CI (.github/workflows/db-backup.yml): outDir / BACKUP_DIR given -> only that dir is written (no OneDrive copy).
 //
 // Output: backups/budget-YYYYMMDD-HHmm.json.gz (+ copy in %USERPROFILE%\OneDrive\BudgetBackups)
 //   { meta: { createdAt, prismaVersion, schemaHash, counts, redacted }, data: { model: rows[] } }
@@ -18,15 +19,16 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync, unlinkSync, copyFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 process.chdir(root); // Prisma resolves .env relative to cwd
 
-const SECRET_COL = /(enc|secret|hash|token)$/i;
+const SECRET_COL = /(enc|secret|hash|token|password|session|clientid)$/i; // clientid: monoClientId
 const SECRET_SETTING = /hash|secret|token|session|^pin|enc$/i;
+const outDirArg = process.argv[2] || process.env.BACKUP_DIR; // set -> CI/test run
 const KEEP_LOCAL = 30, KEEP_ONEDRIVE = 90;
 
 const prisma = new PrismaClient();
@@ -64,7 +66,7 @@ async function main() {
   const gz = gzipSync(Buffer.from(JSON.stringify({ meta, data }, jsonReplacer)));
 
   const name = `budget-${stamp()}.json.gz`;
-  const localDir = join(root, 'backups');
+  const localDir = outDirArg ? resolve(outDirArg) : join(root, 'backups');
   mkdirSync(localDir, { recursive: true });
   const localFile = join(localDir, name);
   writeFileSync(localFile, gz);
@@ -77,7 +79,7 @@ async function main() {
 
   const oneDriveRoot = join(homedir(), 'OneDrive');
   let offsite = 'skipped (no OneDrive)';
-  if (existsSync(oneDriveRoot)) {
+  if (!outDirArg && existsSync(oneDriveRoot)) {
     const od = join(oneDriveRoot, 'BudgetBackups');
     mkdirSync(od, { recursive: true });
     copyFileSync(localFile, join(od, name));
@@ -93,7 +95,8 @@ async function main() {
 }
 
 main().then(() => prisma.$disconnect()).catch(async (e) => {
-  console.error('[backup] FAILED:', e?.message ?? e);
+  // public CI logs: Prisma messages can carry the DB host, so print only the error kind there
+  console.error('[backup] FAILED:', process.env.CI ? (e?.code ?? e?.name ?? 'error') : (e?.message ?? e));
   await prisma.$disconnect().catch(() => {});
   process.exit(1);
 });
