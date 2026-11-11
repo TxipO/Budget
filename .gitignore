@@ -26,3 +26,8 @@ graphify-out/
 
 # DB backups (contain financial data)
 backups/
+.impeccable/critique/
+.impeccable/mocks/
+.impeccable/questions/
+.impeccable/live/
+.impeccable/review/
