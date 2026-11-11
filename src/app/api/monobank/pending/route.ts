@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { decrypt } from '@/lib/crypto';
 import { getStatement, MonobankError, getCachedExchangeRate, recordMonoSyncError } from '@/lib/monobank';
 import { MONO_CCY_NAMES, ingestStatementItem } from '@/lib/monoIngest';
+import { monoSkippedMsg } from '@/lib/monoSync';
 import { requireHouseholdId } from '@/lib/household';
 import { roundMoney } from '@/lib/validate';
 import { numericForCurrency } from '@/lib/currencies';
@@ -109,8 +110,8 @@ export async function GET(req: NextRequest) {
       throw e;
     }
 
-    await recordMonoSyncError(userId, null);
-
+    // Cleared only after the loop: an item that could not be processed keeps the badge up.
+    let failed = 0;
     const holds: PendingItem[] = [];
     for (const i of statement) {
       if (i.hold) {
@@ -131,7 +132,7 @@ export async function GET(req: NextRequest) {
           // runs on every ingest) — skip this hold rather than show a
           // plausible-looking but wrong number; it reappears next refresh
           // once a rate is available, or once it settles for real.
-          if (rate === null) continue;
+          if (rate === null) { failed++; continue; }
           amountTarget = roundMoney(amountTarget * rate);
         }
         holds.push({
@@ -148,9 +149,11 @@ export async function GET(req: NextRequest) {
         // the user deliberately deleted before that date — the same guard
         // monobank/sync applies, but here it wraps only the write, leaving
         // the hold display above untouched.
-        try { await ingestStatementItem(userId, householdId, i); } catch (e) { console.error('[monobank/pending] opportunistic ingest failed', e); }
+        try { await ingestStatementItem(userId, householdId, i); } catch (e) { console.error('[monobank/pending] opportunistic ingest failed', e); failed++; }
       }
     }
+
+    await recordMonoSyncError(userId, failed ? monoSkippedMsg(failed) : null);
 
     await prisma.appSetting.upsert({
       where: { key: cacheKey },

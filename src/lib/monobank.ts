@@ -153,6 +153,10 @@ export async function getExchangeRate(fromCcy: number, toCcy: number): Promise<n
   return null;
 }
 const FX_CACHE_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
+// A stale rate only cushions a short Monobank outage. Past this it is a plausible
+// WRONG number (an 18-day-old USD rate was being served, 2026-11-11) — null
+// instead, which every caller already treats as skip/throw and surfaces.
+const FX_STALE_MAX_MS = 7 * 24 * 3600 * 1000;
 
 // Monobank's currency endpoint has no auth but is still a live network call
 // on every webhook delivery if uncached — cache in AppSetting (already used
@@ -161,13 +165,11 @@ const FX_CACHE_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 // not hitting an external API on every single imported transaction.
 export async function getCachedExchangeRate(fromCcy: number, toCcy: number): Promise<number | null> {
   const key = `fxRate:${fromCcy}:${toCcy}`;
-  const cached = await prisma.appSetting.findUnique({ where: { key } });
-  if (cached) {
-    const parsed = JSON.parse(cached.value) as { rate: number; fetchedAt: number };
-    if (Date.now() - parsed.fetchedAt < FX_CACHE_MAX_AGE_MS) return parsed.rate;
-  }
+  const row = await prisma.appSetting.findUnique({ where: { key } });
+  const cached = row ? (JSON.parse(row.value) as { rate: number; fetchedAt: number }) : null;
+  if (cached && Date.now() - cached.fetchedAt < FX_CACHE_MAX_AGE_MS) return cached.rate;
   const rate = await getExchangeRate(fromCcy, toCcy);
-  if (rate === null) return cached ? (JSON.parse(cached.value) as { rate: number }).rate : null; // serve stale rather than fail the import
+  if (rate === null) return cached && Date.now() - cached.fetchedAt < FX_STALE_MAX_MS ? cached.rate : null;
   await prisma.appSetting.upsert({
     where: { key },
     update: { value: JSON.stringify({ rate, fetchedAt: Date.now() }) },

@@ -54,7 +54,7 @@ export default function SettingsPage() {
   const [monoSyncing, setMonoSyncing] = useState<number | null>(null);
 
   interface SbAccount { id: number; label: string; iban: string | null; syncEnabled: boolean; lastSyncedAt: string | null; balanceAmount: number | null; balanceCurrency: string | null; balanceFetchedAt: string | null; categoryId: number | null }
-  const [sbStatus, setSbStatus] = useState<{ userId: number; name: string; connected: boolean; expired: boolean; validUntil: string | null; autoSync: boolean; lastAutoSyncAt: string | null; autoSyncFailCount: number; accounts: SbAccount[] }[]>([]);
+  const [sbStatus, setSbStatus] = useState<{ userId: number; name: string; connected: boolean; expired: boolean; validUntil: string | null; autoSync: boolean; lastAutoSyncAt: string | null; lastAutoSyncOkAt: string | null; autoSyncFailCount: number; lastSyncError: string | null; accounts: SbAccount[] }[]>([]);
   const [sbAutoSyncToggling, setSbAutoSyncToggling] = useState<number | null>(null);
   const [sbConnecting, setSbConnecting] = useState<number | null>(null);
   const [sbSyncing, setSbSyncing] = useState<number | null>(null);
@@ -1045,9 +1045,9 @@ export default function SettingsPage() {
                     {sb.autoSync && (
                       <span style={{ fontSize: 12, color: sb.autoSyncFailCount > 0 ? 'var(--c-accent-text)' : 'var(--c-text-muted)' }}>
                         {sb.autoSyncFailCount > 0
-                          ? `Не вдалось ${sb.autoSyncFailCount} раз(и) поспіль`
-                          : sb.lastAutoSyncAt
-                            ? `Востаннє: ${new Date(sb.lastAutoSyncAt).toLocaleString('uk-UA')}`
+                          ? `Востаннє успішно: ${sb.lastAutoSyncOkAt ? new Date(sb.lastAutoSyncOkAt).toLocaleString('uk-UA') : 'ще ніколи'}. Не вдалось ${sb.autoSyncFailCount} раз(и) поспіль${sb.lastSyncError ? `: ${sb.lastSyncError}` : ''}`
+                          : sb.lastAutoSyncOkAt
+                            ? `Востаннє успішно: ${new Date(sb.lastAutoSyncOkAt).toLocaleString('uk-UA')}`
                             : 'Ще не запускалась'}
                       </span>
                     )}

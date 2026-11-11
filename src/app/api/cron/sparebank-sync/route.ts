@@ -5,6 +5,8 @@ import { syncSparebankAccount, EnableBankingError } from '@/lib/sparebankSync';
 import { notifyHousehold } from '@/lib/telegramBot';
 import { refreshSparebankBalances } from '@/lib/sparebankBalances';
 import { refreshStaleMonoBalances } from '@/lib/monoBalance';
+import { syncMonoUsers } from '@/lib/monoSync';
+import { runWeeklyCheckIfDue } from '@/lib/weeklyCheck';
 
 // Unattended background sync, opt-in per user (User.sbAutoSync) — the cron
 // counterpart to api/sparebank/sync's manual button. No end-user request
@@ -135,7 +137,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (!userFailed) {
-      await prisma.user.update({ where: { id: user.id }, data: { sbLastAutoSyncAt: new Date(), sbSyncFailCount: 0, sbLastSyncError: null } });
+      await prisma.user.update({ where: { id: user.id }, data: { sbLastAutoSyncAt: new Date(), sbLastAutoSyncOkAt: new Date(), sbSyncFailCount: 0, sbLastSyncError: null } });
       // Never throws, never feeds the failure bookkeeping above — see
       // BALANCE_MIN_AGE_MS. psu=null: same unattended bucket as the sync.
       const balances = await refreshSparebankBalances(user.sparebankAccounts, null, { minAgeMs: BALANCE_MIN_AGE_MS });
@@ -154,6 +156,16 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Monobank statement sync (the webhook is best-effort and nothing else polls it).
+  // Isolated: a Monobank failure never fails the SpareBank part above. Runs before the
+  // balance refresh, same order as the manual sync (which refreshes the balance itself).
+  let monoSync: Awaited<ReturnType<typeof syncMonoUsers>> = [];
+  try {
+    monoSync = await syncMonoUsers();
+  } catch (e) {
+    console.error('[cron/sparebank-sync] mono sync failed', e);
+  }
+
   // Monobank balances: no bank quota concern (token-based, ~1 req/60s), and
   // independent of SpareBank — a Monobank-only user isn't in the query above.
   // Runs on every authorized fire (GitHub fires up to 4x/day), each user
@@ -165,5 +177,15 @@ export async function GET(req: NextRequest) {
     console.error('[cron/sparebank-sync] mono balance refresh failed', e);
   }
 
-  return NextResponse.json({ ok: true, results, monoBalances });
+  // Weekly health check, at most once per 7 days (gated by an AppSetting marker inside).
+  // Last, so it sees this run's fresh balances and sync counters.
+  let weekly: Awaited<ReturnType<typeof runWeeklyCheckIfDue>> | { error: true } = { ran: false };
+  try {
+    weekly = await runWeeklyCheckIfDue();
+  } catch (e) {
+    console.error('[cron/sparebank-sync] weekly check failed', e);
+    weekly = { error: true };
+  }
+
+  return NextResponse.json({ ok: true, results, monoSync, monoBalances, weekly });
 }

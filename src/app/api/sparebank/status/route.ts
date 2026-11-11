@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
       where: { householdId },
       select: {
         id: true, name: true, sbSessionEnc: true, sbValidUntil: true,
-        sbAutoSync: true, sbLastAutoSyncAt: true, sbSyncFailCount: true, sbLastSyncError: true,
+        sbAutoSync: true, sbLastAutoSyncAt: true, sbLastAutoSyncOkAt: true, sbSyncFailCount: true, sbLastSyncError: true,
         sparebankAccounts: {
           select: { id: true, label: true, iban: true, syncEnabled: true, lastSyncedAt: true, balanceAmount: true, balanceCurrency: true, balanceFetchedAt: true, categoryId: true },
           orderBy: { id: 'asc' },
@@ -25,6 +25,9 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { id: 'asc' },
     });
+    // Server-side weekly check marker (lib/weeklyCheck.ts) — same for every row; the dashboard
+    // badge goes up when it is older than 8 days. Not household data, just a timestamp.
+    const weekly = await prisma.appSetting.findUnique({ where: { key: 'weeklyCheck:lastRunAt' } });
     return NextResponse.json(users.map(u => ({
       userId: u.id,
       name: u.name,
@@ -33,6 +36,9 @@ export async function GET(req: NextRequest) {
       expired: u.sbValidUntil ? u.sbValidUntil.getTime() < Date.now() : false,
       autoSync: u.sbAutoSync,
       lastAutoSyncAt: u.sbLastAutoSyncAt,
+      // Last SUCCESSFUL run; rows from before the column existed: with no failures the last attempt was one.
+      lastAutoSyncOkAt: u.sbLastAutoSyncOkAt ?? (u.sbSyncFailCount === 0 ? u.sbLastAutoSyncAt : null),
+      weeklyCheckAt: weekly?.value ?? null,
       autoSyncFailCount: u.sbSyncFailCount,
       lastSyncError: u.sbLastSyncError,
       accounts: u.sparebankAccounts.map(a => ({

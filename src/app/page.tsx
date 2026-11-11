@@ -33,6 +33,8 @@ interface Stats {
 const CONSENT_WARN_MS = 7 * 24 * 3600 * 1000;
 // Daily cron — more than 36 h since its last attempt means it stopped running.
 const AUTOSYNC_STALE_MS = 36 * 3600 * 1000;
+// Server-side weekly check (cron) is overdue past this.
+const WEEKLY_CHECK_STALE_MS = 8 * 24 * 3600 * 1000;
 // Balances refresh on every sync; 3 days old means the bank link is quietly failing.
 const BALANCE_ISSUE_MS = 3 * 24 * 3600 * 1000;
 
@@ -192,7 +194,7 @@ export default function Dashboard() {
       fetch('/api/sparebank/status').then(r => r.ok ? r.json() : []).catch(() => []),
     ]).then(([mono, sb]: [
       { userId: number; name: string; connected: boolean; balanceFetchedAt: string | null; lastSyncError: string | null }[],
-      { userId: number; name: string; connected: boolean; expired: boolean; validUntil: string | null; autoSync: boolean; lastAutoSyncAt: string | null; autoSyncFailCount: number; lastSyncError: string | null; accounts: { syncEnabled: boolean; balanceFetchedAt: string | null }[] }[],
+      { userId: number; name: string; connected: boolean; expired: boolean; validUntil: string | null; autoSync: boolean; lastAutoSyncAt: string | null; autoSyncFailCount: number; lastSyncError: string | null; weeklyCheckAt?: string | null; accounts: { syncEnabled: boolean; balanceFetchedAt: string | null }[] }[],
     ]) => {
       const conns: BankConnection[] = [
         ...mono.filter(m => m.connected).map(m => ({ key: `mono-${m.userId}`, userId: m.userId, name: m.name, bank: 'mono' as const, bankLabel: 'Monobank' })),
@@ -217,6 +219,8 @@ export default function Dashboard() {
       for (const m of mono.filter(m => m.connected && m.balanceFetchedAt && t - new Date(m.balanceFetchedAt).getTime() > BALANCE_ISSUE_MS)) {
         found.push(`${m.name}: баланс Monobank не оновлювався з ${dm(m.balanceFetchedAt!)}`);
       }
+      const wc = sb[0]?.weeklyCheckAt;
+      if (wc && t - new Date(wc).getTime() > WEEKLY_CHECK_STALE_MS) found.push(`Щотижнева перевірка не запускалась з ${dm(wc)}`);
       setIssues(found);
     });
   }

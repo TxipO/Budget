@@ -86,6 +86,10 @@ model User {
   // a clean one), so the dashboard badge can say WHY — a dead card id served a
   // stale pending list silently for 8 days. See lib/monobank.ts recordMonoSyncError.
   monoLastSyncError    String?
+  // Scheduled statement sync (lib/monoSync.ts syncMonoUsers): last attempt (any
+  // outcome — gates the 6h minimum gap) and consecutive failed attempts (alert on the 2nd).
+  monoLastSyncAt       DateTime?
+  monoSyncFailCount    Int       @default(0)
 
   // SpareBank 1 (via Enable Banking, PSD2/Berlin Group AISP) integration.
   // sbSessionEnc is the Enable Banking session_id, AES-256-GCM encrypted
@@ -122,6 +126,8 @@ model User {
   // 2026-10-25: last failed auto-sync's message (null after a clean run), so the
   // dashboard badge can say WHY — Vercel logs are gone after ~1h.
   sbLastSyncError  String?
+  // sbLastAutoSyncAt is stamped on FAILED runs too; this one only on success, so Settings can say "last success".
+  sbLastAutoSyncOkAt DateTime?
 
   // Telegram Login Widget auth (see lib/telegramAuth.ts). telegramId is
   // Telegram's own numeric user id, stored as a string (safer than Int for
