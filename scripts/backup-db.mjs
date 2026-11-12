@@ -96,7 +96,8 @@ async function main() {
 
 main().then(() => prisma.$disconnect()).catch(async (e) => {
   // public CI logs: Prisma messages can carry the DB host, so print only the error kind there
-  console.error('[backup] FAILED:', process.env.CI ? (e?.code ?? e?.name ?? 'error') : (e?.message ?? e));
+  // errorCode (P1001, P1013...) is a fixed Prisma code, safe to print; the message is not
+  console.error('[backup] FAILED:', process.env.CI ? [e?.code ?? e?.name ?? 'error', e?.errorCode].filter(Boolean).join(' ') : (e?.message ?? e));
   await prisma.$disconnect().catch(() => {});
   process.exit(1);
 });

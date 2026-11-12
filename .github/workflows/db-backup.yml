@@ -31,6 +31,14 @@ jobs:
           set -euo pipefail
           [ -n "$DATABASE_URL" ] || { echo "::error::Repo secret DATABASE_URL is not set"; exit 1; }
           [ -n "$BACKUP_PASSPHRASE" ] || { echo "::error::Repo secret BACKUP_PASSPHRASE is not set"; exit 1; }
+          # shape check: prints only booleans/lengths, never the value (public logs)
+          shape() { echo "[shape] $1 scheme_ok=$([[ $DATABASE_URL =~ ^postgres(ql)?:// ]] && echo true || echo false) has_quotes=$([[ $DATABASE_URL == *[\"\']* ]] && echo true || echo false) has_ws_or_cr=$([[ $DATABASE_URL =~ [[:space:]] ]] && echo true || echo false) length=${#DATABASE_URL}"; }
+          shape raw
+          # a pasted secret may carry CR/LF/spaces and wrapping quotes: drop whitespace, then one pair of surrounding quotes
+          DATABASE_URL=$(printf '%s' "$DATABASE_URL" | tr -d ' \t\r\n')
+          DATABASE_URL=${DATABASE_URL#[\"\']}; DATABASE_URL=${DATABASE_URL%[\"\']}
+          export DATABASE_URL
+          shape normalised
           out="$RUNNER_TEMP/backup"; mkdir -p "$out"
           node scripts/backup-db.mjs "$out"
           plain=$(ls "$out"/budget-*.json.gz)
