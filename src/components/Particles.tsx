@@ -11,12 +11,15 @@ import { useEffect, useRef } from 'react';
 // per frame), typed arrays and no allocation inside the loop. The loop only
 // runs while the tab is visible, the canvas intersects the viewport and the
 // user has not asked for reduced motion (then a single faint static frame is
-// drawn). DPR is capped (2 on desktop, 1.25 on phones — the glow is soft, it
-// gains nothing from more pixels) and the particle count scales with area.
+// drawn). DPR is fixed at 1 (the glow is soft, it gains nothing from more
+// pixels), drawing is throttled to ~30fps and paused while the page scrolls
+// (scroll jank otherwise), and the particle count scales with area.
 
 const MAX = 64;
 const LINK = 130;  // px, constellation link distance (desktop only)
 const REPEL = 130; // px, pointer influence radius
+const FRAME_MS = 33; // ~30fps
+const SCROLL_IDLE_MS = 150;
 const SPRITE = 64; // px, square; ember and bokeh share the size and are scaled on draw
 
 type Sprites = HTMLCanvasElement[]; // [ember orange, ember amber, bokeh orange, bokeh amber]
@@ -78,7 +81,7 @@ export default function Particles() {
     let reduced = mq.matches;
     let tabVisible = !document.hidden;
     let inView = true;
-    let raf = 0, prev = 0, t = 0;
+    let raf = 0, prev = 0, t = 0, lastDraw = 0, scrolling = false;
     let links = false, mx = -9999, my = -9999;
 
     function seed(i: number, anywhere: boolean) {
@@ -98,7 +101,7 @@ export default function Particles() {
 
     function resize() {
       const narrow = window.innerWidth <= 768;
-      dpr = Math.min(window.devicePixelRatio || 1, narrow ? 1.25 : 2);
+      dpr = 1;
       w = window.innerWidth; h = window.innerHeight;
       canvas!.width = Math.round(w * dpr); canvas!.height = Math.round(h * dpr);
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -147,8 +150,10 @@ export default function Particles() {
     }
 
     function frame(ts: number) {
+      raf = requestAnimationFrame(frame);
+      if (scrolling || ts - lastDraw < FRAME_MS) return;
       const dt = prev ? Math.min(0.05, (ts - prev) / 1000) : 0;
-      prev = ts; t += dt;
+      prev = ts; lastDraw = ts; t += dt;
       // Pointer repulsion: push away from the cursor/touch, then ease back to the drift path.
       const decay = Math.min(1, 1.6 * dt);
       const R2 = REPEL * REPEL;
@@ -163,7 +168,6 @@ export default function Particles() {
         ox[i] -= ox[i] * decay; oy[i] -= oy[i] * decay;
       }
       draw();
-      raf = requestAnimationFrame(frame);
     }
 
     function running() { return raf !== 0; }
@@ -180,6 +184,9 @@ export default function Particles() {
     const onPtr = (e: PointerEvent) => { mx = e.clientX; my = e.clientY; };
     const onPtrEnd = (e: PointerEvent) => { if (e.pointerType !== 'mouse') mx = my = -9999; };
     const onLeave = () => { mx = my = -9999; };
+    let st = 0;
+    // Capture: scroll events don't bubble, and the page scrolls inside <main>, not the window.
+    const onScroll = () => { scrolling = true; clearTimeout(st); st = window.setTimeout(() => { scrolling = false; prev = 0; }, SCROLL_IDLE_MS); };
     const onVis = () => { tabVisible = !document.hidden; sync(); };
     const onMotion = () => { reduced = mq.matches; sync(); };
     const io = new IntersectionObserver(([e]) => { inView = e.isIntersecting; sync(); });
@@ -193,6 +200,7 @@ export default function Particles() {
     io.observe(canvas);
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     window.addEventListener('resize', onResize);
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
     window.addEventListener('pointermove', onPtr, { passive: true });
     window.addEventListener('pointerdown', onPtr, { passive: true });
     window.addEventListener('pointerup', onPtrEnd);
@@ -203,9 +211,10 @@ export default function Particles() {
     mq.addEventListener('change', onMotion);
     return () => {
       cancelAnimationFrame(raf); raf = 0;
-      clearTimeout(rt);
+      clearTimeout(rt); clearTimeout(st);
       io.disconnect(); mo.disconnect();
       window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('pointermove', onPtr);
       window.removeEventListener('pointerdown', onPtr);
       window.removeEventListener('pointerup', onPtrEnd);

@@ -31,3 +31,4 @@ backups/
 .impeccable/questions/
 .impeccable/live/
 .impeccable/review/
+.tmp/

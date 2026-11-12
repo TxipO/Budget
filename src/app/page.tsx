@@ -164,7 +164,7 @@ function RecentList({ rows, onEdit }: { rows: Tx[]; onEdit: (tx: Tx) => void }) 
               <li key={tx.id} className={`d-tx-row${isExtra ? ' extra' : ''}`} style={vars({ '--k': i - TX_PREVIEW })} inert={isExtra && !open}>
                 {/* The whole row is the edit control (button semantics): on phones a separate 40px pencil ate the width. */}
                 <button type="button" className="d-tx-hit" onClick={() => onEdit(tx)} aria-label={`Редагувати: ${label}, ${type === 'income' ? 'надходження' : type === 'expense' ? 'витрата' : 'збереження'} ${formatMoney(tx.amount)}`}>
-                  <span className="d-chip d-cat-chip" style={vars({ '--cc': displayColor(tx.category.color, tx.category.id) })}>
+                  <span className="d-chip d-cat-chip" style={vars({ '--cc': displayColor(tx.category.color, tx.category.id, tx.category.name) })}>
                     <CategoryIcon name={tx.category.icon} color="currentColor" size={20} />
                   </span>
                   <span className="d-tx-main">
@@ -496,11 +496,11 @@ export default function Dashboard() {
     }
     const fact = new Map(stats.byCategory.map(c => [c.categoryId, c.amount]));
     planRows = [...planned.entries()]
-      .map(([id, { cat, sum }]) => ({ id, name: cat.name, color: displayColor(cat.color, id), planned: sum, fact: fact.get(id) ?? 0 }))
+      .map(([id, { cat, sum }]) => ({ id, name: cat.name, color: displayColor(cat.color, id, cat.name), planned: sum, fact: fact.get(id) ?? 0 }))
       .sort((a, b) => b.fact / b.planned - a.fact / a.planned);
   }
 
-  const donutData = stats?.byCategory.map(c => ({ name: c.name, amount: c.amount, color: displayColor(c.color, c.categoryId) })) ?? [];
+  const donutData = stats?.byCategory.map(c => ({ name: c.name, amount: c.amount, color: displayColor(c.color, c.categoryId, c.name) })) ?? [];
   const showDonut = sections.charts;
   const showPlan = sections.budget;
   const hasTwo = showDonut || showPlan;

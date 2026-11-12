@@ -4,7 +4,7 @@ import { headers } from 'next/headers';
 import './globals.css';
 import Sidebar from '@/components/Sidebar';
 import MobileNav from '@/components/MobileNav';
-import { Particles, ToastContainer } from '@/components/ClientOnly';
+import { Particles, SessionGuard, ToastContainer } from '@/components/ClientOnly';
 import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 
@@ -56,6 +56,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </main>
         <MobileNav />
         <ToastContainer />
+        <SessionGuard />
         <Analytics />
         <SpeedInsights />
       </body>
