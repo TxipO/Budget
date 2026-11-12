@@ -46,7 +46,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // corrections) put there on purpose — changing it is more likely an
     // exception. Anything else (fallback/llm/keyword/mcc/self-named/none) is
     // the system's own guess being corrected, which is more likely a real fix.
-    const defaultScope: 'one' | 'merchant' = ['rule', 'brand', 'manual'].includes(row.categorySource ?? '') ? 'one' : 'merchant';
+    const defaultScope: 'one' | 'merchant' = ['rule', 'brand', 'manual', 'history-account', 'history-amount'].includes(row.categorySource ?? '') ? 'one' : 'merchant';
 
     return NextResponse.json({
       applicable: true,

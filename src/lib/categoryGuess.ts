@@ -87,7 +87,7 @@ export async function guessCategoryByLLM(merchantText: string, categoryNames: st
 // Transaction.categorySource so a silent tier death (see this function's own
 // LLM-tier incident, 2026-09-15) shows up as a measurable gap instead of
 // nothing but the eventual "everything piles into Незрозуміло" symptom.
-export type CategorySource = 'rule' | 'brand' | 'mcc' | 'keyword' | 'llm' | 'self-named' | 'fallback';
+export type CategorySource = 'rule' | 'brand' | 'mcc' | 'keyword' | 'llm' | 'self-named' | 'fallback' | 'history-account' | 'history-amount';
 
 // Ф1b (classification overhaul, 2026-09-15) — reuses the user's OWN learned
 // rules under a derived "brand" key (just the first word of the normalized
@@ -154,7 +154,7 @@ async function guessCategoryByBrand(userId: number, merchantKey: string): Promis
 // Перекази" expects the row to be excluded from totals, but the rule only
 // stored a category, so ingest left isTransfer=false (real: rules -> "Перекази"
 // rows still counted). Callers OR this into the row's own isTransfer.
-export async function guessCategoryId(householdId: number, userId: number, txType: 'expense' | 'income', rawMerchantText: string, mcc: number | undefined): Promise<{ categoryId: number; source: CategorySource; isTransfer: boolean }> {
+export async function guessCategoryId(householdId: number, userId: number, txType: 'expense' | 'income', rawMerchantText: string, mcc: number | undefined, historyGuess?: () => Promise<{ categoryId: number; source: CategorySource } | null>): Promise<{ categoryId: number; source: CategorySource; isTransfer: boolean }> {
   // Normalized HERE (idempotent, so callers may pass raw text or an
   // already-normalized key): rules are stored normalized, and the voice route
   // used to look them up with the raw transcript. A bare payment-type phrase
@@ -184,6 +184,11 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
   // generic ISO code or global keyword list.
   const brandGuess = hasMerchant ? await guessCategoryByBrand(userId, merchantKey) : null;
   if (brandGuess !== null) return { categoryId: brandGuess.categoryId, source: 'brand', isTransfer: brandGuess.isTransfer };
+
+  // 1c. Caller-supplied history guess (SpareBank nameless bill payments, see
+  // lib/billHistory.ts) — after the user's own rules, before any generic tier.
+  const history = historyGuess ? await historyGuess() : null;
+  if (history) return { ...history, isTransfer: false };
 
   // Tiers 2-6 (MCC guess, keyword guess, LLM guess, safe fallback, last
   // resort) are all just "find an active category of this type by name"

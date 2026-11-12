@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { roundMoney } from '@/lib/validate';
 import { guessCategoryId } from '@/lib/categoryGuess';
 import { SbTransaction, SbAccountId } from '@/lib/enableBanking';
+import { normalizeAccount, pickBillHistoryCategory } from '@/lib/billHistory';
 import { getCachedExchangeRate, ISO_4217 } from '@/lib/monobank';
 import { merchantKey as toMerchantKey } from '@/lib/merchantKey';
 import { numericForCurrency } from '@/lib/currencies';
@@ -315,6 +316,22 @@ async function findRebookedPlaceholder(userId: number, selfAccountId: number, in
   }) ?? null;
 }
 
+// History tier for nameless bill payments — decision logic in lib/billHistory.ts.
+// One date-bounded query, household-scoped; 'manual' rows are valid evidence.
+async function guessFromBillHistory(householdId: number, txType: 'expense' | 'income', counterparty: string, merchantText: string, account: string | null, amount: number, now: Date, excludeId?: number) {
+  if (counterparty.trim() || !merchantText.trim()) return null;
+  const rows = await prisma.transaction.findMany({
+    where: {
+      householdId, merchantText, isTransfer: false, id: { not: excludeId ?? -1 },
+      date: { gte: new Date(now.getTime() - 365 * DAY_MS), lte: now },
+      category: { isActive: true, type: txType, name: { not: 'Незрозуміло' } },
+      OR: [{ categorySource: null }, { categorySource: { not: 'fallback' } }],
+    },
+    select: { categoryId: true, amount: true, date: true, sbCounterpartyAccount: true },
+  });
+  return pickBillHistoryCategory({ counterparty, merchantText, account, amount, now, priors: rows.map(r => ({ categoryId: r.categoryId, amount: r.amount, date: r.date, account: r.sbCounterpartyAccount })) });
+}
+
 export type IngestResult = 'created' | 'reconciled' | 'skipped_pending' | 'skipped_duplicate' | 'skipped_malformed';
 export interface IngestOutcome { status: IngestResult; id?: number }
 
@@ -415,6 +432,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // only on a LATER re-fetch of the same already-stored transaction).
   const counterpartAccount = txType === 'expense' ? item.creditor_account : item.debtor_account;
   const transferAccountId = await findTransferCounterpartAccountId(userId, counterpartAccount);
+  const counterpartyAccount = normalizeAccount(counterpartAccount);
 
   let existing = await prisma.transaction.findFirst({
     where: { userId, sbTransactionId: storageKey },
@@ -440,7 +458,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
       try {
         const { count } = await prisma.transaction.updateMany({
           where: { id: placeholder.id, sbTransactionId: placeholder.sbTransactionId, AND: [NOT_MANUAL] },
-          data: { sbTransactionId: storageKey, ...(sameMonth ? { date } : {}), sbCounterparty: counterparty || null, merchantText, ...(detailsUntouched ? { details } : {}) },
+          data: { sbTransactionId: storageKey, ...(sameMonth ? { date } : {}), sbCounterparty: counterparty || null, ...(counterpartyAccount ? { sbCounterpartyAccount: counterpartyAccount } : {}), merchantText, ...(detailsUntouched ? { details } : {}) },
         });
         if (count === 1) {
           rebooked = true;
@@ -559,7 +577,8 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   } else {
     // A learned rule can resolve to a 'transfer'-type category — then the row
     // must be excluded from totals too (guessCategoryId's own isTransfer).
-    ({ categoryId, source: categorySource, isTransfer } = await guessCategoryId(householdId, userId, txType, merchantKey, undefined));
+    ({ categoryId, source: categorySource, isTransfer } = await guessCategoryId(householdId, userId, txType, merchantKey, undefined,
+      () => guessFromBillHistory(householdId, txType, counterparty, merchantText, counterpartyAccount, amount, date, existing?.id)));
   }
 
   // Cross-bank same-person transfer (e.g. a Paysend top-up landing on the
@@ -622,6 +641,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
       where: { id: existing.id },
       data: {
         categoryId, categorySource, isTransfer, savingsWithdrawal, sbCounterparty: counterparty || null,
+        ...(counterpartyAccount ? { sbCounterpartyAccount: counterpartyAccount } : {}),
         // merchantText is always refreshed. details is also the user's editable
         // comment, so the bank's text replaces it only while it still equals
         // the previous merchantText (never edited) — otherwise a sync would
@@ -670,6 +690,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
         possibleDuplicateOf: possibleDup?.id ?? null,
         sbTransactionId: storageKey,
         sbCounterparty: counterparty || null,
+        sbCounterpartyAccount: counterpartyAccount,
         savingsWithdrawal,
         isTransfer,
       },
