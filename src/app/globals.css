@@ -717,7 +717,10 @@ select.input-field option {
 @keyframes d-ping { 0% { transform: scale(1); opacity: 0.55; } 100% { transform: scale(2.8); opacity: 0; } }
 .d-count { min-width: 24px; height: 24px; padding: 0 8px; border-radius: 999px; display: inline-grid; place-items: center; background: var(--chip-am-bg); color: var(--chip-am-fg); font-size: 13px; font-weight: 700; }
 .d-pend-list { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; }
-.d-pend-row { display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 10px 12px; border-radius: 18px; min-width: 0; }
+.d-pend-row { min-width: 0; border-radius: 18px; transition: background 0.15s; }
+.d-pend-row:hover, .d-pend-row:focus-within { background: var(--c-raised); }
+.d-pend-row .d-tx-hit { min-height: 60px; border-radius: inherit; cursor: pointer; }
+.d-pend-row .d-tx-main small { white-space: normal; }
 .d-pend-row + .d-pend-row { border-top: 1px solid var(--c-line); border-radius: 0; }
 .d-hold { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .d-hold small { font-size: 11px; font-weight: 700; color: var(--chip-am-fg); letter-spacing: 0.02em; }
@@ -750,7 +753,6 @@ select.input-field option {
   .d-tx-main small { white-space: normal; overflow: visible; text-overflow: clip; }
   .d-tx-hit { gap: 12px; padding: 10px 8px; }
   .d-tx-main b { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
-  .d-pend-row { padding: 10px 6px; }
 }
 @media (min-width: 769px) and (max-width: 1099px) { .side { width: 220px; } }
 

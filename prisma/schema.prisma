@@ -462,3 +462,25 @@ model NotificationLog {
 
   @@index([createdAt])
 }
+
+// A category chosen by hand for a Monobank HOLD (provisional, not yet a
+// Transaction — see monoIngest.ts). Applied when the settled item is ingested
+// (matched by holdId, else by merchant+amount+time, lib/holdMatch.ts), then
+// deleted. A declined hold's intent is pruned by the pending route / cron.
+// Plain ints, no FK relations on purpose: a leftover row is harmless and expires.
+model PendingCategoryIntent {
+  id           Int      @id @default(autoincrement())
+  householdId  Int
+  userId       Int
+  holdId       String
+  merchantText String
+  amount       Float
+  holdTime     DateTime
+  categoryId   Int
+  scope        String   @default("one") // 'one' | 'all' (all = merchant rule was also learned)
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  @@unique([userId, holdId])
+  @@index([householdId, userId])
+}

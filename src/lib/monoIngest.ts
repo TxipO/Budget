@@ -4,6 +4,7 @@ import { getCachedExchangeRate } from '@/lib/monobank';
 import { merchantKey as toMerchantKey } from '@/lib/merchantKey';
 import { guessCategoryId as resolveCategoryId } from '@/lib/categoryGuess';
 import { numericForCurrency } from '@/lib/currencies';
+import { matchIntent } from '@/lib/holdMatch';
 import { looksLikeMonoTransferLeg, findCrossBankTransferMatch, ensureCrossBankFee, settleCrossBankPartner, NOT_MANUAL } from '@/lib/transferDetect';
 
 export interface MonoStatementItem {
@@ -223,6 +224,20 @@ export async function ingestStatementItem(userId: number, householdId: number, i
 
   const merchantKey = toMerchantKey(item.description || '');
 
+  // A category the user picked while this purchase was still a hold
+  // (PendingCategoryIntent) — matched by statement id, else merchant+amount+time
+  // because a hold may settle under a new id. Applied in the non-transfer branch
+  // below; consumed (deleted) after the row exists, or dropped when the row turns
+  // out to be a transfer — transfer detection wins, it is the safer outcome (a
+  // transfer is excluded from totals; a wrongly categorised one would be counted).
+  const intents = await prisma.pendingCategoryIntent.findMany({ where: { userId, householdId } });
+  const intent = matchIntent(intents, { id: item.id, description: item.description || '', amount, time: raw });
+  const intentCat = intent ? await prisma.category.findFirst({
+    // 'income' rows cannot take an expense category and vice versa; savings fits both.
+    where: { id: intent.categoryId, householdId, isActive: true, type: { in: [txType, 'savings'] } },
+    select: { id: true },
+  }) : null;
+
   // "Скасування. <merchant>" reversal arriving AFTER its purchase — see
   // findReversalOriginal. Checked before the same-bank transfer match: it is
   // the more specific signal.
@@ -248,6 +263,11 @@ export async function ingestStatementItem(userId: number, householdId: number, i
       create: { householdId, name: TRANSFER_CATEGORY_NAME, type: TRANSFER_CATEGORY_TYPE, color: '#64748B', icon: 'wallet' },
       select: { id: true },
     })).id;
+  } else if (intent && intentCat) {
+    categoryId = intentCat.id;
+    // 'all' also taught the merchant rule (like the edit form's "all from this merchant"): 'rule'.
+    // 'one' is a human one-off: 'manual', so no matcher/sweep ever overrides it.
+    categorySource = intent.scope === 'all' ? 'rule' : 'manual';
   } else {
     let categoryIsTransfer: boolean;
     ({ categoryId, source: categorySource, isTransfer: categoryIsTransfer } = await resolveCategoryId(householdId, userId, txType, merchantKey, item.mcc));
@@ -343,6 +363,8 @@ export async function ingestStatementItem(userId: number, householdId: number, i
     if (e?.code === 'P2002') return 'skipped_duplicate';
     throw e;
   }
+
+  if (intent) await prisma.pendingCategoryIntent.deleteMany({ where: { id: intent.id } });
 
   // The matched OTHER half of a same-bank transfer was recorded earlier
   // under whatever category it originally guessed (it had no way to know

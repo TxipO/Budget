@@ -7,6 +7,7 @@ import { MONTH_NAMES, MONTH_SHORT, CATEGORY_PALETTE, BANK_SYNC_COLOR, type Perio
 import { useCurrency } from '@/lib/useCurrency';
 import { displayColor } from '@/lib/displayColor';
 import TransactionForm from '@/components/TransactionForm';
+import PendingEditSheet, { type PendingHold, type PendingCat, type PendingIntent } from '@/components/PendingEditSheet';
 import CategoryIcon from '@/components/CategoryIcon';
 import CountUp from '@/components/CountUp';
 import { useDashboardPrefs } from '@/lib/dashboardPrefs';
@@ -220,7 +221,9 @@ export default function Dashboard() {
   // 2026-08-02, P1); still one click away, nothing lost.
   const [userSectionOpen, setUserSectionOpen] = useState(false);
   const [sections] = useDashboardPrefs();
-  const [pending, setPending] = useState<{ id: string; description: string; amount: number; currency: string }[]>([]);
+  const [pending, setPending] = useState<PendingHold[]>([]);
+  const [pendingCats, setPendingCats] = useState<PendingCat[]>([]);
+  const [editingHold, setEditingHold] = useState<PendingHold | null>(null);
 
   interface BankConnection { key: string; userId: number; name: string; bank: 'mono' | 'sparebank'; bankLabel: string }
   const [bankConnections, setBankConnections] = useState<BankConnection[]>([]);
@@ -280,6 +283,7 @@ export default function Dashboard() {
       })
       .then(lists => setPending(lists.flat()))
       .catch(() => {}); // decorative — dashboard works fine without this list
+    fetch('/api/categories').then(r => r.ok ? r.json() : []).then(setPendingCats).catch(() => {}); // names/icons for the category picked on a hold
   }, []);
 
   // One-click "sync all" widget in the header — same connect status this app
@@ -860,16 +864,23 @@ export default function Dashboard() {
               <ul className="d-pend-list">
                 {pending.map(p => {
                   const [code, name] = splitCode(p.description || 'Без опису');
+                  const cat = p.intent ? pendingCats.find(c => c.id === p.intent!.categoryId) : undefined;
                   return (
-                    <li key={p.id} className="d-pend-row">
-                      <span className="d-chip am"><Clock size={17} /></span>
-                      <div className="d-tx-main">
-                        <b title={p.description}>{code && <span className="code">{code}</span>}{name}</b>
-                      </div>
-                      <span className="d-hold">
-                        <span className="d-amt">&minus;{formatMoney(p.amount)}</span>
-                        <small>очікує</small>
-                      </span>
+                    <li key={`${p.userId}-${p.id}`} className="d-pend-row">
+                      <button type="button" className="d-tx-hit" onClick={() => setEditingHold(p)} aria-label={`Обрати категорію: ${p.description || 'Без опису'}, ${formatMoney(p.amount)}, очікує підтвердження${cat ? `. Зараз: ${cat.name}` : ''}`}>
+                        {cat
+                          ? <span className="d-chip d-cat-chip" style={vars({ '--cc': displayColor(cat.color, cat.id, cat.name) })}><CategoryIcon name={cat.icon} color="currentColor" size={20} /></span>
+                          : <span className="d-chip am"><Clock size={17} /></span>}
+                        <span className="d-tx-main">
+                          <b title={p.description}>{code && <span className="code">{code}</span>}{name}</b>
+                          {cat && <small>{cat.name}{p.intent!.scope === 'all' ? ' · усі такі' : ''} · застосується після підтвердження банком</small>}
+                        </span>
+                        <span className="d-hold">
+                          <span className="d-amt">&minus;{formatMoney(p.amount)}</span>
+                          <small>очікує</small>
+                        </span>
+                        <Pencil size={15} className="d-tx-pen" aria-hidden="true" />
+                      </button>
                     </li>
                   );
                 })}
@@ -945,6 +956,16 @@ export default function Dashboard() {
             </section>
           )}
         </>
+      )}
+
+      {editingHold && (
+        <PendingEditSheet
+          hold={editingHold}
+          cats={pendingCats}
+          label={editingHold.description || 'Без опису'}
+          onClose={() => setEditingHold(null)}
+          onChange={(intent: PendingIntent | null) => setPending(list => list.map(h => h.id === editingHold.id && h.userId === editingHold.userId ? { ...h, intent } : h))}
+        />
       )}
 
       {showForm && (
