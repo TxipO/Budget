@@ -291,6 +291,8 @@ don't reason from memory. Standing instances to re-check every pass:
   same-person cross-bank movement, a real pattern here (SpareBank NO →
   Monobank UA via Paysend).
 - Any per-household assumption written while exactly one household existed.
+- **Weekday placeholders "stay put"** (`sparebankIngest.ts` findRebookedPlaceholder) — EXPIRED 2026-11 (#2569/#2571 double-counted 250 kr in the pool). Now a weekday placeholder is claimed when the booked text's `Betalt: dd.mm.yy` equals its date; re-check that equal-amount consecutive-day transfers still stay separate.
+- **Fallback buckets by hardcoded name** («Незрозуміло»/«Додаткове») — written while one household existed; onboarding defaults lacked them, so a new tenant fell to `categories[0]` (Оренда). Now find-or-create + delete guard. Re-check any other name-keyed lookup (`FEE_CATEGORY_NAMES`) the same way.
 
 ## 4C — Blast radius of the fix itself
 
@@ -306,6 +308,9 @@ Test: if the premise is inverted, does the failure stay bounded (one row, one
 sync) or scale with volume (every row, every sync, forever)? A fix whose
 failure mode scales is not safer than the bug. Prefer failing closed (skip,
 log, surface) over "recovering" into a write.
+
+
+**Delete-and-recreate of identity rows breaks content keys.** Found 2026-11 (latent): SpareBank *disconnect* deleted `SparebankAccount` rows, so reconnect minted new ids and every stored `sb<accountId>|…` key stopped matching → the first sync would duplicate the whole window. Rows that feed a dedup key must be deactivated, never deleted.
 
 ## 4D — Data-vs-code divergence (highest-yield technique)
 
@@ -382,6 +387,9 @@ hour"}` — GH Actions' schedules run 55-70 min late, consistently missing an
 exact-hour match. Check the **response bodies / log content** of real runs,
 not their exit status. Same lens for anything gated on wall-clock time,
 quotas, or a watermark.
+
+
+**Delta-only monitors go blind after their first alert.** Found 2026-11: the weekly pool check compared only *changes* between snapshots, so a static 250 kr offset alerted once (11.11) and then became the baseline — "OK" every week after. Any check that re-baselines on alert must also assert the absolute invariant (ledger level == source-of-truth level) every run.
 
 ## 4I — Quotas and cost
 

@@ -165,13 +165,24 @@ export default function PlanningPage() {
     openerRef.current?.focus(); // keyboard users land back on the cell they opened
   }
 
+  // Latest popover + in-flight flag: Enter + click must not save twice, and a save that
+  // finishes after the user opened another cell must not close that new popover.
+  const editCellRef = useRef(editCell);
+  editCellRef.current = editCell;
+  const savingRef = useRef(false);
+
   async function commitEdit() {
-    if (!editCell) return;
+    if (!editCell || savingRef.current) return;
+    const saved = editCell;
+    savingRef.current = true;
     try {
-      await savePlan(editCell.year, editCell.catId, editCell.month, parseFloat(editVal) || 0, editNote);
-      closeEdit();
+      await savePlan(saved.year, saved.catId, saved.month, parseFloat(editVal) || 0, editNote);
+      const c = editCellRef.current;
+      if (c && c.year === saved.year && c.catId === saved.catId && c.month === saved.month) closeEdit();
     } catch {
       toast('Помилка збереження плану', 'error');
+    } finally {
+      savingRef.current = false;
     }
   }
 

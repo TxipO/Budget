@@ -82,6 +82,7 @@ export async function GET(req: NextRequest) {
     let syncEnabledAccountRow: { id: number; userId: number; accountUid: string; lastSyncedAt: Date | null; syncFloor: Date | null } | null = null;
 
     const matchedIds = new Set<number>();
+    const rows: { id: number; lastSyncedAt: Date | null }[] = [];
     for (let i = 0; i < discovered.length; i++) {
       const acc = discovered[i];
       let details;
@@ -138,6 +139,20 @@ export async function GET(req: NextRequest) {
         });
       }
       if (row.syncEnabled) syncEnabledAccountRow = row;
+      rows.push(row);
+    }
+
+    // Existing rows this consent did not return carry a dead uid: stop syncing them (the row,
+    // its id, categoryId and syncFloor stay). If that was the only enabled account, the first
+    // discovered one takes over, as on a first connect.
+    const unmatched = existingAccounts.filter(a => !matchedIds.has(a.id) && a.syncEnabled);
+    if (unmatched.length) await prisma.sparebankAccount.updateMany({ where: { id: { in: unmatched.map(a => a.id) } }, data: { syncEnabled: false } });
+    if (!syncEnabledAccountRow && rows.length) {
+      syncEnabledAccountRow = await prisma.sparebankAccount.update({
+        where: { id: rows[0].id },
+        data: { syncEnabled: true, lastSyncedAt: rows[0].lastSyncedAt ?? initialWatermark },
+        select: { id: true, userId: true, accountUid: true, lastSyncedAt: true, syncFloor: true, syncEnabled: true },
+      });
     }
 
     // A chosen start date means the user wants that history pulled in NOW,

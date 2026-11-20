@@ -5,8 +5,9 @@ import { TYPE_LABELS } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import { toast } from '@/lib/toast';
 import { getCurrentUser, setCurrentUser } from '@/lib/currentUser';
+import { useDialogFocus } from './useDialogFocus';
 
-interface Category { id: number; name: string; type: string; color: string }
+interface Category { id: number; name: string; type: string; color: string; isActive?: boolean }
 interface User { id: number; name: string }
 
 interface Props {
@@ -71,7 +72,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
   const [amountParts, setAmountParts] = useState<number[]>([]);
 
   useEffect(() => {
-    fetch('/api/categories').then(r => r.ok ? r.json() : Promise.reject()).then(setCats).catch(() => toast('Помилка завантаження категорій', 'error'));
+    fetch('/api/categories?includeInactive=1').then(r => r.ok ? r.json() : Promise.reject()).then(setCats).catch(() => toast('Помилка завантаження категорій', 'error'));
     fetch('/api/users').then(r => r.ok ? r.json() : Promise.reject()).then(setUsers).catch(() => toast('Помилка завантаження користувачів', 'error'));
   }, []);
 
@@ -84,7 +85,8 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
     }
   }, [users, initial?.userId, editId]);
 
-  const filteredCats = cats.filter(c => c.type === form.type);
+  // An archived category is listed only as the edited row's own current one, never for new picks.
+  const filteredCats = cats.filter(c => c.type === form.type && (c.isActive !== false || String(c.id) === initial?.categoryId));
 
   const currentInputAmount = parseFloat(form.amount) || 0;
   const totalAmount = amountParts.reduce((a, b) => a + b, 0) + currentInputAmount;
@@ -207,7 +209,7 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
 
   // Move focus into the dialog so keyboard/screen-reader users start inside it.
   const dialogRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { dialogRef.current?.focus(); }, []);
+  useDialogFocus(dialogRef);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -245,11 +247,11 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
         <form id="tx-form" onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '0 28px', overflowY: 'auto', flex: 1 }}>
           {/* Date */}
           <div>
-            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <label htmlFor="tx-date" style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Дата
             </label>
             <input
-              type="date" className="input-field"
+              id="tx-date" type="date" className="input-field"
               value={form.date}
               onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
               required
@@ -290,18 +292,18 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
 
           {/* Category */}
           <div>
-            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <label htmlFor="tx-category" style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Категорія
             </label>
             <select
-              className="input-field"
+              id="tx-category" className="input-field"
               value={form.categoryId}
               onChange={e => { setScopeChoice(null); setForm(f => ({ ...f, categoryId: e.target.value })); }}
               required
             >
               <option value="">Оберіть категорію…</option>
               {filteredCats.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>{c.name}{c.isActive === false ? ' (архів)' : ''}</option>
               ))}
             </select>
           </div>
@@ -337,12 +339,12 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
 
           {/* Amount */}
           <div>
-            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <label htmlFor="tx-amount" style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Сума ({suffix}){amountParts.length > 0 ? ` — усього ${formatMoney(totalAmount)}` : ''}
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
-                type="number" className="input-field" placeholder="0"
+                id="tx-amount" type="number" className="input-field" placeholder="0"
                 value={form.amount} min={0} step="0.01"
                 onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAmountPart(); } }}
@@ -386,11 +388,11 @@ export default function TransactionForm({ onClose, onSaved, initial, editId, sou
 
           {/* Details */}
           <div>
-            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <label htmlFor="tx-details" style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 600, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Коментар
             </label>
             <input
-              type="text" className="input-field" placeholder="Наприклад: Starlink 364, телефони 460…"
+              id="tx-details" type="text" className="input-field" placeholder="Наприклад: Starlink 364, телефони 460…"
               value={form.details}
               onChange={e => setForm(f => ({ ...f, details: e.target.value }))}
             />

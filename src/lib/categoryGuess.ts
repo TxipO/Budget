@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { FALLBACK_CATEGORIES } from '@/lib/defaultCategories';
 import { guessCategoryByMcc, guessCategoryByKeyword } from '@/lib/monobank';
 import { merchantKey as toMerchantKey, isGenericKey } from '@/lib/merchantKey';
 
@@ -232,13 +233,17 @@ export async function guessCategoryId(householdId: number, userId: number, txTyp
     if (owner?.name && idByName.has(owner.name)) return { categoryId: idByName.get(owner.name)!, source: 'self-named', isTransfer: false };
   }
 
-  // 6. Safe fallback — a bucket that always exists for the type.
-  const fallbackName = txType === 'expense' ? 'Незрозуміло' : 'Додаткове';
-  if (idByName.has(fallbackName)) return { categoryId: idByName.get(fallbackName)!, source: 'fallback', isTransfer: false };
-
-  // 7. Absolute last resort — any active category of the right type, so a
-  // write never crashes even if the expected fallback category was renamed
-  // or deleted.
-  if (categories[0]) return { categoryId: categories[0].id, source: 'fallback', isTransfer: false };
-  throw new Error(`No active ${txType} category exists to file a transaction under`);
+  // 6. Safe fallback — find-or-create (reviving a soft-deleted one) the
+  // household's named bucket, so a new household whose onboarding set lacks it
+  // still gets a real "Незрозуміло"/"Додаткове" instead of an arbitrary category.
+  const fb = FALLBACK_CATEGORIES[txType];
+  const existing = idByName.get(fb.name);
+  if (existing !== undefined) return { categoryId: existing, source: 'fallback', isTransfer: false };
+  const { id } = await prisma.category.upsert({
+    where: { householdId_name_type: { householdId, name: fb.name, type: txType } },
+    update: { isActive: true },
+    create: { householdId, name: fb.name, type: txType, color: fb.color, icon: fb.icon },
+    select: { id: true },
+  });
+  return { categoryId: id, source: 'fallback', isTransfer: false };
 }

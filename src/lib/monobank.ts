@@ -151,12 +151,15 @@ export async function getExchangeRate(fromCcy: number, toCcy: number): Promise<n
   if (!res.ok) return null;
   const rates: { currencyCodeA: number; currencyCodeB: number; rateCross?: number; rateBuy?: number; rateSell?: number }[] = await res.json();
 
+  // A 0 / NaN / negative rate is "missing", not a rate (it booked amounts as 0.00).
+  const firstRate = (r?: { rateCross?: number; rateBuy?: number; rateSell?: number }) =>
+    [r?.rateCross, r?.rateBuy, r?.rateSell].find((x): x is number => typeof x === 'number' && Number.isFinite(x) && x > 0) ?? null;
+
   function directOrInverse(a: number, b: number): number | null {
-    const direct = rates.find(r => r.currencyCodeA === a && r.currencyCodeB === b);
-    if (direct) return direct.rateCross ?? direct.rateBuy ?? direct.rateSell ?? null;
-    const inverse = rates.find(r => r.currencyCodeA === b && r.currencyCodeB === a);
-    const inverseRate = inverse?.rateCross ?? inverse?.rateBuy ?? inverse?.rateSell;
-    return inverseRate ? 1 / inverseRate : null;
+    const direct = firstRate(rates.find(r => r.currencyCodeA === a && r.currencyCodeB === b));
+    if (direct !== null) return direct;
+    const inverseRate = firstRate(rates.find(r => r.currencyCodeA === b && r.currencyCodeB === a));
+    return inverseRate !== null ? 1 / inverseRate : null;
   }
 
   const direct = directOrInverse(fromCcy, toCcy);
@@ -192,7 +195,8 @@ const FX_STALE_MAX_MS = 7 * 24 * 3600 * 1000;
 export async function getCachedExchangeRate(fromCcy: number, toCcy: number): Promise<number | null> {
   const key = `fxRate:${fromCcy}:${toCcy}`;
   const row = await prisma.appSetting.findUnique({ where: { key } });
-  const cached = row ? (JSON.parse(row.value) as { rate: number; fetchedAt: number }) : null;
+  const parsed = row ? (JSON.parse(row.value) as { rate: number; fetchedAt: number }) : null;
+  const cached = parsed && parsed.rate > 0 ? parsed : null; // a 0 cached by the old code is not a rate
   if (cached && Date.now() - cached.fetchedAt < FX_CACHE_MAX_AGE_MS) return cached.rate;
   const rate = await getExchangeRate(fromCcy, toCcy);
   if (rate === null) return cached && Date.now() - cached.fetchedAt < FX_STALE_MAX_MS ? cached.rate : null;

@@ -1,19 +1,30 @@
 // Pure-logic check for lib/billHistory.ts. Run: node scripts/check-bill-history.mts
 import assert from 'node:assert';
-import { isGenericBankText, normalizeAccount, pickBillHistoryCategory, type BillPrior } from '../src/lib/billHistory.ts';
+import { betaltDate, isGenericBankText, normalizeAccount, pickBillHistoryCategory, type BillPrior } from '../src/lib/billHistory.ts';
 
 const TXT = 'Mobilgiro m/KID, forfall i dag';
 const now = new Date('2026-11-12T00:00:00Z');
 const d = (s: string) => new Date(`${s}T00:00:00Z`);
 
 // generic-text detector
-assert.ok(isGenericBankText('', TXT, []));
-assert.ok(isGenericBankText('', 'Avtalegiro', []));
-assert.ok(!isGenericBankText('Sygnir AS', TXT, []), 'a payee name means not generic');
-assert.ok(!isGenericBankText('', 'Kiwi 123 Bergen', [1]), 'plain text, one category');
-assert.ok(!isGenericBankText('', 'Kiwi 123 Bergen', [1, 1]), 'same category twice is not ambiguity');
-assert.ok(isGenericBankText('', 'Kiwi 123 Bergen', [1, 2]), 'one text under 2 categories');
-assert.ok(!isGenericBankText('', '  ', [1, 2]));
+assert.ok(isGenericBankText('', TXT));
+assert.ok(isGenericBankText('', 'Avtalegiro'));
+assert.ok(!isGenericBankText('Sygnir AS', TXT), 'a payee name means not generic');
+assert.ok(!isGenericBankText('', 'Kiwi 123 Bergen'), 'plain named merchant');
+assert.ok(!isGenericBankText('', '7080004414716 JOKER BALES'), 'named card merchant stays non-generic even if hand-corrected once (2026-11 live)');
+assert.ok(!isGenericBankText('', '  '));
+// even with priors under 2 categories, a named merchant never takes the history tier
+assert.strictEqual(pickBillHistoryCategory({ counterparty: '', merchantText: '7080004414716 JOKER BALES', account: null, amount: 89, now: new Date('2026-11-12T00:00:00Z'), priors: [
+  { categoryId: 1, amount: 89, date: new Date('2026-11-01T00:00:00Z'), account: null },
+  { categoryId: 2, amount: 89, date: new Date('2026-11-05T00:00:00Z'), account: null },
+] }), null);
+
+// Betalt: dd.mm.yy -> ISO date (weekday placeholder re-book match)
+assert.strictEqual(betaltDate('Nettgiro til: 3705.68.62367 Betalt: 09.11.26'), '2026-11-09');
+assert.strictEqual(betaltDate('Betalt:06.11.26'), '2026-11-06');
+assert.strictEqual(betaltDate('Overførsel mellom egne konti i Mobilbank, forfall i dag'), null);
+assert.strictEqual(betaltDate('Betalt: 9.11.26'), null);
+assert.strictEqual(betaltDate(''), null);
 
 // account normaliser
 assert.strictEqual(normalizeAccount({ iban: 'no93 8601 1117 947' }), 'NO9386011117947');

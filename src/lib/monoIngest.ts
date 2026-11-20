@@ -364,7 +364,9 @@ export async function ingestStatementItem(userId: number, householdId: number, i
     throw e;
   }
 
-  if (intent) await prisma.pendingCategoryIntent.deleteMany({ where: { id: intent.id } });
+  // Only an intent whose category was usable is consumed; a rejected one (category
+  // deactivated / wrong type) is left to expire instead of being silently lost.
+  if (intent && intentCat) await prisma.pendingCategoryIntent.deleteMany({ where: { id: intent.id } });
 
   // The matched OTHER half of a same-bank transfer was recorded earlier
   // under whatever category it originally guessed (it had no way to know

@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Save } from 'lucide-react';
 import { TYPE_LABELS } from '@/lib/utils';
 import { toast } from '@/lib/toast';
+import { useDialogFocus } from './useDialogFocus';
 
 export interface PendingIntent { categoryId: number; scope: 'one' | 'all' }
 export interface PendingHold {
@@ -17,12 +18,13 @@ interface Props {
   label: string; // the merchant text as the row shows it
   onClose: () => void;
   onChange: (intent: PendingIntent | null) => void;
+  onApplied: () => void; // hold had already settled: refresh dashboard data
 }
 
 // Pre-set the category of a Monobank hold that has not settled yet. Nothing is
 // recorded now: the choice waits server-side and is applied when the bank
 // confirms (monoIngest.ts); a declined hold simply drops it.
-export default function PendingEditSheet({ hold, cats, label, onClose, onChange }: Props) {
+export default function PendingEditSheet({ hold, cats, label, onClose, onChange, onApplied }: Props) {
   const [categoryId, setCategoryId] = useState(hold.intent ? String(hold.intent.categoryId) : '');
   const [scope, setScope] = useState<'one' | 'all'>(hold.intent?.scope === 'all' && hold.canLearn ? 'all' : 'one');
   const [busy, setBusy] = useState(false);
@@ -40,8 +42,15 @@ export default function PendingEditSheet({ hold, cats, label, onClose, onChange 
         toast(err?.error ?? 'Не вдалося зберегти категорію', 'error');
         return;
       }
-      onChange({ categoryId: Number(categoryId), scope });
-      toast('Категорію збережено — застосується після підтвердження банком', 'success');
+      const data = await res.json().catch(() => null);
+      if (data?.applied) {
+        // Hold already settled: the category went straight onto the real transaction, no intent stored.
+        onApplied();
+        toast('Покупку вже підтверджено — категорію застосовано', 'success');
+      } else {
+        onChange({ categoryId: Number(categoryId), scope });
+        toast('Категорію збережено — застосується після підтвердження банком', 'success');
+      }
       onClose();
     } catch {
       toast('Помилка з’єднання', 'error');
@@ -65,7 +74,7 @@ export default function PendingEditSheet({ hold, cats, label, onClose, onChange 
   }
 
   const dialogRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { dialogRef.current?.focus(); }, []);
+  useDialogFocus(dialogRef);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);

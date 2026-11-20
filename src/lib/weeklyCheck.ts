@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { notifyHousehold } from '@/lib/telegramBot';
 import { llmTierStatus } from '@/lib/llmStatus';
+import { poolBalance } from '@/lib/savingsBreakdown';
 
 // Server-side weekly health check, fired from the cron route (GitHub Actions ~2x/day).
 // It used to live only in scripts/weekly-check.mjs on the laptop (Task Scheduler);
@@ -34,35 +35,33 @@ async function collectProblems(householdIds?: number[]): Promise<Map<number, str
   };
   const inHh = { in: hhs };
 
-  // Pool vs bank. The absolute levels can't be compared (the pool has history from
-  // before the bank connection), so a snapshot {balanceAmount, balanceFetchedAt, poolSum}
-  // per pool account is kept in AppSetting 'poolCheck:<accountId>' and, once the stored
-  // balance is newer than the snapshot, the bank's CHANGE is compared with the CHANGE
-  // of the app's counted sparebank rows in that pool category. A mismatch > 1 kr = a
-  // transfer leg got lost / double counted. First run only seeds the snapshot.
-  // The app side is counted AS OF the balance's own fetch time (rows created <=
-  // balanceFetchedAt): rows ingested after the last balance read are in the app and
-  // not yet in the bank figure. Snapshots carry v:2; an older one is re-seeded.
-  // ponytail: assumes one mapped account per pool category; sum the balances if that changes.
+  // Pool vs bank, ABSOLUTE: the app's balance of a pool category (every row of it, computed
+  // exactly like the dashboard: lib/savingsBreakdown) must equal the summed stored balance of
+  // the SpareBank accounts mapped to it. Any gap > 1 kr is reported EVERY week until fixed.
+  // (The earlier version compared only the CHANGE between snapshots, so a static offset such
+  // as the 250 kr double-counted transfer of 2026-11-10 alerted once and became the baseline
+  // forever; this subsumes it - equal absolute levels imply equal changes - and needs no state.)
+  // The app side is counted AS OF the balance's own fetch time (rows created <= the oldest
+  // balanceFetchedAt of the pool): rows ingested after the last balance read are in the app and
+  // not yet in the bank figure. A pool whose balances are not in the household currency is
+  // skipped (no FX here).
   await safe('подушка', async () => {
     const accts = await prisma.sparebankAccount.findMany({
       where: { categoryId: { not: null }, balanceAmount: { not: null }, balanceFetchedAt: { not: null }, category: { type: 'savings', isActive: true }, user: { householdId: inHh } },
-      select: { id: true, label: true, categoryId: true, balanceAmount: true, balanceFetchedAt: true, user: { select: { householdId: true } } },
+      select: { label: true, categoryId: true, balanceAmount: true, balanceCurrency: true, balanceFetchedAt: true, user: { select: { householdId: true, household: { select: { currency: true } } } } },
     });
-    for (const a of accts) {
-      const fetchedAt = a.balanceFetchedAt!, balance = a.balanceAmount!;
-      const rows = await prisma.transaction.findMany({ where: { categoryId: a.categoryId!, source: 'sparebank', isTransfer: false, createdAt: { lte: fetchedAt } }, select: { amount: true, savingsWithdrawal: true } });
-      const poolSum = r2(rows.reduce((t, x) => t + (x.savingsWithdrawal ? -x.amount : x.amount), 0));
-      const key = `poolCheck:${a.id}`;
-      const prev = await prisma.appSetting.findUnique({ where: { key } });
-      const snap = prev ? JSON.parse(prev.value) : null;
-      if (snap && fetchedAt <= new Date(snap.balanceFetchedAt)) continue; // no fresher balance yet
-      if (snap && snap.v === 2) {
-        const dBank = r2(balance - snap.balanceAmount), dApp = r2(poolSum - snap.poolSum);
-        if (Math.abs(dBank - dApp) > 1) add(a.user.householdId, `Подушка «${a.label}»: з ${dm(new Date(snap.balanceFetchedAt))} по ${dm(fetchedAt)} баланс у банку змінився на ${dBank} kr, а в застосунку на ${dApp} kr (різниця ${r2(dBank - dApp)} kr). Перевір перекази між рахунками.`);
-      }
-      const value = JSON.stringify({ v: 2, balanceAmount: balance, balanceFetchedAt: fetchedAt.toISOString(), poolSum });
-      await prisma.appSetting.upsert({ where: { key }, create: { key, value }, update: { value } });
+    const pools = new Map<number, typeof accts>();
+    for (const a of accts) pools.set(a.categoryId!, [...(pools.get(a.categoryId!) ?? []), a]);
+    for (const [categoryId, group] of pools) {
+      if (group.some(a => (a.balanceCurrency ?? 'NOK') !== (a.user.household?.currency ?? 'NOK'))) continue;
+      const bank = r2(group.reduce((t, a) => t + a.balanceAmount!, 0));
+      const fetchedAt = new Date(Math.min(...group.map(a => a.balanceFetchedAt!.getTime())));
+      const rows = await prisma.transaction.findMany({
+        where: { categoryId, createdAt: { lte: fetchedAt } },
+        select: { categoryId: true, amount: true, savingsWithdrawal: true, isTransfer: true, category: { select: { name: true, color: true, icon: true, type: true } } },
+      });
+      const app = poolBalance(rows), diff = r2(bank - app);
+      if (Math.abs(diff) > 1) add(group[0].user.householdId, `Подушка «${group.map(a => a.label).join(' + ')}»: в обліку ${app} kr, у банку ${bank} kr, різниця ${diff} kr (баланс банку на ${dm(fetchedAt)}). Перевір перекази між рахунками; нагадуватиму щотижня, поки не виправлено.`);
     }
   });
 

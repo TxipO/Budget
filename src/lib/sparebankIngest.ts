@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { roundMoney } from '@/lib/validate';
 import { guessCategoryId } from '@/lib/categoryGuess';
 import { SbTransaction, SbAccountId } from '@/lib/enableBanking';
-import { normalizeAccount, pickBillHistoryCategory } from '@/lib/billHistory';
+import { normalizeAccount, pickBillHistoryCategory, betaltDate } from '@/lib/billHistory';
 import { getCachedExchangeRate, ISO_4217 } from '@/lib/monobank';
 import { merchantKey as toMerchantKey } from '@/lib/merchantKey';
 import { numericForCurrency } from '@/lib/currencies';
@@ -261,8 +261,8 @@ async function flipPartner(id: number): Promise<void> {
   await prisma.transaction.updateMany({ where: { id, AND: [NOT_MANUAL] }, data: { isTransfer: true } });
 }
 
-// A weekend-dated placeholder transfer that the bank later RE-BOOKS under a new
-// date and its real text. FOUND LIVE 2026-10-13: three Подушка->Основний
+// A placeholder transfer that the bank later RE-BOOKS under a new date and its
+// real text (weekend-dated ones always; weekday ones only with a proof, below). FOUND LIVE 2026-10-13: three Подушка->Основний
 // transfers made over the weekend (500, 500, 200) arrived Sat 10-10 / Sun 10-11
 // as "Overførsel mellom egne konti i Mobilbank, forfall i dag"; on Monday 10-12
 // the bank re-delivered the SAME movements as booked items with
@@ -277,8 +277,12 @@ async function flipPartner(id: number): Promise<void> {
 // row is claimed only when ALL hold: same user, same SparebankAccount, same
 // direction, same original amount (all four read from its key); it is a
 // non-manual row still carrying the bank's placeholder text; it is dated on a
-// Saturday or Sunday (every placeholder the bank ever re-booked was; weekday
-// ones, e.g. #2194, stayed put); the incoming booking date is 1-3 days AFTER it
+// Saturday or Sunday, OR (FOUND LIVE 2026-11-10: Monday placeholder #2569 and
+// its booked copy #2571 "Nettgiro til: ... Betalt: 09.11.26" both counted, pool
+// 250 kr under the bank) the incoming text's own "Betalt: dd.mm.yy" equals the
+// placeholder's date — weekday placeholders WITHOUT that proof stay put, since
+// equal-amount weekday transfers on consecutive days are genuinely separate
+// (#2552 05.11 vs #2557/#2558 'Betalt: 06.11.26'); the incoming booking date is 1-3 days AFTER it
 // (re-booking only moves forward; 3 covers Sat -> Tuesday over a Monday
 // holiday); the incoming text is resolved (a Monday placeholder is a genuinely
 // new transfer); and the bank is not still delivering that placeholder under
@@ -295,7 +299,8 @@ async function flipPartner(id: number): Promise<void> {
 const REBOOK_MAX_DAYS = 3;
 const DAY_MS = 24 * 3600 * 1000;
 
-async function findRebookedPlaceholder(userId: number, selfAccountId: number, indicator: string, amountOriginal: number, date: Date, occurrenceCounts: Map<string, number>) {
+async function findRebookedPlaceholder(userId: number, selfAccountId: number, indicator: string, amountOriginal: number, date: Date, incomingText: string, occurrenceCounts: Map<string, number>) {
+  const paidOn = betaltDate(incomingText);
   const candidates = await prisma.transaction.findMany({
     where: {
       userId,
@@ -309,7 +314,7 @@ async function findRebookedPlaceholder(userId: number, selfAccountId: number, in
   });
   return candidates.find(c => {
     const dow = c.date.getUTCDay();
-    if (dow !== 0 && dow !== 6) return false;
+    if (dow !== 0 && dow !== 6 && paidOn !== c.date.toISOString().slice(0, 10)) return false;
     if (!looksLikeUnresolvedInternalTransfer(c.merchantText ?? c.details)) return false;
     const m = c.sbTransactionId?.match(/^(.*)#(\d+)$/);
     return !m || (occurrenceCounts.get(m[1]) ?? 0) < Number(m[2]);
@@ -448,7 +453,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   // both legs of a pool pair keep exactly the counted/excluded split they had.
   let rebooked = false;
   if (!existing && !looksLikeUnresolvedInternalTransfer(details)) {
-    const placeholder = await findRebookedPlaceholder(userId, selfAccountId, item.credit_debit_indicator, amountOriginal, date, occurrenceCounts);
+    const placeholder = await findRebookedPlaceholder(userId, selfAccountId, item.credit_debit_indicator, amountOriginal, date, merchantText, occurrenceCounts);
     if (placeholder) {
       const sameMonth = placeholder.date.getUTCFullYear() === date.getUTCFullYear() && placeholder.date.getUTCMonth() === date.getUTCMonth();
       // details is also the person's editable comment: refreshed only while it

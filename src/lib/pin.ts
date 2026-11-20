@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'crypto';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { notifyHousehold } from '@/lib/telegramBot';
 
 // PIN LOGIN (typing a PIN instead of email/Telegram to establish identity)
 // is deliberately staying exclusive to the original household — see
@@ -133,7 +134,16 @@ export async function pinLockoutResponse(householdId: number): Promise<NextRespo
     WHERE "householdId" = ${householdId} AND "lockedUntil" <= ${now}::bigint
     RETURNING "failCount"
   `;
-  if (claimed.length) return null;
+  if (claimed.length) {
+    // failCount only resets on a correct PIN, so it is the running count of
+    // consecutive attempts (charged before the compare — a correct Nth guess
+    // would still alert, accepted). Count only, no PIN/IP.
+    const n = claimed[0].failCount;
+    if (n === 10 || (n > 10 && (n - 10) % 20 === 0)) {
+      await notifyHousehold(householdId, `⚠️ Багато невдалих спроб PIN (${n} поспіль). Якщо це не ви — змініть PIN у Налаштуваннях.`).catch(e => console.error('[pin] alert failed', e instanceof Error ? e.message : e));
+    }
+    return null;
+  }
   const row = await prisma.householdLockout.findUnique({ where: { householdId } });
   const wait = Math.max(1, Math.ceil((Number(row?.lockedUntil ?? 0) - Date.now()) / 1000));
   return NextResponse.json(

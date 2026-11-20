@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isValidType, parseId } from '@/lib/validate';
 import { requireHouseholdId } from '@/lib/household';
+import { FALLBACK_CATEGORIES } from '@/lib/defaultCategories';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -55,6 +56,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const id = parseId((await params).id);
     if (id === null) return badRequest('Невалідний ID');
+    // categoryGuess files unclassifiable transactions under these by name.
+    const cat = await prisma.category.findFirst({ where: { id, householdId }, select: { name: true, type: true } });
+    if (cat && (FALLBACK_CATEGORIES as Record<string, { name: string }>)[cat.type]?.name === cat.name) return badRequest('Цю категорію не можна видалити — до неї потрапляють нерозпізнані транзакції');
     // A SpareBank account still mapped to this pot would keep ingesting into a
     // hidden category — make the user unlink it first.
     const linked = await prisma.sparebankAccount.findFirst({ where: { categoryId: id, user: { householdId } }, select: { id: true } });

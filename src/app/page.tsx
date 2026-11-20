@@ -274,7 +274,7 @@ export default function Dashboard() {
   // that's genuinely just waiting to settle looking identical to "the sync
   // is broken" is exactly what kept generating repeat "не підтягнуло"
   // reports. Shown separately, never counted in any total.
-  useEffect(() => {
+  function loadPending() {
     fetch('/api/monobank/status')
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((rows: { userId: number; connected: boolean }[]) => {
@@ -283,6 +283,9 @@ export default function Dashboard() {
       })
       .then(lists => setPending(lists.flat()))
       .catch(() => {}); // decorative — dashboard works fine without this list
+  }
+  useEffect(() => {
+    loadPending();
     fetch('/api/categories').then(r => r.ok ? r.json() : []).then(setPendingCats).catch(() => {}); // names/icons for the category picked on a hold
   }, []);
 
@@ -439,7 +442,9 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, [planKey]);
 
+  const modalOpen = showForm || !!editingHold;
   useEffect(() => {
+    if (modalOpen) return; // a form is already open: Alt+N must not turn an edit into a create
     function handleKeyDown(e: KeyboardEvent) {
       if (e.altKey && (e.key === 'n' || e.key === 'N')) {
         e.preventDefault();
@@ -449,7 +454,7 @@ export default function Dashboard() {
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [modalOpen]);
 
   function prevMonth() {
     if (month === 1) { setMonth(12); setYear(y => y - 1); }
@@ -964,6 +969,7 @@ export default function Dashboard() {
           cats={pendingCats}
           label={editingHold.description || 'Без опису'}
           onClose={() => setEditingHold(null)}
+          onApplied={() => { loadStats(); loadPending(); }}
           onChange={(intent: PendingIntent | null) => setPending(list => list.map(h => h.id === editingHold.id && h.userId === editingHold.userId ? { ...h, intent } : h))}
         />
       )}

@@ -25,15 +25,23 @@ export async function POST(req: NextRequest) {
 
     // Same cached helper as the dashboard list: no extra Monobank call while its cache is fresh.
     const hold = (await loadPending(userId, householdId)).find(h => h.id === holdId);
-    if (!hold) return NextResponse.json({ error: 'Покупка вже не очікує підтвердження' }, { status: 404 });
+    // The hold may have settled before the user saved (the cached list can still show it): the
+    // row then already exists under the hold's id, and an intent for it could never be consumed.
+    const settled = await prisma.transaction.findFirst({
+      where: { householdId, userId, monoStatementId: holdId },
+      select: { id: true, isTransfer: true, monoMerchant: true, category: { select: { type: true } } },
+    });
+    if (!hold && !settled) return NextResponse.json({ error: 'Покупка вже не очікує підтвердження' }, { status: 404 });
 
-    // expense/income/savings only — 'transfer' is detected, never picked; active only.
-    const cat = await prisma.category.findFirst({ where: { id: categoryId, householdId, isActive: true, type: { in: ['expense', 'income', 'savings'] } }, select: { id: true } });
+    // expense/income/savings only — 'transfer' is detected, never picked; active only. A settled
+    // row also keeps ingest's rule: an income row cannot take an expense category and vice versa.
+    const rowType = settled?.category.type === 'income' ? 'income' : 'expense';
+    const cat = await prisma.category.findFirst({ where: { id: categoryId, householdId, isActive: true, type: { in: settled ? [rowType, 'savings'] : ['expense', 'income', 'savings'] } }, select: { id: true } });
     if (!cat) return badRequest('Невалідна категорія');
 
     if (body.scope === 'all') {
       // The same rule the edit form's "all from this merchant" learns (transactions/[id] PUT).
-      const merchantKey = usableMerchantKey(hold.description);
+      const merchantKey = usableMerchantKey(hold?.description ?? settled?.monoMerchant ?? '');
       if (!merchantKey) return badRequest('Для цього продавця не можна створити правило — оберіть «Тільки ця покупка»');
       await prisma.monoCategoryRule.upsert({
         where: { userId_merchantKey: { userId, merchantKey } },
@@ -42,13 +50,21 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (settled) {
+      // Same outcome ingest would have produced; a detected transfer stays excluded (transfer wins).
+      if (!settled.isTransfer) {
+        await prisma.transaction.update({ where: { id: settled.id }, data: { categoryId, categorySource: body.scope === 'all' ? 'rule' : 'manual' } });
+      }
+      return NextResponse.json({ categoryId, scope: body.scope, applied: !settled.isTransfer });
+    }
+
     const now = new Date();
     const data = { householdId, categoryId, scope: body.scope as string, createdAt: now, expiresAt: new Date(now.getTime() + INTENT_TTL_MS) };
     // createdAt is refreshed on replace: it starts the decline-prune grace (monoPending.ts).
     const intent = await prisma.pendingCategoryIntent.upsert({
       where: { userId_holdId: { userId, holdId } },
       update: data,
-      create: { ...data, userId, holdId, merchantText: hold.description, amount: hold.amount, holdTime: new Date(hold.time * 1000) },
+      create: { ...data, userId, holdId, merchantText: hold!.description, amount: hold!.amount, holdTime: new Date(hold!.time * 1000) },
       select: { categoryId: true, scope: true },
     });
     return NextResponse.json(intent);

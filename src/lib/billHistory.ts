@@ -21,11 +21,19 @@ export function normalizeAccount(a: { iban?: string | null; other?: { identifica
   return s || null;
 }
 
-// Generic = no payee name AND (a payment-instruction phrase OR this exact text
-// has already been filed under >=2 different categories — proof it names no one).
-export function isGenericBankText(counterparty: string, merchantText: string, priorCategoryIds: number[]): boolean {
+// Generic = no payee name AND an explicit payment-instruction phrase. (A "same text
+// already under >=2 categories" trigger was removed 2026-11: one hand correction made
+// ordinary named card merchants look generic, so amount-history overrode MCC/LLM.)
+export function isGenericBankText(counterparty: string, merchantText: string): boolean {
   if (counterparty.trim() || !merchantText.trim()) return false;
-  return PAYMENT_INSTRUCTION.test(merchantText) || new Set(priorCategoryIds).size >= 2;
+  return PAYMENT_INSTRUCTION.test(merchantText);
+}
+
+// "Nettgiro til: 3705.68.62367 Betalt: 09.11.26" -> '2026-11-09': the date the payer
+// actually initiated the payment, which the bank's booking date may trail by days.
+export function betaltDate(text: string): string | null {
+  const m = text.match(/Betalt:\s*(\d{2})\.(\d{2})\.(\d{2})\b/i);
+  return m ? `20${m[3]}-${m[2]}-${m[1]}` : null;
 }
 
 // priors = this household's earlier rows with the same merchantText, already
@@ -33,7 +41,7 @@ export function isGenericBankText(counterparty: string, merchantText: string, pr
 export function pickBillHistoryCategory(a: {
   counterparty: string; merchantText: string; account: string | null; amount: number; now: Date; priors: BillPrior[];
 }): { categoryId: number; source: 'history-account' | 'history-amount' } | null {
-  if (!isGenericBankText(a.counterparty, a.merchantText, a.priors.map(p => p.categoryId))) return null;
+  if (!isGenericBankText(a.counterparty, a.merchantText)) return null;
   const latest = (rows: BillPrior[]) => rows.reduce<BillPrior | null>((best, p) => (!best || p.date > best.date ? p : best), null);
   const byAccount = a.account ? latest(a.priors.filter(p => p.account === a.account)) : null;
   if (byAccount) return { categoryId: byAccount.categoryId, source: 'history-account' };

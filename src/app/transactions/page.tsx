@@ -98,6 +98,7 @@ export default function TransactionsPage() {
   }, []);
 
   useEffect(() => {
+    if (showForm) return; // a form is already open: Alt+N must not turn an edit into a create
     function handleKeyDown(e: KeyboardEvent) {
       if (e.altKey && (e.key === 'n' || e.key === 'N')) {
         e.preventDefault();
@@ -107,7 +108,7 @@ export default function TransactionsPage() {
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [showForm]);
 
   function del(id: number) {
     const tx = txs.find(t => t.id === id);
@@ -222,7 +223,9 @@ export default function TransactionsPage() {
   });
 
   const totalPages = loading ? 0 : Math.ceil(filtered.length / PAGE_SIZE);
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // Clamp: deleting the last row of the last page must not strand `page` past the end.
+  const cur = Math.min(page, Math.max(1, totalPages));
+  const paged = filtered.slice((cur - 1) * PAGE_SIZE, cur * PAGE_SIZE);
 
   // `filtered` already holds only budget-relevant rows; isBudgetRelevant is kept
   // here as a guard in case that upstream filter ever changes.
@@ -297,6 +300,7 @@ export default function TransactionsPage() {
           <input
             className="input-field"
             style={{ paddingLeft: 36 }}
+            aria-label="Пошук по назві, деталям або сумі"
             placeholder="Пошук по назві, деталям або сумі…"
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -304,6 +308,7 @@ export default function TransactionsPage() {
         </div>
         <button
           onClick={() => setGlobalSearch(v => !v)}
+          aria-pressed={globalSearch}
           className="btn-ghost"
           title="Шукати по всіх роках, а не тільки в обраному місяці"
           style={{
@@ -320,6 +325,7 @@ export default function TransactionsPage() {
             <button
               key={val}
               onClick={() => setTypeFilter(val)}
+              aria-pressed={typeFilter === val}
               className="btn-ghost"
               style={{
                 background: typeFilter === val ? 'rgba(249,115,22,0.2)' : undefined,
@@ -343,6 +349,7 @@ export default function TransactionsPage() {
               <button
                 key={val}
                 onClick={() => setUserFilter(val)}
+                aria-pressed={userFilter === val}
                 className="btn-ghost"
                 style={{
                   background: userFilter === val ? 'rgba(249,115,22,0.2)' : undefined,
@@ -562,21 +569,21 @@ export default function TransactionsPage() {
           }}>
             <button
               className="btn-ghost"
-              style={{ padding: '5px 12px', border: 'none', opacity: page === 1 ? 0.3 : 1 }}
-              disabled={page === 1}
-              onClick={() => setPage(p => p - 1)}
+              style={{ padding: '5px 12px', border: 'none', opacity: cur === 1 ? 0.3 : 1 }}
+              disabled={cur === 1}
+              onClick={() => setPage(cur - 1)}
               title="Попередня сторінка" aria-label="Попередня сторінка"
             >
               <ChevronLeft size={15} />
             </button>
             <span style={{ fontSize: 13, color: 'var(--c-text-sec)', minWidth: 60, textAlign: 'center' }}>
-              {page} / {totalPages}
+              {cur} / {totalPages}
             </span>
             <button
               className="btn-ghost"
-              style={{ padding: '5px 12px', border: 'none', opacity: page === totalPages ? 0.3 : 1 }}
-              disabled={page === totalPages}
-              onClick={() => setPage(p => p + 1)}
+              style={{ padding: '5px 12px', border: 'none', opacity: cur === totalPages ? 0.3 : 1 }}
+              disabled={cur === totalPages}
+              onClick={() => setPage(cur + 1)}
               title="Наступна сторінка" aria-label="Наступна сторінка"
             >
               <ChevronRight size={15} />

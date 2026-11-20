@@ -11,7 +11,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ secret: string }> }) {
   try {
-    const user = await prisma.user.findUnique({ where: { monoWebhookSecret: (await params).secret }, select: { id: true, householdId: true } });
+    const user = await prisma.user.findUnique({ where: { monoWebhookSecret: (await params).secret }, select: { id: true, householdId: true, monoAccountId: true } });
     // 200, not 404: an unrecognized secret (stale/disconnected/probing) isn't
     // an error for Monobank to retry, it's just nothing to do. A user with no
     // household (shouldn't happen post-backfill) is treated the same way —
@@ -22,6 +22,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ sec
     if (body?.type !== 'StatementItem') return NextResponse.json({ ok: true });
     const item: MonoStatementItem = body.data?.statementItem;
     if (!item?.id) return NextResponse.json({ ok: true });
+    // The token covers every card; sync and pending only ever read monoAccountId,
+    // so a push from another account must not land as a row (null = not chosen yet: keep old behaviour).
+    if (user.monoAccountId && body.data?.account !== user.monoAccountId) return NextResponse.json({ ok: true });
 
     await ingestStatementItem(user.id, user.householdId, item);
 

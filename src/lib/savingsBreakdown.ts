@@ -34,3 +34,9 @@ export function computeSavingsByCategory(
   }
   return Object.values(byCategory).sort((a, b) => b.balance - a.balance);
 }
+
+// The app's own balance of ONE pool (rows already limited to that category), computed
+// exactly as the dashboard does — what lib/weeklyCheck.ts compares against the bank.
+export function poolBalance(rows: Parameters<typeof computeSavingsByCategory>[0]): number {
+  return Math.round(computeSavingsByCategory(rows).reduce((t, c) => t + c.balance, 0) * 100) / 100;
+}

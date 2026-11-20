@@ -188,6 +188,10 @@ export async function middleware(req: NextRequest) {
     .map(b => b.toString(16).padStart(2, '0')).join('');
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-nonce', nonce);
+  // Identity headers are middleware-only: strip client-supplied ones on EVERY
+  // path (public/bypass included); the session branch below re-sets them.
+  requestHeaders.delete('x-current-user-id');
+  requestHeaders.delete('x-household-id');
 
   const secret = process.env.AUTH_SECRET;
   const { pathname } = req.nextUrl;
@@ -221,7 +225,6 @@ export async function middleware(req: NextRequest) {
     // forwarded as a real user id — pages check for its absence rather than
     // treating the literal string "shared" as a User.id to look up.
     if (session.userId !== 'shared') requestHeaders.set('x-current-user-id', session.userId);
-    else requestHeaders.delete('x-current-user-id');
     // Every route that reads/writes tenant-owned data needs this — it's the
     // multi-tenant isolation boundary. Always set, for both PIN and Telegram
     // sessions, since a "shared" PIN session still belongs to exactly one

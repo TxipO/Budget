@@ -26,15 +26,16 @@ export async function POST(req: NextRequest) {
       console.error('[sparebank/disconnect] session revoke failed, continuing', e);
     }
 
-    // The whole consent is revoked above, so every account under it goes
-    // with it — not just the one that happened to be syncEnabled.
-    await prisma.$transaction([
-      prisma.sparebankAccount.deleteMany({ where: { userId: Number(userId) } }),
-      prisma.user.update({
-        where: { id: Number(userId) },
-        data: { sbSessionEnc: null, sbValidUntil: null, sbAutoSync: false, sbLastAutoSyncAt: null, sbSyncFailCount: 0 },
-      }),
-    ]);
+    // The consent is revoked above, but the SparebankAccount rows STAY: their autoincrement ids
+    // prefix every stored sbTransactionId (`sb<id>|…`) and carry the pool mapping (categoryId),
+    // syncFloor and the lastSyncedAt watermark. Deleting them made a reconnect create new ids, so
+    // the first sync re-imported the whole window as duplicates. The callback re-matches the kept
+    // rows by uid, then IBAN/identification, rotates in the new uid and keeps their syncEnabled.
+    // "Connected" everywhere keys on sbSessionEnc (cleared here), never on rows existing.
+    await prisma.user.update({
+      where: { id: Number(userId) },
+      data: { sbSessionEnc: null, sbValidUntil: null, sbAutoSync: false, sbLastAutoSyncAt: null, sbSyncFailCount: 0, sbLastAutoSyncOkAt: null, sbLastSyncError: null },
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e) {

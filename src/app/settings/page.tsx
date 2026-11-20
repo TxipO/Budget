@@ -1009,7 +1009,7 @@ export default function SettingsPage() {
                           </button>
                         ) : (
                           <>
-                            {/* Reconnect while still connected is fine (same flow as after expiry); never «Відключити» — it deletes the account rows and re-keys sbTransactionId. */}
+                            {/* Reconnect while still connected is fine (same flow as after expiry); no «Відключити» button here (the endpoint keeps the account rows, so a reconnect keeps sbTransactionId keys). */}
                             {sb.validUntil && new Date(sb.validUntil).getTime() - Date.now() < CONSENT_WARN_MS && (
                               <button
                                 className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
