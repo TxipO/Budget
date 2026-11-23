@@ -156,7 +156,7 @@ export async function loadPending(userId: number, householdId: number): Promise<
   // hold/item could still be the one it belongs to) and only past the grace.
   if (!failed) {
     await prisma.pendingCategoryIntent.deleteMany({
-      where: { userId, holdId: { notIn: holds.map(h => h.id) }, createdAt: { lt: new Date(Date.now() - INTENT_GRACE_MS) } },
+      where: { userId, bank: 'mono', holdId: { notIn: holds.map(h => h.id) }, createdAt: { lt: new Date(Date.now() - INTENT_GRACE_MS) } },
     }).catch((e) => console.error('[monobank/pending] intent prune failed', e));
   }
 

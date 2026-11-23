@@ -6,6 +6,7 @@ import { normalizeAccount, pickBillHistoryCategory, betaltDate } from '@/lib/bil
 import { getCachedExchangeRate, ISO_4217 } from '@/lib/monobank';
 import { merchantKey as toMerchantKey } from '@/lib/merchantKey';
 import { numericForCurrency } from '@/lib/currencies';
+import { matchIntent, SB_TOLERANCE } from '@/lib/holdMatch';
 import { looksLikeTransferIntermediary, findCrossBankTransferMatch, ensureCrossBankFee, looksLikeUnresolvedInternalTransfer, findUnresolvedInternalTransferMatch, poolCategoryIdOf, NOT_MANUAL } from '@/lib/transferDetect';
 
 // See monoIngest.ts's own comment on the 2026-08-24 rename/retype from
@@ -530,6 +531,19 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     (unresolvedPoolLeg !== null || (!existing.isTransfer && (transferAccountId !== null || looksLikeUnresolvedInternalTransfer(details))));
   if (existing && !needsReconciliation) return rebooked ? { status: 'reconciled', id: existing.id } : { status: 'skipped_duplicate' };
 
+  // A category the person picked for this purchase while it was still a card reservation
+  // (PendingCategoryIntent, bank 'sparebank'): looked up only for a brand-new expense row,
+  // BEFORE guessing so no LLM tier runs for it. Same shape as monoIngest; the match is
+  // merchantText (= the reservation's sbDescription) + amount ±3% + date window, see holdMatch.
+  const intent = !existing && txType === 'expense'
+    ? matchIntent(await prisma.pendingCategoryIntent.findMany({ where: { userId, householdId, bank: 'sparebank' } }),
+        { id: storageKey, description: merchantText, amount, time: date }, SB_TOLERANCE)
+    : null;
+  const intentCat = intent ? await prisma.category.findFirst({
+    where: { id: intent.categoryId, householdId, isActive: true, type: { in: ['expense', 'savings'] } },
+    select: { id: true },
+  }) : null;
+
   let isTransfer: boolean;
   let categoryId: number;
   let categorySource: string | null = null; // only the no-transfer-match branch below actually runs guessCategoryId
@@ -585,6 +599,12 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     categoryId = unresolvedPoolLeg.categoryId;
     isTransfer = unresolvedPoolLeg.isTransfer;
     savingsWithdrawal = unresolvedPoolLeg.savingsWithdrawal;
+  } else if (intent && intentCat) {
+    // Transfer detection above wins; otherwise: 'all' also taught the merchant rule ('rule'),
+    // 'one' is a human one-off ('manual') that no matcher/sweep may override.
+    categoryId = intentCat.id;
+    categorySource = intent.scope === 'all' ? 'rule' : 'manual';
+    isTransfer = false;
   } else {
     // A learned rule can resolve to a 'transfer'-type category — then the row
     // must be excluded from totals too (guessCategoryId's own isTransfer).
@@ -714,6 +734,9 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     if (e?.code === 'P2002') return { status: 'skipped_duplicate' };
     throw e;
   }
+
+  // Consumed only when its category was usable (a rejected one expires instead of being lost).
+  if (intent && intentCat) await prisma.pendingCategoryIntent.deleteMany({ where: { id: intent.id } });
 
   // Cross-bank match: only flip isTransfer on the other leg (Monobank side),
   // never its category — see transferDetect.ts's own comment on why.

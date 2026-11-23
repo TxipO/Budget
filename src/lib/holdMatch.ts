@@ -6,7 +6,9 @@ import { merchantKey } from './merchantKey';
 export interface IntentLike { holdId: string; merchantText: string; amount: number; holdTime: Date }
 export interface SettledLike { id: string; description: string; amount: number; time: Date }
 
-const AMOUNT_TOLERANCE = 0.01; // hold and settle are FX-converted at different moments
+export const MONO_TOLERANCE = 0.01; // hold and settle are FX-converted at different moments
+// SpareBank: a PLN/EUR card purchase is reserved in NOK at one rate and booked at another.
+export const SB_TOLERANCE = 0.03;
 const SETTLE_WINDOW_MS = 10 * 24 * 3600 * 1000;
 const EARLY_SLACK_MS = 3600 * 1000;
 
@@ -15,13 +17,13 @@ const sameText = (a: string, b: string) => {
   return ka !== '' ? ka === kb : a.trim().toLowerCase() === b.trim().toLowerCase();
 };
 
-export function matchIntent<T extends IntentLike>(intents: T[], s: SettledLike): T | null {
+export function matchIntent<T extends IntentLike>(intents: T[], s: SettledLike, tolerance = MONO_TOLERANCE): T | null {
   const byId = intents.find(i => i.holdId === s.id);
   if (byId) return byId;
   const cands = intents.filter(i => {
     const dt = s.time.getTime() - i.holdTime.getTime();
     return sameText(i.merchantText, s.description)
-      && Math.abs(i.amount - s.amount) <= AMOUNT_TOLERANCE * Math.max(i.amount, s.amount)
+      && Math.abs(i.amount - s.amount) <= tolerance * Math.max(i.amount, s.amount)
       && dt >= -EARLY_SLACK_MS && dt <= SETTLE_WINDOW_MS;
   });
   cands.sort((a, b) => Math.abs(a.amount - s.amount) - Math.abs(b.amount - s.amount)

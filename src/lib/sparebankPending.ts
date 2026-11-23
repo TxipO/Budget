@@ -17,6 +17,7 @@ const CACHE_TTL_MS = 30 * 60 * 1000;
 const STALE_CACHE_MAX_MS = 24 * 3600 * 1000; // same cut-off as monoPending: older than this is worse than nothing
 const LOOKBACK_DAYS = 14;
 const MAX_PAGES = 3;
+const INTENT_GRACE_MS = 2 * 24 * 3600 * 1000; // same as monoPending
 
 export interface SbPendingItem {
   id: string; // display key only
@@ -27,6 +28,13 @@ export interface SbPendingItem {
 }
 
 type Cache = { items: SbPendingItem[]; fetchedAt: number; error?: boolean };
+
+// The cached list only — NEVER a bank call (the intent route validates against what the user sees).
+export async function readSparebankPendingCache(userId: number): Promise<Cache | null> {
+  const row = await prisma.appSetting.findUnique({ where: { key: `sbPending:${userId}` } });
+  const c: Cache | null = row ? JSON.parse(row.value) : null;
+  return c && !c.error && Date.now() - c.fetchedAt < STALE_CACHE_MAX_MS ? c : null;
+}
 
 export async function loadSparebankPending(userId: number, householdId: number, psu: NonNullable<Psu>): Promise<SbPendingItem[]> {
   // Ownership first — before the cache is read, same as loadPending.
@@ -54,6 +62,7 @@ export async function loadSparebankPending(userId: number, householdId: number, 
     const dateFrom = new Date(Date.now() - LOOKBACK_DAYS * 24 * 3600 * 1000).toISOString().slice(0, 10);
 
     const items: SbPendingItem[] = [];
+    let complete = rate !== null; // an unconverted/skipped/truncated list must not prune intents
     const seen = new Map<string, number>();
     for (const { accountUid } of user.sparebankAccounts) {
       let continuationKey: string | undefined;
@@ -64,10 +73,11 @@ export async function loadSparebankPending(userId: number, householdId: number, 
           if (item.credit_debit_indicator !== 'DBIT' || (item.status && item.status !== 'PDNG' && item.status !== 'HOLD')) continue;
           const raw = Number(item.transaction_amount?.amount);
           // Non-NOK or unconvertible: skipped rather than shown with a wrong number.
+          if (!Number.isFinite(raw)) complete = false;
           if (!Number.isFinite(raw) || item.transaction_amount.currency !== 'NOK' || rate === null) continue;
           const dateStr = item.transaction_date || item.value_date || item.booking_date || new Date().toISOString().slice(0, 10);
           const time = Math.floor(new Date(`${dateStr}T00:00:00Z`).getTime() / 1000);
-          if (!Number.isFinite(time)) continue;
+          if (!Number.isFinite(time)) { complete = false; continue; }
           const { details } = sbDescription(item, 'expense');
           const amount = roundMoney(Math.abs(raw) * rate);
           const base = createHash('sha1').update(`${accountUid}|${item.entry_reference || item.transaction_id || `${dateStr}|${raw}|${details}`}`).digest('hex').slice(0, 12);
@@ -77,7 +87,16 @@ export async function loadSparebankPending(userId: number, householdId: number, 
         }
         continuationKey = res.continuation_key;
         if (!continuationKey) break;
+        if (page === MAX_PAGES - 1) complete = false;
       }
+    }
+
+    // Category choices whose reservation is gone from a COMPLETE fresh list and were not
+    // consumed by the booking ingest (declined/expired). Never on a failed fetch (catch below).
+    if (complete) {
+      await prisma.pendingCategoryIntent.deleteMany({
+        where: { userId, bank: 'sparebank', holdId: { notIn: items.map(i => i.id) }, createdAt: { lt: new Date(Date.now() - INTENT_GRACE_MS) } },
+      }).catch((e) => console.error('[sparebankPending] intent prune failed', e));
     }
 
     await prisma.appSetting.upsert({

@@ -477,6 +477,7 @@ model PendingCategoryIntent {
   id           Int      @id @default(autoincrement())
   householdId  Int
   userId       Int
+  bank         String   @default("mono") // 'mono' | 'sparebank' (holdId is 'sb:'-prefixed there, so (userId, holdId) stays unique)
   holdId       String
   merchantText String
   amount       Float

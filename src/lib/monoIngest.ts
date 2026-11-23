@@ -230,7 +230,7 @@ export async function ingestStatementItem(userId: number, householdId: number, i
   // below; consumed (deleted) after the row exists, or dropped when the row turns
   // out to be a transfer — transfer detection wins, it is the safer outcome (a
   // transfer is excluded from totals; a wrongly categorised one would be counted).
-  const intents = await prisma.pendingCategoryIntent.findMany({ where: { userId, householdId } });
+  const intents = await prisma.pendingCategoryIntent.findMany({ where: { userId, householdId, bank: 'mono' } });
   const intent = matchIntent(intents, { id: item.id, description: item.description || '', amount, time: raw });
   const intentCat = intent ? await prisma.category.findFirst({
     // 'income' rows cannot take an expense category and vice versa; savings fits both.

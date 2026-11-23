@@ -7,7 +7,7 @@ import { useDialogFocus } from './useDialogFocus';
 
 export interface PendingIntent { categoryId: number; scope: 'one' | 'all' }
 export interface PendingHold {
-  id: string; description: string; amount: number; currency: string; userId: number;
+  id: string; description: string; amount: number; currency: string; userId: number; bank?: 'mono' | 'sparebank';
   canLearn: boolean; intent: PendingIntent | null;
 }
 export interface PendingCat { id: number; name: string; type: string; color: string; icon: string }
@@ -21,9 +21,9 @@ interface Props {
   onApplied: () => void; // hold had already settled: refresh dashboard data
 }
 
-// Pre-set the category of a Monobank hold that has not settled yet. Nothing is
+// Pre-set the category of a Monobank hold / SpareBank reservation that has not settled yet. Nothing is
 // recorded now: the choice waits server-side and is applied when the bank
-// confirms (monoIngest.ts); a declined hold simply drops it.
+// confirms (monoIngest.ts / sparebankIngest.ts); a declined hold simply drops it.
 export default function PendingEditSheet({ hold, cats, label, onClose, onChange, onApplied }: Props) {
   const [categoryId, setCategoryId] = useState(hold.intent ? String(hold.intent.categoryId) : '');
   const [scope, setScope] = useState<'one' | 'all'>(hold.intent?.scope === 'all' && hold.canLearn ? 'all' : 'one');
@@ -35,7 +35,7 @@ export default function PendingEditSheet({ hold, cats, label, onClose, onChange,
     try {
       const res = await fetch('/api/monobank/pending/intent', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: hold.userId, holdId: hold.id, categoryId: Number(categoryId), scope }),
+        body: JSON.stringify({ userId: hold.userId, holdId: hold.id, bank: hold.bank ?? 'mono', categoryId: Number(categoryId), scope }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);

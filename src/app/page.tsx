@@ -254,14 +254,10 @@ function PendingList({ rows, cats, onEdit }: { rows: PendingRow[]; cats: Pending
             );
             return (
               <li key={`${p.userId}-${p.id}`} className={`d-pend-row${isExtra ? ' d-tx-row extra' : ''}`} style={vars({ '--k': i - PEND_PREVIEW })} inert={isExtra && !open}>
-                {p.bank === 'mono' ? (
-                  <button type="button" className="d-tx-hit" onClick={() => onEdit(p)} aria-label={`Обрати категорію: ${p.description || 'Без опису'}, ${formatMoney(p.amount)}, очікує підтвердження${cat ? `. Зараз: ${cat.name}` : ''}`}>
-                    {inner}
-                    <Pencil size={15} className="d-tx-pen" aria-hidden="true" />
-                  </button>
-                ) : (
-                  <div className="d-tx-hit" style={{ cursor: 'default' }}>{inner}</div>
-                )}
+                <button type="button" className="d-tx-hit" onClick={() => onEdit(p)} aria-label={`Обрати категорію: ${p.description || 'Без опису'}, ${formatMoney(p.amount)}, очікує підтвердження${cat ? `. Зараз: ${cat.name}` : ''}`}>
+                  {inner}
+                  <Pencil size={15} className="d-tx-pen" aria-hidden="true" />
+                </button>
               </li>
             );
           })}

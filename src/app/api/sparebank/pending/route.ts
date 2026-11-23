@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireHouseholdId } from '@/lib/household';
+import { prisma } from '@/lib/prisma';
 import { loadSparebankPending } from '@/lib/sparebankPending';
+import { usableMerchantKey } from '@/lib/merchantKey';
 
 // Card reservations for the dashboard's «Очікують підтвердження» block. Called
 // only when someone opens the dashboard, so the PSU headers below are genuine
@@ -18,7 +20,17 @@ export async function GET(req: NextRequest) {
       userAgent: req.headers.get('user-agent') || undefined,
     };
     const items = await loadSparebankPending(userId, householdId, psu);
-    return NextResponse.json(items.map(i => ({ ...i, userId })));
+    if (items.length === 0) return NextResponse.json([]);
+    // Same shape as monobank/pending: the category already picked for each reservation, if any.
+    const intents = await prisma.pendingCategoryIntent.findMany({
+      where: { householdId, userId, bank: 'sparebank', holdId: { in: items.map(i => i.id) } },
+      select: { holdId: true, categoryId: true, scope: true },
+    });
+    const byHold = new Map(intents.map(i => [i.holdId, i]));
+    return NextResponse.json(items.map(i => {
+      const t = byHold.get(i.id);
+      return { ...i, userId, canLearn: usableMerchantKey(i.description) !== null, intent: t ? { categoryId: t.categoryId, scope: t.scope } : null };
+    }));
   } catch (e) {
     console.error('[sparebank/pending GET]', e);
     return NextResponse.json([]);
