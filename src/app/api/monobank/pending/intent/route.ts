@@ -12,7 +12,7 @@ const INTENT_TTL_MS = 14 * 24 * 3600 * 1000; // = the pending list's lookback
 
 export async function POST(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const userId = parseId(body.userId);
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
 // an ordinary rule now — change it from the transaction edit form).
 export async function DELETE(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const userId = parseId(req.nextUrl.searchParams.get('userId'));
     const holdId = req.nextUrl.searchParams.get('holdId') ?? '';

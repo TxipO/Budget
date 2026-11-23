@@ -110,7 +110,7 @@ function cellDate(v: ExcelJS.CellValue): Date | null {
 
 export async function POST(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const formData = await req.formData();
     const file = formData.get('file');

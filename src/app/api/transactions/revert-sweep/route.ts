@@ -14,7 +14,7 @@ const MAX_IDS = 2000;
 
 export async function POST(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const { primaryId, sweptIds, fromCategoryId, toCategoryId, ruleBefore } = body;

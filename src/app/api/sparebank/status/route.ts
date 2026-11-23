@@ -11,7 +11,7 @@ import { requireHouseholdId } from '@/lib/household';
 // to turn its own sync on.
 export async function GET(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const users = await prisma.user.findMany({
       where: { householdId },

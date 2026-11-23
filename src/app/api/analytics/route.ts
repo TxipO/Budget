@@ -12,7 +12,7 @@ interface Insight { text: string; tone: 'good' | 'warn' | 'info' }
 
 export async function GET(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     // UTC getters — the in-progress checks below (isCurrentMonth, inProgressIdx) are UTC too.
     const nowYear = new Date().getUTCFullYear();

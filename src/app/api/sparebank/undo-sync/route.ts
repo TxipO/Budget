@@ -13,7 +13,7 @@ const MAX_IDS = 2000; // generous — a single sync's created-row count should n
 
 export async function POST(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const { userId, accountId, transactionIds, previousSyncedAt } = body;

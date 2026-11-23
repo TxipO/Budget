@@ -9,7 +9,7 @@ import { llmTierStatus } from '@/lib/llmStatus';
 // remember to run.
 export async function GET(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json(await llmTierStatus(householdId));
   } catch (e) {

@@ -10,7 +10,7 @@ import { merchantKeyOf, findSweepSiblings } from '@/lib/sweepSiblings';
 // of silently sweeping (see PUT /api/transactions/[id]'s scope comment).
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const id = parseInt((await params).id);
     if (!Number.isFinite(id) || id <= 0) return badRequest('Невалідний ID');

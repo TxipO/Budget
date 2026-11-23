@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { badRequest, isValidType } from '@/lib/validate';
 import { requireHouseholdId, MAX_USERS } from '@/lib/household';
 import { CURRENCIES } from '@/lib/currencies';
-import { hashPin } from '@/lib/pin';
+import { hashPinV2 } from '@/lib/pin';
 import { ICON_KEYS } from '@/lib/icons';
 import { issueAuthCookies } from '@/lib/session';
 
@@ -15,7 +15,7 @@ interface CategoryInput { name: string; type: string; color: string; icon: strin
 
 export async function POST(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const selfUserId = req.headers.get('x-current-user-id');
     if (!selfUserId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -66,6 +66,8 @@ export async function POST(req: NextRequest) {
     const household = await prisma.household.findUnique({ where: { id: householdId }, select: { onboardedAt: true } });
     if (household?.onboardedAt) return badRequest('Онбординг вже пройдено');
 
+    // Hashed before the transaction: scrypt would otherwise hold it open.
+    const pinHashV2 = pin ? await hashPinV2(pin) : null;
     try {
       await prisma.$transaction(async (tx) => {
         await tx.user.update({ where: { id: Number(selfUserId) }, data: { name: selfName } });
@@ -81,7 +83,7 @@ export async function POST(req: NextRequest) {
         });
 
         if (pin) {
-          await tx.household.update({ where: { id: householdId }, data: { pinHash: hashPin(pin) } });
+          await tx.household.update({ where: { id: householdId }, data: { pinHash: pinHashV2 } });
         }
 
         await tx.household.update({ where: { id: householdId }, data: { onboardedAt: new Date(), currency } });

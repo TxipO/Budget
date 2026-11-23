@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { verifyPendingRegistration } from '@/lib/telegramAuth';
 import { issueAuthCookies } from '@/lib/session';
 import { badRequest, isPositiveInt } from '@/lib/validate';
-import { hashPin, safeEqual, currentPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse, hasPinConfigured, isPinHousehold, PIN_HOUSEHOLD_ID } from '@/lib/pin';
+import { checkPin, currentPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse, hasPinConfigured, isPinHousehold, PIN_HOUSEHOLD_ID } from '@/lib/pin';
 
 // Not verified in v1 (no email-sending service provisioned) — format-only,
 // treats the value as a claimed identifier rather than a proven one.
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       if (blocked) return blocked;
       const stored = await currentPinHash(PIN_HOUSEHOLD_ID);
       if (!stored) return NextResponse.json({ error: 'PIN не налаштовано' }, { status: 500 });
-      if (typeof pin !== 'string' || !safeEqual(hashPin(pin), stored)) {
+      if (!(await checkPin(PIN_HOUSEHOLD_ID, pin, stored))) {
         await registerPinFailure(PIN_HOUSEHOLD_ID);
         return NextResponse.json({ error: 'Невірний PIN' }, { status: 401 });
       }

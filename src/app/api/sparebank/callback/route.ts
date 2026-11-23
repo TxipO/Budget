@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     // signed state already proves who INITIATED the connect, this confirms
     // the SAME session is the one completing it, not a replayed/leaked state
     // value used from a different browser.
-    const cookieHouseholdId = requireHouseholdId(req);
+    const cookieHouseholdId = await requireHouseholdId(req);
     if (!cookieHouseholdId || String(cookieHouseholdId) !== claimed.householdId) return toSettings('error');
 
     const user = await prisma.user.findUnique({ where: { id: Number(claimed.userId) }, select: { id: true, householdId: true } });

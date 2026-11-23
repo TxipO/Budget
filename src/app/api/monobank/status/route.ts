@@ -7,7 +7,7 @@ import { requireHouseholdId } from '@/lib/household';
 // it's set.
 export async function GET(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     // householdId filter — without it this leaked every household's member
     // names and Monobank connection status into every other household's

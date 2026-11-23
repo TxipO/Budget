@@ -5,7 +5,7 @@ import { requireHouseholdId } from '@/lib/household';
 
 export async function GET(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const type = req.nextUrl.searchParams.get('type');
     // Deleting a category only sets isActive=false; its transactions stay and still count in totals.
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const name = typeof body.name === 'string' ? body.name.trim() : '';

@@ -9,7 +9,7 @@ import { requireHouseholdId } from '@/lib/household';
 // session, so it must go through the normal auth gate like any other page.
 export async function GET(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     // Single source of truth for isPinHousehold/onboarded/hasPin — derived

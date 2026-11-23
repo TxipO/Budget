@@ -5,7 +5,7 @@ import { requireHouseholdId, isOwnedCategory } from '@/lib/household';
 
 export async function GET(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { searchParams } = req.nextUrl;
     const year  = parseInt(searchParams.get('year')  || String(new Date().getUTCFullYear()));
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const { year, month, categoryId, plannedAmount, notes } = body;

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { badRequest, isPositiveInt } from '@/lib/validate';
-import { requireHouseholdId } from '@/lib/household';
+import { requireHouseholdId, invalidateSessionCache } from '@/lib/household';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const id = parseInt((await params).id);
     if (!isPositiveInt(id)) return badRequest('Невалідний ID');
@@ -29,7 +29,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const id = parseInt((await params).id);
     if (!isPositiveInt(id)) return badRequest('Невалідний ID');
@@ -56,6 +56,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       prisma.monoCategoryRule.deleteMany({ where: { userId: id } }),
       prisma.user.delete({ where: { id } }),
     ]);
+    // No stamp needed: a session whose userId row is gone is rejected by
+    // requireHouseholdId. Just drop this instance's cached "user exists".
+    invalidateSessionCache();
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     if (e?.code === 'P2025') return badRequest('Користувача не знайдено');

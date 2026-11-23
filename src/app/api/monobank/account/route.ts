@@ -11,7 +11,7 @@ import { requireHouseholdId } from '@/lib/household';
 // it is deliberately not re-registered here.
 export async function POST(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { userId, accountId } = await req.json();
     if (!isPositiveInt(Number(userId))) return badRequest('Невалідний користувач');

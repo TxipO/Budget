@@ -7,7 +7,7 @@ import { syncMonoUser } from '@/lib/monoSync';
 // Manual "sync now" — the actual work lives in lib/monoSync.ts (shared with the cron).
 export async function POST(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const { userId } = body;

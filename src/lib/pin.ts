@@ -1,7 +1,12 @@
-import { createHash, timingSafeEqual } from 'crypto';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { notifyHousehold } from '@/lib/telegramBot';
+import { legacyHashPin, hashPinV2, verifyPin, safeEqual } from '@/lib/pinHash';
+
+// PIN hashing lives in lib/pinHash.ts (scrypt + AUTH_SECRET pepper, see the
+// note there incl. the AUTH_SECRET-rotation caveat). Re-exported because other
+// libs import safeEqual from here.
+export { hashPinV2, safeEqual };
 
 // PIN LOGIN (typing a PIN instead of email/Telegram to establish identity)
 // is deliberately staying exclusive to the original household — see
@@ -23,18 +28,18 @@ export function isPinHousehold(householdId: number): boolean {
   return householdId === PIN_HOUSEHOLD_ID;
 }
 
-export function hashPin(pin: string): string {
-  return createHash('sha256').update(`budget-pin:${pin}`).digest('hex');
-}
-
-// Both inputs here are always fixed-length hex digests (sha256 output), so
-// comparing .length first leaks nothing an attacker doesn't already know —
-// this just guards Buffer.from()/timingSafeEqual, which throws on
-// mismatched lengths rather than returning false.
-export function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
+// The ONE place a typed PIN is compared against a stored hash (login, unlock,
+// change-PIN, Telegram-link all go through it). Accepts v2 and legacy sha256;
+// a legacy match is lazily upgraded to v2 on the same household row (never by
+// a script). Callers keep the lockout order: charge attempt -> this -> clear.
+export async function checkPin(householdId: number, pin: unknown, stored: string): Promise<boolean> {
+  if (typeof pin !== 'string') return false;
+  const { ok, needsRehash } = await verifyPin(pin, stored);
+  if (ok && needsRehash) {
+    // Best effort: a failed upgrade must not fail a correct login.
+    await setPinHash(householdId, await hashPinV2(pin)).catch(e => console.error('[pin] rehash failed', e instanceof Error ? e.message : e));
+  }
+  return ok;
 }
 
 // The APP_PIN-env-fallback rule, factored out as a pure function of an
@@ -51,7 +56,7 @@ function resolvePinHash(householdId: number, pinHash: string | null): string | n
   // entire point of a per-household lock.
   if (isPinHousehold(householdId)) {
     const envPin = process.env.APP_PIN;
-    return envPin ? hashPin(envPin) : null;
+    return envPin ? legacyHashPin(envPin) : null;
   }
   return null;
 }

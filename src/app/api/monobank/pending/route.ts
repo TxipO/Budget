@@ -9,7 +9,7 @@ import { usableMerchantKey } from '@/lib/merchantKey';
 // ingest logic lives in lib/monoPending.ts, shared with the intent route.
 export async function GET(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json([], { status: 401 });
     const userId = Number(req.nextUrl.searchParams.get('userId'));
     if (!Number.isFinite(userId) || userId <= 0) return NextResponse.json([]);

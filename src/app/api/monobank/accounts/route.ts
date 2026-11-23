@@ -9,7 +9,7 @@ import { requireHouseholdId } from '@/lib/household';
 // is tracked (settings picker). Never returns the token or a full PAN.
 export async function GET(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const userId = Number(req.nextUrl.searchParams.get('userId'));
     if (!Number.isInteger(userId) || userId <= 0) return NextResponse.json({ error: 'Невалідний користувач' }, { status: 400 });

@@ -15,7 +15,11 @@ export default function SessionGuard() {
         if (u.origin === location.origin && u.pathname.startsWith('/api/') && u.pathname !== '/api/account/pin-unlock' && !u.pathname.startsWith('/api/auth')) {
           const err = await res.clone().json().then((j: { error?: string }) => j?.error, () => undefined);
           if (err === 'Locked') location.replace('/lock');
-          else if (err === 'Unauthorized') location.replace('/login');
+          else if (err === 'Unauthorized') {
+            // Revoked/expired session: also drop the dead cookie (raw fetch — not
+            // the wrapper — so a 401 here can't recurse), then go to /login.
+            orig('/api/account/logout', { method: 'POST' }).catch(() => {}).finally(() => location.replace('/login'));
+          }
         }
       }
       return res;

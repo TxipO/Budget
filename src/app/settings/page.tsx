@@ -85,6 +85,7 @@ export default function SettingsPage() {
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [unlinking, setUnlinking] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [loggingOutAll, setLoggingOutAll] = useState(false);
 
   const [newUserName, setNewUserName] = useState('');
   const [addingUser, setAddingUser] = useState(false);
@@ -121,6 +122,20 @@ export default function SettingsPage() {
     } catch {
       toast('Помилка виходу', 'error');
       setLoggingOut(false);
+    }
+  }
+
+  async function logoutEverywhere() {
+    if (loggingOutAll || !confirm('Вийти на всіх пристроях? Усі інші пристрої та вкладки доведеться авторизувати заново. На цьому пристрої ви залишитесь.')) return;
+    setLoggingOutAll(true);
+    try {
+      const res = await fetch('/api/account/logout-all', { method: 'POST' });
+      if (!res.ok) { toast('Помилка', 'error'); return; }
+      toast('Усі інші сеанси завершено');
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    } finally {
+      setLoggingOutAll(false);
     }
   }
 
@@ -675,6 +690,9 @@ export default function SettingsPage() {
             <button onClick={logout} disabled={loggingOut} className="btn-ghost" style={{ padding: '10px 16px' }}>
               {loggingOut ? 'Вихід…' : 'Вийти'}
             </button>
+            <button onClick={logoutEverywhere} disabled={loggingOutAll} className="btn-ghost" style={{ padding: '10px 16px' }}>
+              {loggingOutAll ? 'Завершення…' : 'Вийти на всіх пристроях'}
+            </button>
           </div>
         </div>
       )}
@@ -840,7 +858,7 @@ export default function SettingsPage() {
           )}
         </form>
         <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginTop: 10 }}>
-          Діє одразу для наступних входів. Уже виконані входи лишаються активними до 30 днів.
+          Діє одразу для наступних входів. Після зміни PIN усі інші пристрої доведеться авторизувати заново.
         </p>
       </div>
       )}

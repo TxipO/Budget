@@ -42,7 +42,7 @@ async function sumByType(householdId: number, start: Date, end: Date) {
 
 export async function GET(req: NextRequest) {
   try {
-  const householdId = requireHouseholdId(req);
+  const householdId = await requireHouseholdId(req);
   if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { searchParams } = req.nextUrl;
   const now    = new Date();

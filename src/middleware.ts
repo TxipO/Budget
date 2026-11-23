@@ -90,6 +90,7 @@ interface VerifiedSession {
   userId: string;
   householdId: string;
   hasPin: boolean;
+  issuedAt: number;
 }
 
 async function verifySession(cookieValue: string, secret: string): Promise<VerifiedSession | null> {
@@ -102,7 +103,7 @@ async function verifySession(cookieValue: string, secret: string): Promise<Verif
   const age = Date.now() - issuedAt;
   if (age < -CLOCK_SKEW_TOLERANCE_MS || age > SESSION_MAX_AGE_MS) return null; // expired, or issued implausibly far in the future (tampered)
   const expected = await sign(secret, userId, householdId, hasPinFlag, String(issuedAt));
-  return timingSafeEqual(sig, expected) ? { userId, householdId, hasPin: hasPinFlag === '1' } : null;
+  return timingSafeEqual(sig, expected) ? { userId, householdId, hasPin: hasPinFlag === '1', issuedAt } : null;
 }
 
 // UNLOCK_MAX_AGE_S in lib/session.ts, mirrored here for the same Node/Edge
@@ -192,6 +193,7 @@ export async function middleware(req: NextRequest) {
   // path (public/bypass included); the session branch below re-sets them.
   requestHeaders.delete('x-current-user-id');
   requestHeaders.delete('x-household-id');
+  requestHeaders.delete('x-session-issued-at');
 
   const secret = process.env.AUTH_SECRET;
   const { pathname } = req.nextUrl;
@@ -230,6 +232,10 @@ export async function middleware(req: NextRequest) {
     // sessions, since a "shared" PIN session still belongs to exactly one
     // household.
     requestHeaders.set('x-household-id', session.householdId);
+    // Revocation can't be checked here (Edge, no Prisma): the signed issuedAt
+    // is forwarded and lib/household.ts's requireHouseholdId() compares it to
+    // Household/User.sessionsValidAfter in every API route.
+    requestHeaders.set('x-session-issued-at', String(session.issuedAt));
 
     // P4 — universal PIN lock. A session that says hasPin must ALSO present
     // a still-valid unlock cookie for this exact household, or every page/

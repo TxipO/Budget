@@ -5,7 +5,7 @@ import { requireHouseholdId, isOwnedCategory, isOwnedUser } from '@/lib/househol
 
 export async function GET(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { searchParams } = req.nextUrl;
     const year  = searchParams.get('year');
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const { date, categoryId, amount, details, userId, savingsWithdrawal, isTransfer } = body;

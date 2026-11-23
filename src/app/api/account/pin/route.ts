@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireHouseholdId } from '@/lib/household';
+import { requireHouseholdId, revokeSessions } from '@/lib/household';
 import { issueAuthCookies } from '@/lib/session';
-import { hashPin, safeEqual, currentPinHash, setPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse, isPinHousehold } from '@/lib/pin';
+import { checkPin, hashPinV2, currentPinHash, setPinHash, registerPinFailure, clearPinFailures, pinLockoutResponse, isPinHousehold } from '@/lib/pin';
 import { badRequest } from '@/lib/validate';
 
 const PIN_FORMAT = /^\d{4,8}$/;
@@ -14,7 +14,7 @@ const PIN_FORMAT = /^\d{4,8}$/;
 // turning the lock off); not required the very first time one is set.
 export async function PUT(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const authSecret = process.env.AUTH_SECRET;
     if (!authSecret) return NextResponse.json({ error: 'Автентифікацію не налаштовано' }, { status: 500 });
@@ -38,14 +38,18 @@ export async function PUT(req: NextRequest) {
     if (stored) {
       const blocked = await pinLockoutResponse(householdId);
       if (blocked) return blocked;
-      if (typeof body?.current !== 'string' || !safeEqual(hashPin(body.current), stored)) {
+      if (!(await checkPin(householdId, body?.current, stored))) {
         await registerPinFailure(householdId);
         return NextResponse.json({ error: 'Невірний поточний PIN' }, { status: 401 });
       }
       await clearPinFailures(householdId);
     }
 
-    await setPinHash(householdId, next ? hashPin(next) : null);
+    await setPinHash(householdId, next ? await hashPinV2(next) : null);
+    // Every OTHER device/tab of this household must re-authenticate (an old
+    // session may carry a stale hasPin bit, or belong to someone who only knew
+    // the old PIN). This device is re-issued below, after the stamp.
+    await revokeSessions({ householdId });
 
     // Reissue the session cookie with the fresh hasPin bit immediately —
     // otherwise the lock wouldn't engage/disengage until the next full

@@ -5,7 +5,7 @@ import { requireHouseholdId, MAX_USERS } from '@/lib/household';
 
 export async function GET(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     // Explicit select — User now also carries monoTokenEnc/monoWebhookSecret
     // (Monobank integration). Never let those reach the client via a blanket
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 // after Паша already ran setup with just herself/himself picked.
 export async function POST(req: NextRequest) {
   try {
-    const householdId = requireHouseholdId(req);
+    const householdId = await requireHouseholdId(req);
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const name = typeof body?.name === 'string' ? body.name.trim() : '';

@@ -29,6 +29,9 @@ model Household {
   // their existing behavior unchanged. See lib/currencies.ts for the
   // curated code/numeric/symbol list this must stay in sync with.
   currency String @default("NOK")
+  // Session revocation (lib/sessionRevocation.ts): any session cookie issued
+  // before this instant is dead. null = never revoked.
+  sessionsValidAfter DateTime?
 
   users              User[]
   categories         Category[]
@@ -55,6 +58,8 @@ model User {
   household          Household?           @relation(fields: [householdId], references: [id])
   transactions       Transaction[]
   createdAt          DateTime             @default(now())
+  // Same as Household.sessionsValidAfter, for this user's own sessions only.
+  sessionsValidAfter DateTime?
 
   // Monobank integration (see lib/crypto.ts). monoTokenEnc is the personal
   // API token, AES-256-GCM encrypted — never stored or logged in plaintext.
