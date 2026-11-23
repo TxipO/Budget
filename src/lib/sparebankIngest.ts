@@ -337,7 +337,26 @@ async function guessFromBillHistory(householdId: number, txType: 'expense' | 'in
   return pickBillHistoryCategory({ counterparty, merchantText, account, amount, now, priors: rows.map(r => ({ categoryId: r.categoryId, amount: r.amount, date: r.date, account: r.sbCounterpartyAccount })) });
 }
 
-export type IngestResult = 'created' | 'reconciled' | 'skipped_pending' | 'skipped_duplicate' | 'skipped_malformed';
+// The human description of one bank item. Shared by ingest and the display-only
+// reservation list (sparebankPending.ts) so both show the same text.
+export function sbDescription(item: SbTransaction, txType: 'expense' | 'income'): { counterparty: string; details: string } {
+  // The counterparty is whoever's on the OTHER side of the money: the
+  // creditor received an expense, the debtor sent an income.
+  const counterparty = (txType === 'expense' ? item.creditor?.name : item.debtor?.name) ?? '';
+  const remittance = stripCardAuthEnvelope((item.remittance_information ?? []).join(' ').trim());
+  // remittance_information is usually the useful human text ("Kiwi 123
+  // Bergen") when creditor/debtor.name is empty (direct debits, standing
+  // orders). But for KID/OCR-referenced bill payments it can be nothing but
+  // a bare account/reference number ("2824300100055") while the real payee
+  // name only lives in counterparty — confirmed live 2026-08-13 (a Sygnir AS
+  // electricity bill recorded its account number as the description and
+  // fell through category-guessing to "Незрозуміло"). A pure digit/
+  // punctuation string is never a description, so counterparty wins then.
+  const remittanceIsReference = remittance !== '' && !/[a-z]/i.test(remittance);
+  return { counterparty, details: (remittanceIsReference ? '' : remittance) || counterparty || remittance || '' };
+}
+
+export type IngestResult ='created' | 'reconciled' | 'skipped_pending' | 'skipped_duplicate' | 'skipped_malformed';
 export interface IngestOutcome { status: IngestResult; id?: number }
 
 // Single source of truth for turning one Enable Banking transaction into a
@@ -382,20 +401,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     amount = roundMoney(amountOriginal * rate);
   }
 
-  // The counterparty is whoever's on the OTHER side of the money: the
-  // creditor received an expense, the debtor sent an income.
-  const counterparty = (txType === 'expense' ? item.creditor?.name : item.debtor?.name) ?? '';
-  const remittance = stripCardAuthEnvelope((item.remittance_information ?? []).join(' ').trim());
-  // remittance_information is usually the useful human text ("Kiwi 123
-  // Bergen") when creditor/debtor.name is empty (direct debits, standing
-  // orders). But for KID/OCR-referenced bill payments it can be nothing but
-  // a bare account/reference number ("2824300100055") while the real payee
-  // name only lives in counterparty — confirmed live 2026-08-13 (a Sygnir AS
-  // electricity bill recorded its account number as the description and
-  // fell through category-guessing to "Незрозуміло"). A pure digit/
-  // punctuation string is never a description, so counterparty wins then.
-  const remittanceIsReference = remittance !== '' && !/[a-z]/i.test(remittance);
-  const details = (remittanceIsReference ? '' : remittance) || counterparty || remittance || '';
+  const { counterparty, details } = sbDescription(item, txType);
   // merchantText = the text rule keys derive from. Equal to details at ingest,
   // but stored separately so a later edit of the user's comment (details)
   // can't change the key — see Transaction.merchantText.

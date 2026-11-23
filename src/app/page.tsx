@@ -199,6 +199,84 @@ function RecentList({ rows, onEdit }: { rows: Tx[]; onEdit: (tx: Tx) => void }) 
   );
 }
 
+// Monobank holds (tappable: pick a category) merged with SpareBank reservations
+// (display-only), newest first. Same fold as RecentList: first PEND_PREVIEW rows
+// always visible, the rest unfold in place, clipped rows inert.
+type PendingRow = PendingHold & { bank: 'mono' | 'sparebank'; time: number };
+const PEND_PREVIEW = 5;
+
+function PendingList({ rows, cats, onEdit }: { rows: PendingRow[]; cats: PendingCat[]; onEdit: (p: PendingHold) => void }) {
+  const { formatMoney } = useCurrency();
+  const [open, setOpen] = useState(false);
+  const listRef = useRef<HTMLUListElement>(null);
+  const [h, setH] = useState<{ collapsed: number; full: number } | null>(null);
+  const extra = rows.length - PEND_PREVIEW;
+
+  useLayoutEffect(() => {
+    const ul = listRef.current;
+    if (!ul) return;
+    const measure = () => {
+      const last = ul.children[PEND_PREVIEW - 1] as HTMLElement | undefined;
+      setH({ full: ul.offsetHeight, collapsed: last ? last.offsetTop + last.offsetHeight : ul.offsetHeight });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(ul);
+    return () => ro.disconnect();
+  }, [rows]);
+
+  return (
+    <>
+      <div className={`d-tx-wrap${open ? ' open' : ''}`} style={{ marginTop: 12, ...(extra > 0 && h ? { height: open ? h.full : h.collapsed } : {}) }}>
+        <ul ref={listRef} id="pending-list" className="d-pend-list" style={{ marginTop: 0 }}>
+          {rows.map((p, i) => {
+            const isExtra = i >= PEND_PREVIEW;
+            const [code, name] = splitCode(p.description || 'Без опису');
+            const cat = p.intent ? cats.find(c => c.id === p.intent!.categoryId) : undefined;
+            const bankLabel = p.bank === 'mono' ? 'Monobank' : 'SpareBank 1';
+            const inner = (
+              <>
+                {cat
+                  ? <span className="d-chip d-cat-chip" style={vars({ '--cc': displayColor(cat.color, cat.id, cat.name) })}><CategoryIcon name={cat.icon} color="currentColor" size={20} /></span>
+                  : <span className="d-chip am"><Clock size={17} /></span>}
+                <span className="d-tx-main">
+                  <b title={p.description}>{code && <span className="code">{code}</span>}{name}</b>
+                  <small>
+                    <Landmark size={11} color={BANK_SYNC_COLOR} aria-hidden="true" style={{ display: 'inline', verticalAlign: '-1px', marginRight: 5 }} />
+                    {bankLabel}{cat && ` · ${cat.name}${p.intent!.scope === 'all' ? ' · усі такі' : ''} · застосується після підтвердження банком`}
+                  </small>
+                </span>
+                <span className="d-hold">
+                  <span className="d-amt">&minus;{formatMoney(p.amount)}</span>
+                  <small>очікує</small>
+                </span>
+              </>
+            );
+            return (
+              <li key={`${p.userId}-${p.id}`} className={`d-pend-row${isExtra ? ' d-tx-row extra' : ''}`} style={vars({ '--k': i - PEND_PREVIEW })} inert={isExtra && !open}>
+                {p.bank === 'mono' ? (
+                  <button type="button" className="d-tx-hit" onClick={() => onEdit(p)} aria-label={`Обрати категорію: ${p.description || 'Без опису'}, ${formatMoney(p.amount)}, очікує підтвердження${cat ? `. Зараз: ${cat.name}` : ''}`}>
+                    {inner}
+                    <Pencil size={15} className="d-tx-pen" aria-hidden="true" />
+                  </button>
+                ) : (
+                  <div className="d-tx-hit" style={{ cursor: 'default' }}>{inner}</div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+      {extra > 0 && (
+        <button className="d-more" aria-expanded={open} aria-controls="pending-list" onClick={() => setOpen(o => !o)}>
+          {open ? 'Згорнути' : `Показати ще ${extra}`}
+          <ChevronDown size={16} />
+        </button>
+      )}
+    </>
+  );
+}
+
 export default function Dashboard() {
   const { formatMoney, formatMoneySign } = useCurrency();
   // UTC getters: the server and the planning page work in UTC months, and it
@@ -221,7 +299,7 @@ export default function Dashboard() {
   // 2026-08-02, P1); still one click away, nothing lost.
   const [userSectionOpen, setUserSectionOpen] = useState(false);
   const [sections] = useDashboardPrefs();
-  const [pending, setPending] = useState<PendingHold[]>([]);
+  const [pending, setPending] = useState<PendingRow[]>([]);
   const [pendingCats, setPendingCats] = useState<PendingCat[]>([]);
   const [editingHold, setEditingHold] = useState<PendingHold | null>(null);
 
@@ -274,15 +352,20 @@ export default function Dashboard() {
   // that's genuinely just waiting to settle looking identical to "the sync
   // is broken" is exactly what kept generating repeat "не підтягнуло"
   // reports. Shown separately, never counted in any total.
+  // SpareBank reservations ride along (display-only, fetched server-side as an
+  // attended request and cached 30 min — see lib/sparebankPending.ts).
   function loadPending() {
-    fetch('/api/monobank/status')
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then((rows: { userId: number; connected: boolean }[]) => {
-        const connected = rows.filter(r => r.connected);
-        return Promise.all(connected.map(r => fetch(`/api/monobank/pending?userId=${r.userId}`).then(res => res.ok ? res.json() : [])));
-      })
-      .then(lists => setPending(lists.flat()))
-      .catch(() => {}); // decorative — dashboard works fine without this list
+    const fetchFor = (bank: 'mono' | 'sparebank', statusUrl: string, pendingUrl: string): Promise<PendingRow[]> =>
+      fetch(statusUrl)
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then((rows: { userId: number; connected: boolean; expired?: boolean }[]) =>
+          Promise.all(rows.filter(r => r.connected && !r.expired).map(r => fetch(`${pendingUrl}?userId=${r.userId}`).then(res => res.ok ? res.json() : []))))
+        .then(lists => lists.flat().map(p => ({ canLearn: false, intent: null, ...p, bank })))
+        .catch(() => []); // decorative — one bank failing must not hide the other's list
+    Promise.all([
+      fetchFor('mono', '/api/monobank/status', '/api/monobank/pending'),
+      fetchFor('sparebank', '/api/sparebank/status', '/api/sparebank/pending'),
+    ]).then(([m, s]) => setPending([...m, ...s].sort((a, b) => b.time - a.time)));
   }
   useEffect(() => {
     loadPending();
@@ -866,30 +949,7 @@ export default function Dashboard() {
                 <h2><span className="d-dot" aria-hidden="true" />Очікують підтвердження<span className="d-count">{pending.length}</span></h2>
               </div>
               <p className="d-note">Банк ще не підтвердив ці покупки — не входять у підсумки, з&apos;являться автоматично після підтвердження.</p>
-              <ul className="d-pend-list">
-                {pending.map(p => {
-                  const [code, name] = splitCode(p.description || 'Без опису');
-                  const cat = p.intent ? pendingCats.find(c => c.id === p.intent!.categoryId) : undefined;
-                  return (
-                    <li key={`${p.userId}-${p.id}`} className="d-pend-row">
-                      <button type="button" className="d-tx-hit" onClick={() => setEditingHold(p)} aria-label={`Обрати категорію: ${p.description || 'Без опису'}, ${formatMoney(p.amount)}, очікує підтвердження${cat ? `. Зараз: ${cat.name}` : ''}`}>
-                        {cat
-                          ? <span className="d-chip d-cat-chip" style={vars({ '--cc': displayColor(cat.color, cat.id, cat.name) })}><CategoryIcon name={cat.icon} color="currentColor" size={20} /></span>
-                          : <span className="d-chip am"><Clock size={17} /></span>}
-                        <span className="d-tx-main">
-                          <b title={p.description}>{code && <span className="code">{code}</span>}{name}</b>
-                          {cat && <small>{cat.name}{p.intent!.scope === 'all' ? ' · усі такі' : ''} · застосується після підтвердження банком</small>}
-                        </span>
-                        <span className="d-hold">
-                          <span className="d-amt">&minus;{formatMoney(p.amount)}</span>
-                          <small>очікує</small>
-                        </span>
-                        <Pencil size={15} className="d-tx-pen" aria-hidden="true" />
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+              <PendingList rows={pending} cats={pendingCats} onEdit={setEditingHold} />
             </section>
           )}
 

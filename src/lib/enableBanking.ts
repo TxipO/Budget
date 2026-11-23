@@ -221,7 +221,7 @@ function psuHeaders(psu: Psu): Record<string, string> {
   return headers;
 }
 
-export function getTransactions(accountUid: string, psu: Psu, opts?: { dateFrom?: string; continuationKey?: string; transactionStatus?: 'BOOK' | 'PEND' }): Promise<TransactionsPage> {
+export function getTransactions(accountUid: string, psu: Psu, opts?: { dateFrom?: string; continuationKey?: string; transactionStatus?: 'BOOK' | 'PDNG' }): Promise<TransactionsPage> {
   const params = new URLSearchParams();
   if (opts?.dateFrom) params.set('date_from', opts.dateFrom);
   if (opts?.continuationKey) params.set('continuation_key', opts.continuationKey);
