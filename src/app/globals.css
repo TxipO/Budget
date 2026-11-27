@@ -456,7 +456,7 @@ select.input-field option {
   .plan-table { table-layout: fixed; }
   /* Names wrap to two lines instead of truncating to "Домаш…"/"Додат…". */
   .plan-cat-col {
-    width: 116px !important; padding-left: 10px !important; padding-right: 6px !important;
+    width: 132px !important; padding-left: 10px !important; padding-right: 6px !important;
     overflow: hidden; white-space: normal; line-height: 1.25;
   }
   .plan-cat-name {
@@ -698,7 +698,7 @@ select.input-field option {
 @media (max-width: 768px) {
   .dash-head { gap: 12px; margin-bottom: 18px; }
   .dash-title { flex: 1 1 100%; flex-wrap: nowrap; }
-  .dash-title h1 { font-size: 24px; flex: 1; min-width: 0; margin-right: 0; }
+  .dash-title h1 { font-size: 24px; flex: 1; margin-right: 0; }
   .d-pills { flex: 1 1 100%; }
   .d-pills button { flex: 1 0 auto; padding: 0 6px; font-size: 13px; min-height: 40px; }
   .dash-actions { flex: 1 1 100%; justify-content: flex-end; }
@@ -778,4 +778,5 @@ select.input-field option {
 .d-stat.has-pools { flex-wrap: wrap; }
 .d-stat.has-pools > div:nth-child(2) { min-width: 0; }
 .d-stat .pool-list { width: 100%; }
-@media (min-width: 900px) { .d-stats.an-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* A half- or quarter-width tile left the pool names ~24px wide (one letter per line), so the savings tile, and the tile after it (to avoid an orphan), span the row. */
+.d-stats.an-stats > .has-pools, .d-stats.an-stats > .has-pools + .d-stat { grid-column: 1 / -1; }

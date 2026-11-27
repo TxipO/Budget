@@ -225,7 +225,7 @@ export default function PlanningPage() {
 
       <div className="d-note">
         Жирне = факт, сіре = план · Зелений = в межах · Червоний = перевитрата ·
-        <MessageSquare size={10} color="var(--c-accent-text)" style={{ verticalAlign: 'middle', margin: '0 3px' }} />
+        <MessageSquare size={10} color="var(--c-accent-text)" style={{ display: 'inline', verticalAlign: 'middle', margin: '0 3px' }} />
         = є коментар (видно у вікні клітинки)
       </div>
 
@@ -272,7 +272,7 @@ export default function PlanningPage() {
               return [
                 <tr key={`sec-${type}`} style={{ background: 'color-mix(in srgb, var(--c-text) 3%, transparent)' }}>
                   <td colSpan={14} style={{ padding: '8px 20px' }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: typeColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    <span style={{ position: 'sticky', left: 20, fontSize: 12, fontWeight: 700, color: typeColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                       {label}
                     </span>
                   </td>
