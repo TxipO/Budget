@@ -10,6 +10,7 @@ import TransactionForm from '@/components/TransactionForm';
 import PendingEditSheet, { type PendingHold, type PendingCat, type PendingIntent } from '@/components/PendingEditSheet';
 import CategoryIcon from '@/components/CategoryIcon';
 import CountUp from '@/components/CountUp';
+import TravelModeCard from '@/components/TravelModeCard';
 import { useDashboardPrefs } from '@/lib/dashboardPrefs';
 import { toast } from '@/lib/toast';
 
@@ -761,6 +762,8 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      <TravelModeCard onChanged={loadStats} />
 
       {failed ? (
         <div className="d-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>

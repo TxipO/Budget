@@ -5,6 +5,7 @@ import { merchantKey as toMerchantKey } from '@/lib/merchantKey';
 import { guessCategoryId as resolveCategoryId } from '@/lib/categoryGuess';
 import { numericForCurrency } from '@/lib/currencies';
 import { matchIntent } from '@/lib/holdMatch';
+import { travelOverride } from '@/lib/travelMode';
 import { looksLikeMonoTransferLeg, findCrossBankTransferMatch, ensureCrossBankFee, settleCrossBankPartner, NOT_MANUAL } from '@/lib/transferDetect';
 
 export interface MonoStatementItem {
@@ -259,6 +260,7 @@ export async function ingestStatementItem(userId: number, householdId: number, i
 
   let categoryId: number;
   let categorySource: string | null = null; // only the non-transfer branch below actually runs resolveCategoryId
+  let guessed = false; // set only by the resolveCategoryId branch: the only one travel mode may override
   if (reversalOriginal) {
     // The cancelled purchase's own category, so the pair reads as one story.
     categoryId = reversalOriginal.categoryId;
@@ -281,6 +283,7 @@ export async function ingestStatementItem(userId: number, householdId: number, i
     // A learned rule can point at a 'transfer'-type category — exclude the row
     // from totals too, not just file it there.
     if (categoryIsTransfer) isTransfer = true;
+    guessed = true;
   }
 
   // The PURCHASE arriving AFTER its reversal — see findUnpairedReversal.
@@ -300,6 +303,14 @@ export async function ingestStatementItem(userId: number, householdId: number, i
   if (!isTransfer && await looksLikeMonoTransferLeg(userId, item.description || '', item.mcc)) {
     crossBankMatchId = await findCrossBankTransferMatch(userId, 'mono', txType, amount, date);
     if (crossBankMatchId) isTransfer = true;
+  }
+
+  // Travel mode: after every transfer/reversal check, so a row that turned out
+  // to be a transfer is never filed as a trip purchase.
+  let trip: Awaited<ReturnType<typeof travelOverride>> = null;
+  if (guessed && !isTransfer && txType === 'expense' && categorySource) {
+    trip = await travelOverride({ householdId, account: `mono:${userId}`, bank: 'mono', date, key: merchantKey, guess: { categoryId, source: categorySource } });
+    if (trip) { categoryId = trip.categoryId; categorySource = 'travel'; }
   }
 
   // Only read when the resolved category turns out to be type "savings" —
@@ -338,6 +349,7 @@ export async function ingestStatementItem(userId: number, householdId: number, i
         date,
         categoryId,
         categorySource,
+        ...(trip ? { tripId: trip.tripId, tripPrevCategoryId: trip.prevCategoryId, tripPrevCategorySource: trip.prevSource } : {}),
         amount,
         details: item.description || '',
         userId,

@@ -6,6 +6,7 @@ import { normalizeAccount, pickBillHistoryCategory, betaltDate } from '@/lib/bil
 import { getCachedExchangeRate, ISO_4217 } from '@/lib/monobank';
 import { merchantKey as toMerchantKey } from '@/lib/merchantKey';
 import { numericForCurrency } from '@/lib/currencies';
+import { travelOverride } from '@/lib/travelMode';
 import { matchIntent, SB_TOLERANCE } from '@/lib/holdMatch';
 import { looksLikeTransferIntermediary, findCrossBankTransferMatch, ensureCrossBankFee, looksLikeUnresolvedInternalTransfer, findUnresolvedInternalTransferMatch, poolCategoryIdOf, NOT_MANUAL } from '@/lib/transferDetect';
 
@@ -331,7 +332,8 @@ async function guessFromBillHistory(householdId: number, txType: 'expense' | 'in
       householdId, merchantText, isTransfer: false, id: { not: excludeId ?? -1 },
       date: { gte: new Date(now.getTime() - 365 * DAY_MS), lte: now },
       category: { isActive: true, type: txType, name: { not: 'Незрозуміло' } },
-      OR: [{ categorySource: null }, { categorySource: { not: 'fallback' } }],
+      // Not fallback, not 'travel': a trip move is a mode's guess, not how the household filed the bill.
+      AND: [{ OR: [{ categorySource: null }, { categorySource: { notIn: ['fallback', 'travel'] } }] }],
     },
     select: { categoryId: true, amount: true, date: true, sbCounterpartyAccount: true },
   });
@@ -558,6 +560,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
   let isTransfer: boolean;
   let categoryId: number;
   let categorySource: string | null = null; // only the no-transfer-match branch below actually runs guessCategoryId
+  let guessed = false; // set only by the guessCategoryId branch: the only one travel mode may override
 
   if (transferAccountId !== null) {
     // Known movement between this user's own accounts. Ф2 (2026-08-29): ask
@@ -621,6 +624,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     // must be excluded from totals too (guessCategoryId's own isTransfer).
     ({ categoryId, source: categorySource, isTransfer } = await guessCategoryId(householdId, userId, txType, merchantKey, undefined,
       () => guessFromBillHistory(householdId, txType, counterparty, merchantText, counterpartyAccount, amount, date, existing?.id)));
+    guessed = true;
   }
 
   // Cross-bank same-person transfer (e.g. a Paysend top-up landing on the
@@ -664,6 +668,14 @@ export async function ingestTransaction(userId: number, householdId: number, ite
       if (m.flipSelf) isTransfer = true;
       if (m.flipSibling) unresolvedInternalMatchId = m.siblingId;
     }
+  }
+
+  // Travel mode — new rows only (a reconcile must never re-file a stored row), and
+  // after every transfer check above so a transfer is never a trip purchase.
+  let trip: Awaited<ReturnType<typeof travelOverride>> = null;
+  if (guessed && !existing && !isTransfer && txType === 'expense' && categorySource) {
+    trip = await travelOverride({ householdId, account: `sb:${selfAccountId}`, bank: 'sparebank', date, key: merchantKey, guess: { categoryId, source: categorySource } });
+    if (trip) { categoryId = trip.categoryId; categorySource = 'travel'; }
   }
 
   if (existing) {
@@ -724,6 +736,7 @@ export async function ingestTransaction(userId: number, householdId: number, ite
         date,
         categoryId,
         categorySource,
+        ...(trip ? { tripId: trip.tripId, tripPrevCategoryId: trip.prevCategoryId, tripPrevCategorySource: trip.prevSource } : {}),
         amount,
         details,
         merchantText,

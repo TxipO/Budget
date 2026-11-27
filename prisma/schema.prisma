@@ -38,6 +38,7 @@ model Household {
   transactions       Transaction[]
   monthlyPlans       MonthlyPlan[]
   lockout            HouseholdLockout?
+  trips              Trip[]
 }
 
 // Per-household brute-force counter — mirrors AuthLockout's atomic-UPDATE
@@ -262,6 +263,10 @@ model Category {
   plans              MonthlyPlan[]
   monoCategoryRules  MonoCategoryRule[]
   sparebankAccounts  SparebankAccount[]
+  trips              Trip[]
+
+  // A mode (e.g. travel) must not move spending out of this category.
+  lockedFromModes    Boolean              @default(false)
 
   // Phase C of the multi-tenant migration: uniqueness scoped per household,
   // not global — a global @@unique([name, type]) meant two different
@@ -411,6 +416,13 @@ model Transaction {
   // bank-side signal to detect them from.
   isTransfer Boolean @default(false)
 
+  // Travel mode (lib/travelMode.ts): set when a trip moved this row into its
+  // category. The prev* pair is what deleting the trip restores.
+  tripId                Int?
+  trip                  Trip?   @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  tripPrevCategoryId    Int?
+  tripPrevCategorySource String?
+
   @@index([date])
   // sbTransactionId is only unique WITHIN one user's own account — see the
   // field's own comment. NULL userId never conflicts with itself under
@@ -418,6 +430,24 @@ model Transaction {
   // real userId (ingestTransaction requires it), so this never loosens
   // anything for real data.
   @@unique([userId, sbTransactionId])
+}
+
+// Travel mode: while a trip is active, unknown merchants on its accounts land
+// in `category` (categorySource 'travel'). Dates are UTC midnight, inclusive.
+model Trip {
+  id           Int           @id @default(autoincrement())
+  householdId  Int
+  household    Household     @relation(fields: [householdId], references: [id])
+  name         String
+  startDate    DateTime
+  endDate      DateTime?     // null = active until ended
+  accounts     String[]      // "mono:<userId>" | "sb:<sparebankAccountId>"
+  categoryId   Int
+  category     Category      @relation(fields: [categoryId], references: [id])
+  createdAt    DateTime      @default(now())
+  transactions Transaction[]
+
+  @@index([householdId])
 }
 
 model AppSetting {

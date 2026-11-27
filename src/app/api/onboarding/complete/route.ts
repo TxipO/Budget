@@ -6,6 +6,7 @@ import { CURRENCIES } from '@/lib/currencies';
 import { hashPinV2 } from '@/lib/pin';
 import { ICON_KEYS } from '@/lib/icons';
 import { issueAuthCookies } from '@/lib/session';
+import { LOCKED_FROM_MODES_NAMES } from '@/lib/defaultCategories';
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 const PIN_FORMAT = /^\d{4,8}$/;
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
         }
 
         await tx.category.createMany({
-          data: categories.map(c => ({ ...c, householdId })),
+          data: categories.map(c => ({ ...c, householdId, lockedFromModes: c.type === 'expense' && LOCKED_FROM_MODES_NAMES.includes(c.name) })),
         });
 
         if (pin) {
