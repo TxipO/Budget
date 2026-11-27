@@ -1,13 +1,15 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, type CSSProperties } from 'react';
 import { MessageSquare } from 'lucide-react';
 import { MONTH_NAMES, MONTH_SHORT, TYPE_LABELS } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { useCurrency } from '@/lib/useCurrency';
 import { formatCompact } from '@/lib/currencies';
 import { isBudgetRelevant, savingsAmount } from '@/lib/budgetRules';
+import CategoryIcon from '@/components/CategoryIcon';
+import { displayColor } from '@/lib/displayColor';
 
-interface Category { id: number; name: string; type: string; color: string; isActive: boolean }
+interface Category { id: number; name: string; type: string; color: string; icon: string; isActive: boolean }
 interface Plan { categoryId: number; month: number; plannedAmount: number; notes: string }
 interface Actual { categoryId: number; month: number; actual: number }
 
@@ -23,6 +25,7 @@ function planStatus(type: string, actual: number, planned: number, periodDone: b
 }
 // Whole amounts for the screen-reader label of a cell (the visible figures are "к"-abbreviated).
 const num = (n: number) => Math.round(n).toLocaleString('uk-UA');
+const vars = (o: Record<string, string | number>) => o as CSSProperties;
 const STATUS_COLOR = { good: 'var(--c-pos-text)', bad: 'var(--c-neg-text)' } as const;
 
 export default function PlanningPage() {
@@ -190,7 +193,7 @@ export default function PlanningPage() {
   const yearDone  = gridYear < thisYear;
   const isCur = (m: number) => gridYear === thisYear && m === thisMonth;
   // Current-month column: the 5% "zone" tint (DESIGN.md Three-Tier Tint Rule).
-  const curBg = (m: number) => isCur(m) ? 'rgba(249,115,22,0.05)' : undefined;
+  const curBg = (m: number) => isCur(m) ? 'color-mix(in srgb, var(--c-brand) 5%, transparent)' : undefined;
 
   const sections = [
     { type: 'income',  label: 'Дохід' },
@@ -205,38 +208,34 @@ export default function PlanningPage() {
   };
 
   return (
-    <div style={{ maxWidth: 1200 }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 28 }}>
-        <div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Планування</h1>
-          <p style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>Клікніть на клітинку, щоб задати план та коментар</p>
+    <div className="dash dash-stack">
+      <div className="dash-head">
+        <div className="dash-title">
+          <h1>Планування</h1>
+          <span className="d-note">Клікніть на клітинку, щоб задати план та коментар</span>
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {[thisYear - 1, thisYear, thisYear + 1, thisYear + 2].map(y => (
-            <button
-              key={y} onClick={() => { setYear(y); setEditCell(null); }} className="btn-ghost"
-              style={{
-                background: year === y ? 'rgba(249,115,22,0.2)' : undefined,
-                color:      year === y ? 'var(--c-accent-hi)' : undefined,
-                fontWeight: year === y ? 700 : 500,
-              }}
-            >{y}</button>
-          ))}
+        <div className="dash-actions">
+          <div className="d-pills">
+            {[thisYear - 1, thisYear, thisYear + 1, thisYear + 2].map(y => (
+              <button key={y} aria-pressed={year === y} onClick={() => { setYear(y); setEditCell(null); }}>{y}</button>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--c-text-muted)' }}>
+      <div className="d-note">
         Жирне = факт, сіре = план · Зелений = в межах · Червоний = перевитрата ·
-        <MessageSquare size={10} color="#F97316" style={{ verticalAlign: 'middle', margin: '0 3px' }} />
+        <MessageSquare size={10} color="var(--c-accent-text)" style={{ verticalAlign: 'middle', margin: '0 3px' }} />
         = є коментар (видно у вікні клітинки)
       </div>
 
       {loading ? (
-        <div className="card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <section className="d-card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {[...Array(8)].map((_, i) => <div key={i} className="skel" style={{ height: 36 }} />)}
-        </div>
+        </section>
       ) : (
-      <div ref={scrollRef} className="card h-scroll-hint" style={{ overflow: 'auto' }}>
+      <section className="d-card plan-card d-rise" style={vars({ '--i': 0 })}>
+      <div ref={scrollRef} className="h-scroll-hint plan-scroll">
         <table className="plan-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
@@ -271,7 +270,7 @@ export default function PlanningPage() {
               const typeColor = type === 'income' ? 'var(--c-income-num)' : type === 'expense' ? 'var(--c-expense-num)' : 'var(--c-savings-num)';
 
               return [
-                <tr key={`sec-${type}`} style={{ background: 'rgba(255,255,255,0.02)' }}>
+                <tr key={`sec-${type}`} style={{ background: 'color-mix(in srgb, var(--c-text) 3%, transparent)' }}>
                   <td colSpan={14} style={{ padding: '8px 20px' }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: typeColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                       {label}
@@ -283,14 +282,16 @@ export default function PlanningPage() {
                   const yearPlanned = MONTH_SHORT.reduce((s, _, i) => s + getPlanned(cat.id, i + 1), 0);
                   const yearStatus  = planStatus(type, yearActual, yearPlanned, yearDone);
                   return (
-                    <tr key={cat.id} className="table-row">
+                    <tr key={cat.id} className="plan-row">
                       <td className="plan-cat-col" style={{
                         padding: '10px 20px',
                         position: 'sticky', left: 0, zIndex: 1, background: 'var(--c-elevated)',
                         boxShadow: '1px 0 0 var(--c-border)',
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />
+                          <span className="d-chip d-cat-chip plan-chip" style={vars({ '--cc': displayColor(cat.color, cat.id, cat.name) })}>
+                            <CategoryIcon name={cat.icon} color="currentColor" size={13} />
+                          </span>
                           <span className="plan-cat-name" title={cat.isActive ? cat.name : `${cat.name} — категорію видалено, але її транзакції ще враховуються`} style={{ fontSize: 13, color: 'var(--c-text-sec)', fontStyle: cat.isActive ? undefined : 'italic', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</span>
                         </div>
                       </td>
@@ -309,9 +310,9 @@ export default function PlanningPage() {
                               <div className="plan-edit-popover" role="dialog" aria-label={`${cat.name}, ${MONTH_NAMES[m - 1].toLowerCase()}`} style={{
                                 position: 'absolute', zIndex: 20, left: '50%',
                                 ...(editCell?.up ? { top: '100%', transform: 'translate(-50%, -100%)' } : { top: 0, transform: 'translateX(-50%)' }),
-                                background: 'var(--c-elevated)', border: '1px solid #F97316', borderRadius: 10,
+                                background: 'var(--c-elevated)', border: '1px solid var(--c-brand)', borderRadius: 16,
                                 padding: 10, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 180,
-                                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                                boxShadow: '0 12px 32px -8px color-mix(in srgb, var(--c-text) 40%, transparent)',
                               }}>
                                 {/* Which cell this is + its fact: on a phone the popover is a centred sheet, detached from the cell. */}
                                 <div style={{ fontSize: 12, color: 'var(--c-text-muted)', textAlign: 'left' }}>
@@ -334,24 +335,8 @@ export default function PlanningPage() {
                                   className="input-field" style={{ padding: '6px 10px', resize: 'none' }}
                                 />
                                 <div style={{ display: 'flex', gap: 6 }}>
-                                  <button
-                                    onClick={commitEdit}
-                                    style={{
-                                      flex: 1, padding: '5px 0', borderRadius: 6, border: 'none',
-                                      background: 'var(--c-accent-fill)', color: 'white', fontSize: 12, fontWeight: 600,
-                                      cursor: 'pointer', fontFamily: 'inherit',
-                                    }}
-                                  >Зберегти</button>
-                                  <button
-                                    onClick={closeEdit}
-                                    aria-label="Скасувати"
-                                    style={{
-                                      padding: '5px 10px', borderRadius: 6,
-                                      border: '1px solid var(--c-border-hi)',
-                                      background: 'transparent', color: 'var(--c-text-muted)', fontSize: 12,
-                                      cursor: 'pointer', fontFamily: 'inherit',
-                                    }}
-                                  >✕</button>
+                                  <button onClick={commitEdit} className="d-btn pr" style={{ flex: 1 }}>Зберегти</button>
+                                  <button onClick={closeEdit} aria-label="Скасувати" className="d-round ghost">✕</button>
                                 </div>
                               </div>
                             ) : null}
@@ -388,7 +373,7 @@ export default function PlanningPage() {
                               )}
                               {notes && (
                                 <MessageSquare
-                                  size={8} color="#F97316" aria-hidden
+                                  size={8} color="var(--c-accent-text)" aria-hidden
                                   style={{ position: 'absolute', top: 2, right: 2 }}
                                 />
                               )}
@@ -458,6 +443,7 @@ export default function PlanningPage() {
           </tbody>
         </table>
       </div>
+      </section>
       )}
     </div>
   );

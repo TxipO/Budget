@@ -360,11 +360,11 @@ select.input-field option {
   padding: 16px;
 }
 
-.table-row {
+.plan-row {
   border-bottom: 1px solid var(--c-border);
   transition: background 0.1s;
 }
-.table-row:hover {
+.plan-row:hover {
   background: var(--c-hover);
 }
 
@@ -704,6 +704,11 @@ select.input-field option {
 .d-tx-row.tx-act { display: flex; align-items: center; gap: 2px; }
 .d-tx-row.tx-act .d-tx-hit { flex: 1; width: auto; min-width: 0; }
 .tx-del:hover { color: var(--c-neg-text); }
+/* Планування: the grid card hugs its table (the scroller inside owns the overflow). */
+.d-card.plan-card { padding: 0; overflow: hidden; }
+.plan-scroll { overflow: auto; }
+.plan-chip { width: 24px; height: 24px; }
+.plan-edit-popover .d-btn { height: 36px; padding: 0 14px; }
 .tx-stepper { display: flex; align-items: center; gap: 4px; }
 .tx-stepper > span { min-width: 120px; text-align: center; font-size: 14px; font-weight: 600; color: var(--c-text-sec); }
 @media (min-width: 900px) { .d-stats.tx-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
