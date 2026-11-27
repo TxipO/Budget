@@ -14,7 +14,7 @@ description: >
 Budget tracker: Next.js 14 + Prisma + Postgres/Neon, deployed on Vercel
 serverless. ~12k LOC, 46 API routes, 27 lib modules, 5 external integrations
 (Monobank, Enable Banking/SpareBank 1, Telegram, Groq, email). Project root
-`C:\Users\doter\Budget`, source in `src/`.
+`C:\Stuff\ClaudeCodeProjects\Budget`, source in `src/`.
 
 Replaces the former `/selfcheck`, `/deep-review`, `/full-review` and
 `/audit` skills — same content, one entry point.
@@ -413,7 +413,7 @@ the fallback and can't run per-item in a large backfill loop.
    flow) — don't ask the user to check manually.
 4. **One consolidated report**, not one per stage.
 5. Commit, push, deploy per the project's standing autonomous convention.
-6. **Update memory** (`C:\Users\doter\.claude\projects\C--Users-doter-Budget\memory\`)
+6. **Update memory** (`C:\Users\doter\.claude\projects\C--Stuff-ClaudeCodeProjects-Budget\memory\`)
    even if unasked — a full pass is exactly when accumulated session work
    must land before context compaction. What qualifies: new subsystems, real
    bugs found (the failure mode and fix, not the diff), security-relevant

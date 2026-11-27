@@ -1,5 +1,5 @@
 # Runs the real (Postgres) backup and appends to backups\backup.log. Exit code = node's.
-$project = "C:\Users\doter\Budget"
+$project = Split-Path $PSScriptRoot -Parent  # parent of scripts/ - survives moving the folder
 Set-Location $project
 $log = Join-Path $project "backups\backup.log"
 New-Item -ItemType Directory -Force -Path (Split-Path $log) | Out-Null
