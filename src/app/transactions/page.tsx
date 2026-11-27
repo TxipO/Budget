@@ -1,10 +1,11 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
-import { Plus, Search, Trash2, Pencil, ChevronLeft, ChevronRight, Download, Globe, AlertTriangle, Landmark } from 'lucide-react';
+import { useEffect, useState, useRef, Fragment, type CSSProperties } from 'react';
+import { Plus, Search, Trash2, Pencil, ChevronLeft, ChevronRight, Download, Globe, AlertTriangle, Landmark, TrendingUp, TrendingDown, PiggyBank, ArrowLeftRight } from 'lucide-react';
 import { MONTH_NAMES, TYPE_LABELS, BANK_SYNC_COLOR } from '@/lib/utils';
 import { useCurrency } from '@/lib/useCurrency';
 import TransactionForm from '@/components/TransactionForm';
 import CategoryIcon from '@/components/CategoryIcon';
+import { displayColor } from '@/lib/displayColor';
 import { toast } from '@/lib/toast';
 import { isBudgetRelevant, savingsAmount } from '@/lib/budgetRules';
 
@@ -19,6 +20,8 @@ interface Tx {
 }
 
 const PAGE_SIZE = 25;
+
+const vars = (o: Record<string, string | number>) => o as CSSProperties;
 
 // Direction shown next to a row's amount; the CSV export uses the same sign.
 function amountSign(tx: Tx): 1 | -1 {
@@ -247,54 +250,60 @@ export default function TransactionsPage() {
     .filter(tx => matchesFilters(tx) && tx.category.type === 'transfer' && !tx.savingsWithdrawal)
     .reduce((s, tx) => s + tx.amount, 0);
 
+  // Rows grouped by day (the API already returns them newest first); `i` is the
+  // row's position on the page and drives the capped entrance animation below.
+  const groups: { key: string; label: string; rows: { tx: Tx; i: number }[] }[] = [];
+  paged.forEach((tx, i) => {
+    const key = tx.date.slice(0, 10);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.rows.push({ tx, i });
+    else groups.push({
+      key,
+      label: new Date(tx.date).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', ...(globalSearch ? { year: 'numeric' } : {}), timeZone: 'UTC' }),
+      rows: [{ tx, i }],
+    });
+  });
+
+  const summary = [
+    { label: 'Дохід', value: totals.income, tone: 'gr', icon: TrendingUp, signed: false },
+    { label: 'Витрати', value: totals.expenses, tone: 'rd', icon: TrendingDown, signed: false },
+    // Unlike income/expenses/transfers (always a sum of same-signed
+    // rows by construction, never negative), savings can genuinely
+    // net negative -- more withdrawals than deposits in the period.
+    // formatMoney() alone drops the sign (Math.abs under the hood),
+    // which used to show a real net WITHDRAWAL as a plain positive
+    // number, reading as a deposit. Found live 2026-09-07.
+    { label: 'Збереження', value: totals.savings, tone: 'am', icon: PiggyBank, signed: true },
+    { label: 'Перекази', value: transfersTotal, tone: '', icon: ArrowLeftRight, signed: false },
+  ];
+
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto' }}>
+    <div className="dash dash-stack">
       {/* Header */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 28 }}>
-        <div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Транзакції</h1>
-          <p style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>
-            {loading ? <span className="skel" style={{ height: 14, width: 80, marginTop: 4 }} /> : `${filtered.length} записів`}
-          </p>
+      <div className="dash-head">
+        <div className="dash-title">
+          <h1>Транзакції</h1>
+          <span className="d-note">
+            {loading ? <span className="skel" style={{ height: 14, width: 80 }} /> : `${filtered.length} записів`}
+          </span>
         </div>
-        <div className="tx-head-actions" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-          <div className="tx-stepper" style={{
-            display: 'flex', alignItems: 'center', gap: 2,
-            background: 'var(--c-elevated)', border: '1px solid var(--c-border)',
-            borderRadius: 12, padding: '4px',
-            opacity: globalSearch ? 0.35 : 1,
-            pointerEvents: globalSearch ? 'none' : 'auto',
-          }}>
-            <button onClick={prevMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }} title="Попередній місяць" aria-label="Попередній місяць">
-              <ChevronLeft size={16} />
-            </button>
-            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-sec)', padding: '0 8px', minWidth: 120, textAlign: 'center' }}>
-              {globalSearch ? 'Всі роки' : `${MONTH_NAMES[month - 1]} ${year}`}
-            </span>
-            <button onClick={nextMonth} className="btn-ghost" style={{ padding: '6px 8px', border: 'none', borderRadius: 8 }} title="Наступний місяць" aria-label="Наступний місяць">
-              <ChevronRight size={16} />
-            </button>
-          </div>
-          <button
-            className="btn-ghost"
-            onClick={exportCSV}
-            title="Експорт CSV" aria-label="Експорт CSV"
-            style={{ gap: 6 }}
-          >
-            <Download size={15} /> <span className="hide-on-xs">CSV</span>
+        <div className="tx-stepper" style={{ opacity: globalSearch ? 0.35 : 1, pointerEvents: globalSearch ? 'none' : 'auto' }}>
+          <button onClick={prevMonth} className="d-round" title="Попередній місяць" aria-label="Попередній місяць"><ChevronLeft size={18} /></button>
+          <span>{globalSearch ? 'Всі роки' : `${MONTH_NAMES[month - 1]} ${year}`}</span>
+          <button onClick={nextMonth} className="d-round" title="Наступний місяць" aria-label="Наступний місяць"><ChevronRight size={18} /></button>
+        </div>
+        <div className="dash-actions">
+          <button className="d-btn" onClick={exportCSV} title="Експорт CSV" aria-label="Експорт CSV">
+            <Download size={16} /> <span className="hide-on-xs">CSV</span>
           </button>
-          <button
-            className="btn-primary tx-add"
-            onClick={() => { setEditing(null); setShowForm(true); }}
-            title="Alt+N"
-          >
+          <button className="d-btn pr" onClick={() => { setEditing(null); setShowForm(true); }} title="Alt+N">
             <Plus size={16} /> Додати
           </button>
         </div>
       </div>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 280 }}>
           <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-text-muted)' }} />
           <input
@@ -306,63 +315,27 @@ export default function TransactionsPage() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <button
-          onClick={() => setGlobalSearch(v => !v)}
-          aria-pressed={globalSearch}
-          className="btn-ghost"
-          title="Шукати по всіх роках, а не тільки в обраному місяці"
-          style={{
-            background: globalSearch ? 'rgba(249,115,22,0.2)' : undefined,
-            color: globalSearch ? 'var(--c-accent-hi)' : undefined,
-            borderColor: globalSearch ? 'rgba(249,115,22,0.3)' : undefined,
-            fontSize: 13, display: 'flex', alignItems: 'center', gap: 6,
-          }}
-        >
-          <Globe size={14} /> Всі роки
-        </button>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div className="d-pills">
+          <button
+            onClick={() => setGlobalSearch(v => !v)}
+            aria-pressed={globalSearch}
+            title="Шукати по всіх роках, а не тільки в обраному місяці"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <Globe size={14} /> Всі роки
+          </button>
+        </div>
+        <div className="d-pills">
           {[['', 'Всі'], ['income', 'Дохід'], ['expense', 'Витрати'], ['savings', 'Збереження']].map(([val, label]) => (
-            <button
-              key={val}
-              onClick={() => setTypeFilter(val)}
-              aria-pressed={typeFilter === val}
-              className="btn-ghost"
-              style={{
-                background: typeFilter === val ? 'rgba(249,115,22,0.2)' : undefined,
-                color: typeFilter === val ? 'var(--c-accent-hi)' : undefined,
-                borderColor: typeFilter === val ? 'rgba(249,115,22,0.3)' : undefined,
-                fontSize: 13,
-              }}
-            >
-              {label}
-            </button>
+            <button key={val} onClick={() => setTypeFilter(val)} aria-pressed={typeFilter === val}>{label}</button>
           ))}
         </div>
         {users.length > 0 && (
-          <>
-            {/* Separates the type filter's "Всі" from this group's own
-                "Всі" — two identical labels sitting flush against each
-                other read as one ambiguous control without it. */}
-            <div className="hide-on-xs tx-filter-sep" style={{ width: 1, alignSelf: 'stretch', background: 'var(--c-border-mid)' }} />
-            <div style={{ display: 'flex', gap: 6 }}>
+          <div className="d-pills">
             {[['', 'Всі'], ...users.map(u => [String(u.id), u.name])].map(([val, label]) => (
-              <button
-                key={val}
-                onClick={() => setUserFilter(val)}
-                aria-pressed={userFilter === val}
-                className="btn-ghost"
-                style={{
-                  background: userFilter === val ? 'rgba(249,115,22,0.2)' : undefined,
-                  color: userFilter === val ? 'var(--c-accent-hi)' : undefined,
-                  borderColor: userFilter === val ? 'rgba(249,115,22,0.3)' : undefined,
-                  fontSize: 13,
-                }}
-              >
-                {label}
-              </button>
+              <button key={val} onClick={() => setUserFilter(val)} aria-pressed={userFilter === val}>{label}</button>
             ))}
-            </div>
-          </>
+          </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '0 4px' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--c-text-sec)', cursor: 'pointer', padding: '10px 0' }}>
@@ -376,221 +349,132 @@ export default function TransactionsPage() {
         </div>
       </div>
 
-      {/* Summary row */}
-      <div className="tx-summary" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
-        {[
-          { label: 'Дохід', value: totals.income, color: 'var(--c-pos-text)', signed: false },
-          { label: 'Витрати', value: totals.expenses, color: 'var(--c-neg-text)', signed: false },
-          // Unlike income/expenses/transfers (always a sum of same-signed
-          // rows by construction, never negative), savings can genuinely
-          // net negative -- more withdrawals than deposits in the period.
-          // formatMoney() alone drops the sign (Math.abs under the hood),
-          // which used to show a real net WITHDRAWAL as a plain positive
-          // number, reading as a deposit. Found live 2026-09-07.
-          { label: 'Збереження', value: totals.savings, color: 'var(--c-warn-text)', signed: true },
-          { label: 'Перекази', value: transfersTotal, color: 'var(--c-text-muted)', signed: false },
-        ].map(s => (
-          <div key={s.label} className="card tx-summary-card" style={{ flex: '1 1 100px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 13, color: 'var(--c-text-sub)' }}>{s.label}</span>
-            {loading ? <span className="skel" style={{ height: 20, width: 72 }} /> : (
-              <span style={{ fontSize: 16, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums' }}>
-                {s.signed ? formatMoneySign(s.value) : formatMoney(s.value)}
-              </span>
-            )}
-          </div>
+      {/* Summary */}
+      <div className="d-stats tx-stats">
+        {summary.map(s => (
+          <section key={s.label} className="d-card d-stat">
+            <span className={`d-chip ${s.tone}`}><s.icon size={20} /></span>
+            <div>
+              <span className="d-lb">{s.label}</span>
+              <b>
+                {loading ? <span className="skel" style={{ height: 22, width: 72 }} /> : (s.signed ? formatMoneySign(s.value) : formatMoney(s.value))}
+              </b>
+            </div>
+          </section>
         ))}
       </div>
 
-      {/* Table */}
-      <div className="card" style={{ overflow: 'hidden' }}>
-        {/* Table header (desktop only — mobile rows are self-describing cards) */}
-        <div className="hide-on-xs tx-grid" style={{
-          padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)',
-          fontSize: 11, fontWeight: 700, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em',
-        }}>
-          <span>Дата</span>
-          <span>Категорія / деталі</span>
-          <span className="tx-col-wide">Тип</span>
-          <span style={{ textAlign: 'right' }}>Сума</span>
-          <span className="tx-col-wide">Хто</span>
-          <span></span>
-        </div>
-
-        {loading && [0, 1, 2, 3, 4].map(i => (
-          <div key={i} className="table-row" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px' }}>
-            <div className="skel" style={{ width: 36, height: 36, borderRadius: 10 }} />
-            <div style={{ flex: 1 }}>
-              <div className="skel" style={{ height: 13, width: '40%', borderRadius: 6, marginBottom: 6 }} />
-              <div className="skel" style={{ height: 11, width: '25%', borderRadius: 6 }} />
-            </div>
-            <div className="skel" style={{ height: 16, width: 80, borderRadius: 6 }} />
-          </div>
-        ))}
-
-        {!loading && filtered.length === 0 && (
-          <div style={{ textAlign: 'center', color: 'var(--c-text-muted)', padding: '48px 0', fontSize: 14 }}>
-            Немає транзакцій
+      {/* Transactions, grouped by day */}
+      <section className="d-card d-tx">
+        {loading && (
+          <div className="d-tx-list">
+            {[0, 1, 2, 3, 4].map(i => (
+              <div key={i} className="d-skel-row">
+                <span className="skel" style={{ width: 44, height: 44, borderRadius: '50%', flex: 'none' }} />
+                <div style={{ flex: 1 }}>
+                  <span className="skel" style={{ height: 14, width: '55%' }} />
+                  <span className="skel" style={{ height: 12, width: '35%', marginTop: 8 }} />
+                </div>
+                <span className="skel" style={{ height: 16, width: 64 }} />
+              </div>
+            ))}
           </div>
         )}
 
-        {(loading ? [] : paged).map(tx => {
-          const dateStr = new Date(tx.date).toLocaleDateString('uk-UA', globalSearch
-            ? { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'UTC' }
-            : { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
-          // A savings row's sign is the POT's perspective, not the wallet's.
-          // The row is labelled with the pot's own category name, and both
-          // the "Збереження" tile above and the dashboard's sum it into
-          // (savingsAmount() in lib/validate.ts) count a deposit as positive
-          // and a withdrawal as negative. This used to be inverted: a
-          // withdrawal rendered "+" green while every total counted it as
-          // negative, so one real event read as a gain here and a drop
-          // there. Found live 2026-08-29 on a 300 kr "Фінансова подушка"
-          // withdrawal showing "+300". Savings keeps its own colour in both
-          // directions — a pot growing is not income.
-          const amountStr = `${amountSign(tx) > 0 ? '+' : '-'}${formatMoney(tx.amount)}`;
-          // isTransfer rows never reach here — filtered out above — so no
-          // dimmed "excluded" color branch is needed.
-          const amountColor = tx.category.type === 'income' ? 'var(--c-pos-text)'
-                             : tx.category.type === 'expense' ? 'var(--c-neg-text)' : 'var(--c-warn-text)';
-          return (
-          <div key={tx.id} className="table-row">
-            {/* Desktop: fixed-column grid */}
-            <div
-              className="tx-row-desktop tx-grid"
-              style={{
-                display: 'grid',
-                padding: '14px 20px',
-                alignItems: 'center',
-              }}
-            >
-              <span style={{ fontSize: 13, color: 'var(--c-text-sub)' }}>{dateStr}</span>
+        {!loading && filtered.length === 0 && (
+          <div className="d-empty">Немає транзакцій</div>
+        )}
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                <CategoryIcon name={tx.category.icon} color={tx.category.color} size={15} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
-                    {tx.category.name}
-                    {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex' }}><AlertTriangle size={11} color="#FBBF24" /></span>}
-                    {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex' }}><Landmark size={11} color={BANK_SYNC_COLOR} /></span>}
-                  </div>
-                  {(tx.details || tx.user) && (
-                    <div style={{ fontSize: 12, color: 'var(--c-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {tx.details}
-                      {tx.user && <span className="tx-who-inline">{tx.details && ' · '}{tx.user.name}</span>}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* justifySelf: start — .badge is inline-flex so it's meant
-                  to hug its content, but as a direct CSS Grid child it
-                  otherwise stretches to fill the full 120px column
-                  (Grid's justify-items: stretch default). */}
-              <span className={`badge badge-${tx.category.type} tx-col-wide`} style={{ justifySelf: 'start' }}>
-                {TYPE_LABELS[tx.category.type]}
-              </span>
-
-              <span style={{ textAlign: 'right', fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: amountColor }}>
-                {amountStr}
-              </span>
-
-              <span className="tx-col-wide" style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>{tx.user?.name || '—'}</span>
-
-              <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                <button
-                  className="btn-ghost"
-                  style={{ padding: '5px 7px', border: 'none' }}
-                  onClick={() => { setEditing(tx); setShowForm(true); }}
-                  title="Редагувати"
-                  aria-label="Редагувати"
-                >
-                  <Pencil size={13} />
-                </button>
-                <button
-                  className="btn-ghost"
-                  style={{ padding: '5px 7px', border: 'none', color: '#EF4444' }}
-                  onClick={() => del(tx.id)}
-                  title="Видалити"
-                  aria-label="Видалити"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            </div>
-
-            {/* Mobile: stacked card row — icon, category+meta (grows/truncates), amount+actions */}
-            <div className="tx-row-mobile" style={{ display: 'none', alignItems: 'center', gap: 10, padding: '8px 8px 8px 16px' }}>
-              <CategoryIcon name={tx.category.icon} color={tx.category.color} size={16} tile />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
-                  {tx.category.name}
-                  {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є імпортована транзакція в цій категорії за цей місяць" style={{ display: 'flex', flexShrink: 0 }}><AlertTriangle size={10} color="#FBBF24" /></span>}
-                  {(tx.source === 'mono' || tx.source === 'sparebank') && <span title={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'flex', flexShrink: 0 }}><Landmark size={10} color={BANK_SYNC_COLOR} /></span>}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--c-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {dateStr}{tx.details && ` · ${tx.details}`}{tx.user && ` · ${tx.user.name}`}
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-                <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: amountColor }}>
-                  {amountStr}
-                </span>
-                <div style={{ display: 'flex', gap: 0 }}>
-                  <button
-                    className="btn-ghost"
-                    style={{ padding: '9px', border: 'none' }}
-                    onClick={() => { setEditing(tx); setShowForm(true); }}
-                    title="Редагувати"
-                    aria-label="Редагувати"
-                  >
-                    <Pencil size={12} />
-                  </button>
-                  <button
-                    className="btn-ghost"
-                    style={{ padding: '9px', border: 'none', color: '#EF4444' }}
-                    onClick={() => del(tx.id)}
-                    title="Видалити"
-                    aria-label="Видалити"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-          );
-        })}
+        {(loading ? [] : groups).map(g => (
+          <Fragment key={g.key}>
+            <h3 className="tx-day">{g.label}</h3>
+            <ul className="d-tx-list">
+              {g.rows.map(({ tx, i }) => {
+                const type = tx.category.type;
+                // A leading long terminal/bank code ("143300 COOP PRIX") is noise in a title: dropped for display only.
+                const cleaned = tx.details && tx.details !== '[імпорт]' ? tx.details.replace(/^\d{5,}\s+/, '').trim() : '';
+                const label = cleaned || tx.category.name;
+                // People-named categories repeat the person ("Паша · Паша"): show a name once.
+                const seen = new Set<string>();
+                const meta = [cleaned ? tx.category.name : null, tx.user?.name, TYPE_LABELS[type]]
+                  .filter((x): x is string => !!x && !seen.has(x.toLowerCase()) && !!seen.add(x.toLowerCase())).join(' · ');
+                // A savings row's sign is the POT's perspective, not the wallet's.
+                // The row is labelled with the pot's own category name, and both
+                // the "Збереження" tile above and the dashboard's sum it into
+                // (savingsAmount() in lib/validate.ts) count a deposit as positive
+                // and a withdrawal as negative. This used to be inverted: a
+                // withdrawal rendered "+" green while every total counted it as
+                // negative, so one real event read as a gain here and a drop
+                // there. Found live 2026-08-29 on a 300 kr "Фінансова подушка"
+                // withdrawal showing "+300". Savings keeps its own colour in both
+                // directions — a pot growing is not income.
+                // isTransfer rows never reach here — filtered out above — so no
+                // dimmed "excluded" colour branch is needed.
+                const amountStr = `${amountSign(tx) > 0 ? '+' : '−'}${formatMoney(tx.amount)}`;
+                const bank = tx.source === 'mono' || tx.source === 'sparebank';
+                return (
+                  // Only the first 20 rows animate in (cheap on phones); reduced motion is handled globally.
+                  <li key={tx.id} className={`d-tx-row tx-act${i < 20 ? ' d-rise' : ''}`} style={vars({ '--i': i })}>
+                    {/* The whole row is the edit control; delete is a sibling (no nested buttons). */}
+                    <button type="button" className="d-tx-hit" onClick={() => { setEditing(tx); setShowForm(true); }} aria-label={`Редагувати: ${label}, ${TYPE_LABELS[type]} ${amountStr}${tx.possibleDuplicateOf ? ', можливий дубль' : ''}`}>
+                      <span className="d-chip d-cat-chip" style={vars({ '--cc': displayColor(tx.category.color, tx.category.id, tx.category.name) })}>
+                        <CategoryIcon name={tx.category.icon} color="currentColor" size={20} />
+                      </span>
+                      <span className="d-tx-main">
+                        <b>
+                          {label}
+                          {tx.possibleDuplicateOf && <span title="Можливий дубль — вже є імпортована транзакція в цій категорії за цей місяць" style={{ marginLeft: 6 }}><AlertTriangle size={12} color="var(--c-warn-text)" style={{ display: 'inline', verticalAlign: '-1px' }} /></span>}
+                        </b>
+                        <small>
+                          {bank && <Landmark size={11} color={BANK_SYNC_COLOR} aria-label={`Автоматично підтягнуто з ${tx.source === 'mono' ? 'Monobank' : 'SpareBank 1'}`} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 5 }} />}
+                          {meta}
+                        </small>
+                      </span>
+                      <span className={`d-amt ${type === 'income' ? 'inc' : type === 'expense' ? 'exp' : 'sav'}`} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {amountStr}
+                      </span>
+                      <Pencil size={15} className="d-tx-pen" aria-hidden="true" />
+                    </button>
+                    <button type="button" className="d-round ghost tx-del" onClick={() => del(tx.id)} title="Видалити" aria-label={`Видалити: ${label}`}>
+                      <Trash2 size={16} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </Fragment>
+        ))}
 
         {/* Pagination */}
         {totalPages > 1 && (
           <div style={{
             display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8,
-            padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.06)',
+            marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--c-line)',
           }}>
             <button
-              className="btn-ghost"
-              style={{ padding: '5px 12px', border: 'none', opacity: cur === 1 ? 0.3 : 1 }}
+              className="d-round ghost"
+              style={{ opacity: cur === 1 ? 0.3 : 1 }}
               disabled={cur === 1}
               onClick={() => setPage(cur - 1)}
               title="Попередня сторінка" aria-label="Попередня сторінка"
             >
-              <ChevronLeft size={15} />
+              <ChevronLeft size={18} />
             </button>
             <span style={{ fontSize: 13, color: 'var(--c-text-sec)', minWidth: 60, textAlign: 'center' }}>
               {cur} / {totalPages}
             </span>
             <button
-              className="btn-ghost"
-              style={{ padding: '5px 12px', border: 'none', opacity: cur === totalPages ? 0.3 : 1 }}
+              className="d-round ghost"
+              style={{ opacity: cur === totalPages ? 0.3 : 1 }}
               disabled={cur === totalPages}
               onClick={() => setPage(cur + 1)}
               title="Наступна сторінка" aria-label="Наступна сторінка"
             >
-              <ChevronRight size={15} />
+              <ChevronRight size={18} />
             </button>
           </div>
         )}
-      </div>
+      </section>
 
       {showForm && (
         <TransactionForm

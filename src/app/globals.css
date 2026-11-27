@@ -282,18 +282,6 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 .nav-link.active svg { color: var(--c-accent-hi); }
 
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-}
-.badge-income  { background: rgba(34,197,94,0.15);  color: var(--c-pos-text); }
-.badge-expense { background: rgba(239,68,68,0.15);  color: var(--c-neg-text); }
-.badge-savings { background: rgba(245,158,11,0.15); color: var(--c-warn-text); }
-
 .btn-primary {
   display: inline-flex;
   align-items: center;
@@ -388,12 +376,6 @@ select.input-field option {
 /* Loading placeholder block — same look as the dashboard skeletons. */
 .skel { display: block; background: var(--c-hover); border-radius: 8px; animation: pulse 1.5s infinite; }
 
-/* Транзакції row grid. minmax(0,1fr) lets the category column shrink instead of
-   collapsing; on the narrow-desktop band the least important columns (Тип, Хто —
-   the name moves under the category) drop out so nothing is clipped. */
-.tx-grid { display: grid; grid-template-columns: 100px minmax(0, 1fr) 120px 90px 80px 72px; gap: 8px; }
-.tx-who-inline { display: none; }
-
 /* ── Responsive ── */
 .sidebar-wrap  { display: flex; }
 .bottom-nav    { display: none; }
@@ -407,14 +389,10 @@ select.input-field option {
 /* Narrow desktop / tablet (sidebar + ~600px of content): five stat cards in one
    row clipped their figures ("+1 592 kr"). 3 + 2 on a 6-track grid instead. */
 @media (min-width: 769px) and (max-width: 1099px) {
-  .tx-filter-sep { display: none; } /* filters wrap here; a lone divider would dangle */
   .grid-5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .grid-5 > * { grid-column: span 2; }
   .grid-5 > :nth-child(n+4) { grid-column: span 3; }
   .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .tx-grid { grid-template-columns: 76px minmax(0, 1fr) 90px 72px; }
-  .tx-col-wide { display: none; }
-  .tx-who-inline { display: inline; }
 }
 
 @media (max-width: 768px) {
@@ -443,18 +421,6 @@ select.input-field option {
   .btn-ghost, .btn-primary, .input-field { min-height: 40px; }
   .btn-ghost { min-width: 40px; justify-content: center; }
   .attn-btn { width: 40px !important; height: 40px !important; }
-
-  /* Транзакції header: month stepper takes the free width next to the
-     export icon; "Додати" gets its own full-width row instead of a stray
-     left-aligned button. */
-  .tx-head-actions { width: 100%; }
-  .tx-stepper { flex: 1; }
-  .tx-stepper > span { flex: 1; min-width: 0 !important; }
-  .tx-add { flex: 1 1 100%; justify-content: center; }
-  /* Summary tiles: label over figure, 2x2 — side by side the two ran together
-     ("Витрати31 199 kr"). */
-  .tx-summary { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px !important; }
-  .tx-summary-card { flex-direction: column; align-items: flex-start !important; gap: 2px; padding: 12px 14px !important; }
 
   /* 5 labels fit a 360px phone at this padding; flex-grow spreads any spare
      width at 375+. Height gives a 40px tap target. */
@@ -492,9 +458,6 @@ select.input-field option {
   .donut-row { flex-direction: column; align-items: stretch !important; }
   .donut-chart-box { width: 140px !important; height: 140px !important; align-self: center; }
   .donut-legend { max-height: none !important; width: 100%; }
-
-  .tx-row-desktop { display: none !important; }
-  .tx-row-mobile  { display: flex !important; }
 
   /* Planning grid (found live 2026-09-19 mobile audit): the sticky category
      column ate 161px of a 342px card (47%), leaving ~3 months visible at a
@@ -735,6 +698,15 @@ select.input-field option {
 .d-user-toggle { width: 100%; display: flex; align-items: center; gap: 10px; padding: 0; border: 0; background: none; text-align: left; color: var(--c-text); }
 .d-user-toggle h2 { flex: 1; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
 .d-skel-row { display: flex; gap: 14px; align-items: center; min-height: 64px; padding: 10px 12px; }
+/* Транзакції: day heading, row = edit hit + sibling delete, month stepper, 4-up summary. */
+.tx-day { margin: 18px 12px 6px; font-size: 13px; font-weight: 600; color: var(--c-text-muted); }
+.d-tx > .tx-day:first-child { margin-top: 0; }
+.d-tx-row.tx-act { display: flex; align-items: center; gap: 2px; }
+.d-tx-row.tx-act .d-tx-hit { flex: 1; width: auto; min-width: 0; }
+.tx-del:hover { color: var(--c-neg-text); }
+.tx-stepper { display: flex; align-items: center; gap: 4px; }
+.tx-stepper > span { min-width: 120px; text-align: center; font-size: 14px; font-weight: 600; color: var(--c-text-sec); }
+@media (min-width: 900px) { .d-stats.tx-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
 @media (max-width: 768px) {
   .dash-head { gap: 12px; margin-bottom: 18px; }
@@ -743,6 +715,8 @@ select.input-field option {
   .d-pills { flex: 1 1 100%; }
   .d-pills button { flex: 1 0 auto; padding: 0 6px; font-size: 13px; min-height: 40px; }
   .dash-actions { flex: 1 1 100%; justify-content: flex-end; }
+  .tx-stepper { flex: 1 1 100%; justify-content: space-between; }
+  .tx-stepper > span { flex: 1; min-width: 0; }
   .d-round { width: 40px; height: 40px; }
   .d-card { padding: 18px; border-radius: 20px; }
   .d-hero { min-height: 0; }
