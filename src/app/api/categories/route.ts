@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
           isActive: true,
           ...(typeof body.color === 'string' ? { color: body.color } : {}),
           ...(typeof body.icon  === 'string' ? { icon: body.icon }   : {}),
+          ...(typeof body.lockedFromModes === 'boolean' ? { lockedFromModes: body.lockedFromModes } : {}),
         },
       });
       return NextResponse.json(revived);
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
         householdId,
         ...(typeof body.color === 'string' ? { color: body.color } : {}),
         ...(typeof body.icon  === 'string' ? { icon: body.icon }   : {}),
+        ...(typeof body.lockedFromModes === 'boolean' ? { lockedFromModes: body.lockedFromModes } : {}),
       },
     });
     return NextResponse.json(cat);

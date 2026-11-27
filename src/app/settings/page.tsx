@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, Landmark, Pencil, UserPlus, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, Landmark, Pencil, UserPlus, AlertTriangle, Lock } from 'lucide-react';
 import { CATEGORY_PALETTE } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { CURRENCIES, formatMoney as formatMoneyIn } from '@/lib/currencies';
@@ -9,7 +9,7 @@ import { useDashboardPrefs, PREF_LABELS, type DashboardPrefs } from '@/lib/dashb
 import { ICON_KEYS } from '@/lib/icons';
 import CategoryIcon from '@/components/CategoryIcon';
 
-interface Category { id: number; name: string; type: string; color: string; icon: string; isActive: boolean }
+interface Category { id: number; name: string; type: string; color: string; icon: string; isActive: boolean; lockedFromModes: boolean }
 
 // A stored bank balance older than this missed its automatic refreshes (the
 // cron refreshes roughly daily) — shown as a warning instead of a quiet number
@@ -39,7 +39,7 @@ function BalanceAge({ fetchedAt }: { fetchedAt: string | null }) {
 
 export default function SettingsPage() {
   const [cats, setCats] = useState<Category[]>([]);
-  const [form, setForm] = useState({ name: '', type: 'expense', color: CATEGORY_PALETTE[0], icon: 'circle' });
+  const [form, setForm] = useState({ name: '', type: 'expense', color: CATEGORY_PALETTE[0], icon: 'circle', lockedFromModes: false });
   const [importStatus, setImportStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [editingColorId, setEditingColorId] = useState<number | null>(null);
   const [editingIconId, setEditingIconId] = useState<number | null>(null);
@@ -538,7 +538,7 @@ export default function SettingsPage() {
       });
       if (!res.ok) { toast('Помилка додавання категорії', 'error'); return; }
       toast(`Категорію "${form.name}" додано`);
-      setForm({ name: '', type: 'expense', color: CATEGORY_PALETTE[0], icon: 'circle' });
+      setForm({ name: '', type: 'expense', color: CATEGORY_PALETTE[0], icon: 'circle', lockedFromModes: false });
       loadCats();
     } catch {
       toast('Помилка з’єднання', 'error');
@@ -568,6 +568,19 @@ export default function SettingsPage() {
       setCats(prev => prev.map(c => c.id === id ? { ...c, color } : c));
       setEditingColorId(null);
       toast('Колір оновлено');
+    } catch {
+      toast('Помилка з’єднання', 'error');
+    }
+  }
+
+  async function toggleLocked(id: number, lockedFromModes: boolean) {
+    try {
+      const res = await fetch(`/api/categories/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lockedFromModes }),
+      });
+      if (!res.ok) { toast('Помилка оновлення категорії', 'error'); return; }
+      setCats(prev => prev.map(c => c.id === id ? { ...c, lockedFromModes } : c));
     } catch {
       toast('Помилка з’єднання', 'error');
     }
@@ -1283,6 +1296,13 @@ export default function SettingsPage() {
             </div>
           </div>
           <button type="submit" className="btn-primary"><Plus size={15} /> Додати</button>
+          <label style={{ flexBasis: '100%', display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+            <input type="checkbox" checked={form.lockedFromModes} onChange={e => setForm(f => ({ ...f, lockedFromModes: e.target.checked }))} style={{ marginTop: 3 }} />
+            <span style={{ fontSize: 13, color: 'var(--c-text-sec)' }}>
+              Режими не чіпають цю категорію
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--c-text-muted)' }}>Режим подорожі не переносить сюди витрати</span>
+            </span>
+          </label>
           <div style={{ flexBasis: '100%' }}>
             <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>Іконка</label>
             <div className="pick-grid pick-icons" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 96, overflowY: 'auto' }}>
@@ -1316,6 +1336,7 @@ export default function SettingsPage() {
               <span style={{ color }}>{label}</span>
               <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-text-muted)' }}>({items.length})</span>
             </h2>
+            {type === 'expense' && <p style={{ fontSize: 12, color: 'var(--c-text-muted)', margin: '-8px 0 10px' }}>Замок — режими не чіпають категорію: режим подорожі не переносить сюди витрати.</p>}
             {items.length === 0 && <p style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>Немає категорій</p>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {items.map(cat => (
@@ -1344,6 +1365,17 @@ export default function SettingsPage() {
                       }}
                     />
                     <span style={{ flex: 1, fontSize: 14, color: 'var(--c-text-sec)' }}>{cat.name}</span>
+                    {cat.type === 'expense' && (
+                      <button
+                        className="btn-ghost hit40" type="button" aria-pressed={cat.lockedFromModes}
+                        title={`Режими не чіпають цю категорію — ${cat.lockedFromModes ? 'увімкнено' : 'вимкнено'}. Режим подорожі не переносить сюди витрати`}
+                        aria-label="Режими не чіпають цю категорію"
+                        onClick={() => toggleLocked(cat.id, !cat.lockedFromModes)}
+                        style={{ padding: '4px 6px', border: 'none', color: cat.lockedFromModes ? 'var(--c-accent-text)' : 'var(--c-text-muted)', opacity: cat.lockedFromModes ? 1 : 0.5 }}
+                      >
+                        <Lock size={13} />
+                      </button>
+                    )}
                     <button className="btn-ghost" style={{ padding: '4px 6px', border: 'none', color: '#EF4444' }} onClick={() => deleteCat(cat.id)} title={`Видалити ${cat.name}`} aria-label={`Видалити ${cat.name}`}>
                       <Trash2 size={13} />
                     </button>

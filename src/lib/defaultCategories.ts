@@ -19,6 +19,9 @@ export const FALLBACK_CATEGORIES = {
   income:  { name: 'Додаткове',   color: '#4ADE80', icon: 'star' },
 } as const;
 
+// Recurring/essential spending that modes like travel must never move elsewhere.
+export const LOCKED_FROM_MODES_NAMES = ['Оренда', 'Комунальні', 'Медицина', 'Підписки', 'Кредит'];
+
 export const DEFAULT_CATEGORIES: DefaultCategory[] = [
   // Дохід
   { name: 'Зарплата',          type: 'income',  color: '#22C55E', icon: 'cash' },

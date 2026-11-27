@@ -13,7 +13,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const body = await req.json();
 
     // Whitelist mutable fields — never trust arbitrary body keys
-    const data: { name?: string; type?: string; color?: string; icon?: string } = {};
+    const data: { name?: string; type?: string; color?: string; icon?: string; lockedFromModes?: boolean } = {};
     if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim();
     if (body.type !== undefined) {
       if (!isValidType(body.type)) return badRequest('Невалідний тип');
@@ -33,6 +33,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
     if (typeof body.color === 'string') data.color = body.color;
     if (typeof body.icon  === 'string') data.icon  = body.icon;
+    if (typeof body.lockedFromModes === 'boolean') data.lockedFromModes = body.lockedFromModes;
 
     // updateMany scoped by householdId, not a bare update({ where: { id } }),
     // so a household can never modify another household's category just by
