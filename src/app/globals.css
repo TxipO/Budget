@@ -589,6 +589,9 @@ select.input-field option {
 .d-round { width: 36px; height: 36px; border: 0; border-radius: 50%; display: inline-grid; place-items: center; flex: none; background: var(--c-elevated); color: var(--c-text-muted); box-shadow: var(--card-shadow); transition: color 0.15s, background 0.15s, transform 0.1s; }
 .d-round:hover { color: var(--c-text); background: var(--c-raised); }
 .d-round:active { transform: scale(0.94); }
+.d-round.ghost { background: transparent; box-shadow: none; }
+.d-round.ghost:hover { background: var(--c-raised); }
+.d-ch .d-round { margin: -8px 0; }
 
 .d-pills { display: flex; gap: 2px; padding: 4px; border-radius: 999px; background: var(--c-elevated); max-width: 100%; overflow-x: auto; scrollbar-width: none; box-shadow: var(--card-shadow); }
 .d-pills::-webkit-scrollbar { display: none; }
