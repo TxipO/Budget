@@ -13,8 +13,11 @@ const dm = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`; // 'YYYY-MM-DD' 
 const todayUtc = () => new Date().toISOString().slice(0, 10);
 const accountsWord = (n: number) => `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'рахунок' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'рахунки' : 'рахунків'}`;
 
-// Main-page entry to travel mode: a quiet button, or a banner while a trip is active.
-export default function TravelModeCard({ onChanged }: { onChanged: () => void }) {
+const TRIPS_CHANGED = 'trips-changed'; // lets the banner and icon instances on one page stay in sync
+
+// Main-page entry to travel mode. 'banner' (default) shows only the active-trip banner; 'icon' is a small
+// plane button shown when no trip is active; 'slot' is the icon on its own right-aligned row.
+export default function TravelModeCard({ onChanged, variant = 'banner' }: { onChanged: () => void; variant?: 'banner' | 'icon' | 'slot' }) {
   const { formatMoney } = useCurrency();
   const [trips, setTrips] = useState<Trip[] | null>(null);
   const [accounts, setAccounts] = useState<AccountOpt[]>([]);
@@ -30,13 +33,18 @@ export default function TravelModeCard({ onChanged }: { onChanged: () => void })
     } catch { /* the card simply stays hidden; the rest of the page is unaffected */ }
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    window.addEventListener(TRIPS_CHANGED, load);
+    return () => window.removeEventListener(TRIPS_CHANGED, load);
+  }, [load]);
+  const reload = useCallback(async () => { await load(); window.dispatchEvent(new Event(TRIPS_CHANGED)); }, [load]);
 
   async function finish(t: Trip) {
     try {
       const res = await fetch(`/api/trips/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       if (!res.ok) { toast('Не вдалося завершити поїздку', 'error'); return; }
       toast('Поїздку завершено');
-      load();
+      reload();
     } catch {
       toast('Помилка з’єднання', 'error');
     }
@@ -44,6 +52,24 @@ export default function TravelModeCard({ onChanged }: { onChanged: () => void })
 
   if (trips === null) return null;
   const active = trips.find(t => t.active);
+  const iconOnly = variant !== 'banner';
+
+  const dialog = open && (
+    <TravelDialog
+      trips={trips} accounts={accounts} initial={open} formatMoney={formatMoney}
+      onClose={() => setOpen(null)} onReload={reload} onChanged={onChanged}
+    />
+  );
+
+  if (iconOnly) {
+    if (active) return <>{dialog}</>;
+    const btn = (
+      <button type="button" className="d-round ghost" onClick={() => setOpen({ tripId: null, view: 'form' })} title="Режим подорожі" aria-label="Режим подорожі">
+        <Plane size={18} />
+      </button>
+    );
+    return <>{variant === 'slot' ? <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>{btn}</div> : btn}{dialog}</>;
+  }
 
   return (
     <>
@@ -61,17 +87,8 @@ export default function TravelModeCard({ onChanged }: { onChanged: () => void })
           <button type="button" className="d-btn" onClick={() => setOpen({ tripId: active.id, view: 'details' })}>Деталі</button>
           <button type="button" className="d-btn" onClick={() => finish(active)}>Завершити</button>
         </div>
-      ) : (
-        <div style={{ marginBottom: 16 }}>
-          <button type="button" className="d-btn" onClick={() => setOpen({ tripId: null, view: 'form' })}>✈ Режим подорожі</button>
-        </div>
-      )}
-      {open && (
-        <TravelDialog
-          trips={trips} accounts={accounts} initial={open} formatMoney={formatMoney}
-          onClose={() => setOpen(null)} onReload={load} onChanged={onChanged}
-        />
-      )}
+      ) : null}
+      {dialog}
     </>
   );
 }

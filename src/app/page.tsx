@@ -764,6 +764,7 @@ export default function Dashboard() {
       </div>
 
       <TravelModeCard onChanged={loadStats} />
+      {(!showDonut || failed) && <TravelModeCard variant="slot" onChanged={loadStats} />}
 
       {failed ? (
         <div className="d-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -831,7 +832,7 @@ export default function Dashboard() {
               <div className={`dash-two${showDonut && showPlan ? ' both' : ''}`}>
                 {showDonut && (
                   <section className={`d-card d-pane d-donut${loading ? '' : ' d-rise'}`} style={vars({ '--i': 5 })}>
-                    <div className="d-ch"><h2>Витрати за категоріями</h2></div>
+                    <div className="d-ch"><h2>Витрати за категоріями</h2><TravelModeCard variant="icon" onChanged={loadStats} /></div>
                     {loading || !stats ? (
                       <>
                         <span className="skel" style={{ width: '100%', maxWidth: 244, aspectRatio: '1', margin: '6px auto 0', borderRadius: '50%' }} />
