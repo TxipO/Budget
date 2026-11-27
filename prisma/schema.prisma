@@ -490,3 +490,22 @@ model PendingCategoryIntent {
   @@unique([userId, holdId])
   @@index([householdId, userId])
 }
+
+// Tombstone for a bank-imported Transaction the person deleted. Ingest dedups
+// only against existing Transaction rows, so without this the next sync would
+// re-fetch the same bank item and recreate the deleted row. Written by
+// DELETE /api/transactions/[id]; checked by monoIngest / sparebankIngest.
+// bankKey = monoStatementId ('mono') or the sbTransactionId storage key
+// ('sparebank'). Plain ints, no FK relations on purpose (additive db push).
+// Deliberately NOT written by sparebank undo-sync, which exists to let the
+// next sync re-fetch.
+model DeletedBankTransaction {
+  id          Int      @id @default(autoincrement())
+  householdId Int
+  userId      Int
+  source      String   // 'mono' | 'sparebank'
+  bankKey     String
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, source, bankKey])
+}
