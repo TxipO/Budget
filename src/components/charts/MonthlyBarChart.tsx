@@ -37,11 +37,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function MonthlyBarChart({ data }: { data: MonthData[] }) {
-  if (!data.length) return (
-    <div style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c-text-muted)', fontSize: 14 }}>
-      Немає даних
-    </div>
-  );
+  if (!data.length) return <div className="d-empty" style={{ minHeight: 280 }}>Немає даних</div>;
 
   return (
     <div style={{ height: 280 }}>
