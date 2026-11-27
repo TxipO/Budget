@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Plus, Trash2, Upload, CheckCircle, Sun, Moon, Landmark, Pencil, UserPlus, AlertTriangle, Lock } from 'lucide-react';
 import { CATEGORY_PALETTE } from '@/lib/utils';
 import { toast } from '@/lib/toast';
@@ -24,6 +24,8 @@ function fmtBalance(amount: number, currency: string | null): string {
   if (CURRENCIES.some(c => c.code === currency)) return (amount < 0 ? '-' : '') + formatMoneyIn(amount, currency!);
   return `${Math.round(amount).toLocaleString('uk-UA')} ${currency ?? ''}`;
 }
+
+const vars = (o: Record<string, string | number>) => o as CSSProperties;
 
 function BalanceAge({ fetchedAt }: { fetchedAt: string | null }) {
   if (!fetchedAt) return null;
@@ -674,16 +676,21 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div style={{ maxWidth: 900 }}>
-      <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--c-text)', marginBottom: 4 }}>Налаштування</h1>
-        <p style={{ color: 'var(--c-text-muted)', fontSize: 14 }}>Категорії та імпорт даних</p>
+    <div className="dash dash-stack set-wrap">
+      <div className="dash-head">
+        <div className="dash-title">
+          <h1>Налаштування</h1>
+          <span className="d-note">Категорії та імпорт даних</span>
+        </div>
       </div>
+
+      <div className="set-group" role="group" aria-labelledby="set-g-acc">
+        <p className="set-grp" id="set-g-acc">Обліковий запис і безпека</p>
 
       {/* Account section */}
       {account && (
-        <div className="card card-pad" style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Обліковий запис</h2>
+        <section className="d-card d-pane d-rise" style={vars({ '--i': 0 })}>
+          <div className="d-ch"><h2>Обліковий запис</h2></div>
           {account.shared ? (
             <p style={{ fontSize: 14, color: 'var(--c-text-sec)', marginBottom: 16 }}>
               Ви увійшли за спільним PIN (без прив'язки до конкретного користувача)
@@ -696,49 +703,49 @@ export default function SettingsPage() {
           )}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {!account.shared && account.user!.telegramUsername && (
-              <button onClick={disconnectTelegram} disabled={unlinking} className="btn-ghost" style={{ padding: '10px 16px' }}>
+              <button onClick={disconnectTelegram} disabled={unlinking} className="d-btn">
                 {unlinking ? 'Відключення…' : 'Відключити Telegram'}
               </button>
             )}
-            <button onClick={logout} disabled={loggingOut} className="btn-ghost" style={{ padding: '10px 16px' }}>
+            <button onClick={logout} disabled={loggingOut} className="d-btn">
               {loggingOut ? 'Вихід…' : 'Вийти'}
             </button>
-            <button onClick={logoutEverywhere} disabled={loggingOutAll} className="btn-ghost" style={{ padding: '10px 16px' }}>
+            <button onClick={logoutEverywhere} disabled={loggingOutAll} className="d-btn">
               {loggingOutAll ? 'Завершення…' : 'Вийти на всіх пристроях'}
             </button>
           </div>
-        </div>
+        </section>
       )}
 
       {/* Users section */}
-      <div className="card card-pad" style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Користувачі</h2>
+      <section className="d-card d-pane d-rise" style={vars({ '--i': 1 })}>
+        <div className="d-ch"><h2>Користувачі</h2></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: users.length > 0 ? 16 : 0 }}>
           {users.map(u => (
-            <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div key={u.id} className="set-row">
               {editingUserId === u.id ? (
                 <>
                   <input
                     className="input-field" value={editUserName}
                     onChange={e => setEditUserName(e.target.value)}
-                    style={{ flex: 1 }} autoFocus
+                    style={{ flex: 1, minWidth: 140 }} autoFocus
                   />
-                  <button onClick={() => saveEditUser(u.id)} disabled={savingUserId === u.id} className="btn-primary" style={{ padding: '9px 14px' }}>
+                  <button onClick={() => saveEditUser(u.id)} disabled={savingUserId === u.id} className="d-btn">
                     {savingUserId === u.id ? '…' : 'Зберегти'}
                   </button>
-                  <button onClick={() => setEditingUserId(null)} className="btn-ghost" style={{ padding: '9px 14px' }}>
+                  <button onClick={() => setEditingUserId(null)} className="d-btn">
                     Скасувати
                   </button>
                 </>
               ) : (
                 <>
                   <span style={{ flex: 1, fontSize: 14, color: 'var(--c-text-sec)' }}>{u.name}</span>
-                  <button onClick={() => startEditUser(u)} className="btn-ghost" style={{ padding: '9px 12px' }} aria-label={`Перейменувати ${u.name}`}>
+                  <button onClick={() => startEditUser(u)} className="d-round ghost" aria-label={`Перейменувати ${u.name}`}>
                     <Pencil size={14} />
                   </button>
                   <button
                     onClick={() => deleteUser(u)} disabled={deletingUserId === u.id}
-                    className="btn-ghost" style={{ padding: '9px 12px', color: 'var(--c-neg-text)' }}
+                    className="d-round ghost neg"
                     aria-label={`Видалити ${u.name}`}
                   >
                     <Trash2 size={14} />
@@ -750,97 +757,36 @@ export default function SettingsPage() {
         </div>
 
         {users.length < 2 && (
-          <form onSubmit={addUser} style={{ display: 'flex', gap: 8 }}>
+          <form onSubmit={addUser} className="set-row">
             <input
               className="input-field" value={newUserName}
               onChange={e => setNewUserName(e.target.value)}
-              placeholder="Ім'я нового користувача" style={{ flex: 1 }}
+              placeholder="Ім'я нового користувача" style={{ flex: 1, minWidth: 160 }}
             />
-            <button type="submit" disabled={addingUser} className="btn-primary" style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+            <button type="submit" disabled={addingUser} className="d-btn">
               <UserPlus size={16} />
               {addingUser ? 'Додавання…' : 'Додати'}
             </button>
           </form>
         )}
-      </div>
-
-      {/* Appearance section */}
-      <div className="card card-pad" style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Зовнішній вигляд</h2>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-sec)', marginBottom: 2 }}>
-              {theme === 'dark' ? 'Темна тема' : 'Світла тема'}
-            </p>
-            <p style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>
-              {theme === 'dark' ? 'Перемкнути на світлу' : 'Перемкнути на темну'}
-            </p>
-          </div>
-          <button
-            onClick={toggleTheme}
-            className="btn-ghost"
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px' }}
-          >
-            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            {theme === 'dark' ? 'Світла' : 'Темна'}
-          </button>
-        </div>
-      </div>
-
-      {/* Dashboard sections visibility */}
-      <div className="card card-pad" style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4 }}>Головна сторінка</h2>
-        <p style={{ fontSize: 13, color: 'var(--c-text-muted)', marginBottom: 16 }}>
-          Які блоки показувати на дашборді (зберігається на цьому пристрої)
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {(Object.keys(PREF_LABELS) as (keyof DashboardPrefs)[]).map(key => (
-            <label key={key} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '9px 0', cursor: 'pointer', borderBottom: '1px solid var(--c-border)',
-            }}>
-              <span style={{ fontSize: 14, color: 'var(--c-text-sec)' }}>{PREF_LABELS[key]}</span>
-              <button
-                type="button"
-                onClick={() => updateSections({ [key]: !dashSections[key] })}
-                style={{
-                  width: 40, height: 22, borderRadius: 20, border: 'none', cursor: 'pointer',
-                  background: dashSections[key] ? '#F97316' : 'var(--c-border-mid)',
-                  position: 'relative', transition: 'background 0.15s', flexShrink: 0,
-                }}
-                aria-label={`${dashSections[key] ? 'Сховати' : 'Показати'}: ${PREF_LABELS[key]}`}
-              >
-                {/* transform, not left — animating left triggers a layout
-                    reflow every frame; scaleX/translateX are compositor-only
-                    (audit 2026-08-02, same class as the budget-bar fix). */}
-                <span style={{
-                  position: 'absolute', top: 3, left: 3,
-                  width: 16, height: 16, borderRadius: '50%', background: 'white',
-                  transform: dashSections[key] ? 'translateX(18px)' : 'translateX(0)',
-                  transition: 'transform 0.15s',
-                }} />
-              </button>
-            </label>
-          ))}
-        </div>
-      </div>
+      </section>
 
       {/* Security section — PIN LOGIN (typing a PIN to establish identity)
           is still exclusive to household #1, but the PIN LOCK (an extra
           unlock step on top of an already-authenticated session, P4) is
           available to every household, so this shows for everyone. */}
       {account && (
-      <div className="card card-pad" style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4 }}>Безпека</h2>
-        <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginTop: 0, marginBottom: 14 }}>
+      <section className="d-card d-pane d-rise" style={vars({ '--i': 2 })}>
+        <div className="d-ch"><h2>Безпека</h2></div>
+        <p className="d-note" style={{ marginBottom: 14 }}>
           {account.hasPin
             ? 'PIN-замок увімкнено — застосунок проситиме PIN навіть у межах активної сесії.'
             : 'PIN-замок вимкнено. Додатковий захист поверх входу — рекомендовано.'}
         </p>
-        <form onSubmit={savePin} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <form onSubmit={savePin} className="set-form">
           {account.hasPin && (
             <div style={{ flex: 1, minWidth: 140 }}>
-              <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Поточний PIN</label>
+              <label className="set-lbl">Поточний PIN</label>
               <input
                 className="input-field" type="password" inputMode="numeric" required
                 value={pinForm.current}
@@ -850,7 +796,7 @@ export default function SettingsPage() {
             </div>
           )}
           <div style={{ flex: 1, minWidth: 140 }}>
-            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>{account.hasPin ? 'Новий PIN' : 'PIN'}</label>
+            <label className="set-lbl">{account.hasPin ? 'Новий PIN' : 'PIN'}</label>
             <input
               className="input-field" type="password" inputMode="numeric" required
               value={pinForm.next}
@@ -858,46 +804,51 @@ export default function SettingsPage() {
               placeholder="••••••"
             />
           </div>
-          <button type="submit" disabled={pinSaving} className="btn-primary" style={{ padding: '10px 18px' }}>
+          <button type="submit" disabled={pinSaving} className="d-btn">
             {pinSaving ? 'Збереження…' : account.hasPin ? 'Змінити PIN' : 'Увімкнути PIN'}
           </button>
           {/* Household #1 can't actually remove its PIN — it's the account's
               sole login method, not just an optional lock (see
               api/account/pin's matching server-side guard). */}
           {account.hasPin && !account.isPinHousehold && (
-            <button type="button" disabled={pinSaving} onClick={removePin} className="btn-ghost" style={{ padding: '10px 14px', color: '#EF4444' }}>
+            <button type="button" disabled={pinSaving} onClick={removePin} className="d-btn neg">
               Прибрати
             </button>
           )}
         </form>
-        <p style={{ fontSize: 12, color: 'var(--c-text-muted)', marginTop: 10 }}>
+        <p className="d-note" style={{ marginTop: 12 }}>
           Діє одразу для наступних входів. Після зміни PIN усі інші пристрої доведеться авторизувати заново.
         </p>
-      </div>
+      </section>
       )}
+      </div>
+
+      <div className="set-group" role="group" aria-labelledby="set-g-bank">
+        <p className="set-grp" id="set-g-bank">Банки та імпорт</p>
 
       {/* Bank connections — Monobank + SpareBank 1 merged into one card with
           a per-user bank picker, instead of two separate cards each user had
           to check. Once a user is connected to either bank, the picker goes
           away and just shows that connection's status/sync/disconnect. */}
-      <div className="card card-pad" style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Landmark size={16} color="#F97316" /> Банківське підключення
-        </h2>
-        <p style={{ fontSize: 13, color: 'var(--c-text-muted)', marginBottom: 8 }}>
-          Monobank — токен зі свого кабінету на{' '}
-          <a href="https://api.monobank.ua/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c-accent-text)' }}>
-            api.monobank.ua
-          </a>
-          . SpareBank 1 Sogn og Fjordane — підключення веде на сторінку входу банку (BankID), токен не потрібен.
-        </p>
+        <section className="d-card d-pane d-rise" style={vars({ '--i': 4 })}>
+          <div className="d-ch">
+            <h2>Банківське підключення</h2>
+            <span className="d-chip or"><Landmark size={18} /></span>
+          </div>
+          <p className="d-note" style={{ marginBottom: 12 }}>
+            Monobank — токен зі свого кабінету на{' '}
+            <a href="https://api.monobank.ua/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c-accent-text)' }}>
+              api.monobank.ua
+            </a>
+            . SpareBank 1 Sogn og Fjordane — підключення веде на сторінку входу банку (BankID), токен не потрібен.
+          </p>
         {/* Auto-categorization health — the LLM tier (Groq) sat silently dead
             for an unknown stretch of time on 2026-09-15 (retired model +
             empty prod API key), both failures shaped so nothing ever showed
             an error. This surfaces that class of failure here instead of
             only in a script someone has to remember to run. */}
         {llmStatus && llmStatus.status !== 'unknown' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, marginBottom: 16, color: llmStatus.status === 'alive' ? 'var(--c-pos-text)' : '#F97316' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, marginBottom: 16, color: llmStatus.status === 'alive' ? 'var(--c-pos-text)' : 'var(--c-accent-text)' }}>
             {llmStatus.status === 'alive'
               ? <><CheckCircle size={13} /> Авто-категоризація (Groq): працює — {llmStatus.llmCount} рішень за {llmStatus.lookbackDays} днів</>
               : <><AlertTriangle size={13} /> Авто-категоризація (Groq): не спрацювала жодного разу за {llmStatus.lookbackDays} днів, хоча {llmStatus.fallbackCount} транзакцій впали в "Незрозуміло" — перевірте GROQ_API_KEY</>}
@@ -919,19 +870,19 @@ export default function SettingsPage() {
             const isAdding = addingBank[u.id] ?? false;
             const choice = remainingBanks.length === 1 ? remainingBanks[0] : (bankChoice[u.id] ?? remainingBanks[0]);
             return (
-              <div key={u.id} style={{ borderTop: '1px solid var(--c-border)', paddingTop: 14 }}>
+              <div key={u.id} style={{ borderTop: '1px solid var(--c-line)', paddingTop: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-sec)' }}>{u.name}</span>
                   {remainingBanks.length > 0 && !isAdding && (
                     <button
-                      className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                      className="d-btn sm"
                       onClick={() => setAddingBank(prev => ({ ...prev, [u.id]: true }))}
                     >
                       <Plus size={13} /> Додати банк
                     </button>
                   )}
                   {isAdding && (
-                    <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setAddingBank(prev => ({ ...prev, [u.id]: false }))}>
+                    <button className="d-btn sm" onClick={() => setAddingBank(prev => ({ ...prev, [u.id]: false }))}>
                       Скасувати
                     </button>
                   )}
@@ -951,12 +902,12 @@ export default function SettingsPage() {
                         </span>
                       )}
                       <button
-                        className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                        className="d-btn sm"
                         disabled={monoSyncing === u.id} onClick={() => syncMono(u.id)}
                       >
                         {monoSyncing === u.id ? 'Синхронізація…' : 'Синхронізувати'}
                       </button>
-                      <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => disconnectMono(u.id, u.name)}>
+                      <button className="d-btn sm" onClick={() => disconnectMono(u.id, u.name)}>
                         Відключити
                       </button>
                     </div>
@@ -991,7 +942,7 @@ export default function SettingsPage() {
                       {!cards ? (
                         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0 8px' }}>
                           <span style={{ color: broken ? undefined : 'var(--c-text-muted)' }}>Картка: {mono?.balanceCurrency ?? '—'}</span>
-                          <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, minHeight: 40 }} disabled={monoCardBusy === u.id} onClick={() => loadMonoCards(u.id)}>
+                          <button className="d-btn sm" disabled={monoCardBusy === u.id} onClick={() => loadMonoCards(u.id)}>
                             {monoCardBusy === u.id ? 'Завантаження…' : broken ? 'Вибрати картку' : 'змінити'}
                           </button>
                         </div>
@@ -1008,10 +959,10 @@ export default function SettingsPage() {
                             ))}
                           </select>
                           <div style={{ display: 'flex', gap: 8 }}>
-                            <button className="btn-primary" style={{ minHeight: 40 }} disabled={monoCardBusy === u.id || !monoCardPick[u.id]} onClick={() => saveMonoCard(u.id)}>
+                            <button className="d-btn sm" disabled={monoCardBusy === u.id || !monoCardPick[u.id]} onClick={() => saveMonoCard(u.id)}>
                               {monoCardBusy === u.id ? 'Збереження…' : 'Зберегти'}
                             </button>
-                            <button className="btn-ghost" style={{ minHeight: 40 }} onClick={() => setMonoCards(prev => { const { [u.id]: _drop, ...rest } = prev; return rest; })}>Скасувати</button>
+                            <button className="d-btn sm" onClick={() => setMonoCards(prev => { const { [u.id]: _drop, ...rest } = prev; return rest; })}>Скасувати</button>
                           </div>
                         </div>
                       )}
@@ -1033,7 +984,7 @@ export default function SettingsPage() {
                         )}
                         {sb.expired ? (
                           <button
-                            className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                            className="d-btn sm"
                             disabled={sbConnecting === u.id} onClick={() => connectSb(u.id)}
                           >
                             {sbConnecting === u.id ? 'Перенаправлення…' : 'Перепідключити'}
@@ -1043,27 +994,27 @@ export default function SettingsPage() {
                             {/* Reconnect while still connected is fine (same flow as after expiry); no «Відключити» button here (the endpoint keeps the account rows, so a reconnect keeps sbTransactionId keys). */}
                             {sb.validUntil && new Date(sb.validUntil).getTime() - Date.now() < CONSENT_WARN_MS && (
                               <button
-                                className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                                className="d-btn sm"
                                 disabled={sbConnecting === u.id} onClick={() => connectSb(u.id)}
                               >
                                 {sbConnecting === u.id ? 'Перенаправлення…' : 'Перепідключити'}
                               </button>
                             )}
                             <button
-                              className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                              className="d-btn sm"
                               disabled={sbBalanceRefreshing === u.id} onClick={() => refreshSbBalances(u.id)}
                             >
                               {sbBalanceRefreshing === u.id ? 'Оновлення…' : 'Оновити баланси'}
                             </button>
                             <button
-                              className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                              className="d-btn sm"
                               disabled={sbSyncing === u.id} onClick={() => syncSb(u.id)}
                             >
                               {sbSyncing === u.id ? 'Синхронізація…' : 'Синхронізувати'}
                             </button>
                           </>
                         )}
-                        <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => disconnectSb(u.id, u.name)}>
+                        <button className="d-btn sm" onClick={() => disconnectSb(u.id, u.name)}>
                           Відключити
                         </button>
                       </div>
@@ -1076,7 +1027,7 @@ export default function SettingsPage() {
                         feed the budget, independent of the others. */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
                       {sb.accounts.map(a => (
-                        <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, fontSize: 12, background: 'rgba(100,116,139,0.08)', borderRadius: 8, padding: '6px 10px' }}>
+                        <div key={a.id} className="set-acc">
                           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, minWidth: 0 }}>
                             {sbEditingLabelId === a.id ? (
                               <>
@@ -1086,14 +1037,14 @@ export default function SettingsPage() {
                                   onKeyDown={e => { if (e.key === 'Enter') saveSbLabel(a.id); if (e.key === 'Escape') setSbEditingLabelId(null); }}
                                   autoFocus
                                 />
-                                <button className="btn-ghost" style={{ padding: '2px 8px', fontSize: 12 }} disabled={sbSavingLabel} onClick={() => saveSbLabel(a.id)}>OK</button>
+                                <button className="d-btn sm" disabled={sbSavingLabel} onClick={() => saveSbLabel(a.id)}>OK</button>
                               </>
                             ) : (
                               <>
                                 <span style={{ fontWeight: 600, color: 'var(--c-text-sec)' }}>{a.label}</span>
-                                <button className="btn-ghost" style={{ padding: 2 }} title="Перейменувати"
+                                <button className="d-round ghost" title="Перейменувати"
                                   onClick={() => { setSbEditingLabelId(a.id); setSbLabelInput(a.label); }}>
-                                  <Pencil size={11} />
+                                  <Pencil size={14} />
                                 </button>
                               </>
                             )}
@@ -1140,7 +1091,7 @@ export default function SettingsPage() {
                 )}
 
                 {sbConnected && sb && !sb.expired && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--c-text-sub)', cursor: 'pointer' }}>
                       <input
                         type="checkbox"
@@ -1187,7 +1138,7 @@ export default function SettingsPage() {
                             style={{ fontSize: 13 }}
                           />
                           <button
-                            className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap' }}
+                            className="d-btn sm"
                             disabled={monoConnecting === u.id || !monoTokenInput[u.id]?.trim()}
                             onClick={() => connectMono(u.id)}
                           >
@@ -1222,7 +1173,7 @@ export default function SettingsPage() {
                         />
                       </label>
                       <button
-                        className="btn-primary" style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap', alignSelf: 'flex-start' }}
+                        className="d-btn sm" style={{ alignSelf: 'flex-start' }}
                         disabled={sbConnecting === u.id}
                         onClick={() => connectSb(u.id)}
                       >
@@ -1236,17 +1187,17 @@ export default function SettingsPage() {
             );
           })}
         </div>
-      </div>
+      </section>
 
       {/* Import section */}
-      <div className="card card-pad" style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Імпорт з Excel</h2>
-        <p style={{ fontSize: 13, color: 'var(--c-text-sub)', marginBottom: 16 }}>
+      <section className="d-card d-pane d-rise" style={vars({ '--i': 5 })}>
+        <div className="d-ch"><h2>Імпорт з Excel</h2></div>
+        <p className="d-note" style={{ marginBottom: 16 }}>
           Завантажте файл Budget.xlsx — автоматично імпортуються категорії та дані з листів "Планування" і "Ведення".
         </p>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleImport} />
-          <button className="btn-primary" onClick={() => { setImportStatus('idle'); fileRef.current?.value && (fileRef.current.value = ''); fileRef.current?.click(); }} disabled={importStatus === 'loading'}>
+          <button className="d-btn" onClick={() => { setImportStatus('idle'); fileRef.current?.value && (fileRef.current.value = ''); fileRef.current?.click(); }} disabled={importStatus === 'loading'}>
             <Upload size={15} />
             {importStatus === 'loading' ? 'Імпорт…' : 'Завантажити файл'}
           </button>
@@ -1259,20 +1210,24 @@ export default function SettingsPage() {
             <div style={{ color: 'var(--c-neg-text)', fontSize: 13 }}>Помилка імпорту</div>
           )}
         </div>
+      </section>
       </div>
 
+      <div className="set-group" role="group" aria-labelledby="set-g-cat">
+        <p className="set-grp" id="set-g-cat">Категорії</p>
+
       {/* Add category */}
-      <div className="card card-pad" style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-sec)', marginBottom: 16 }}>Додати категорію</h2>
-        <form onSubmit={addCat} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+      <section className="d-card d-pane d-rise" style={vars({ '--i': 6 })}>
+        <div className="d-ch"><h2>Додати категорію</h2></div>
+        <form onSubmit={addCat} className="set-form">
           <div style={{ flex: '1 1 160px' }}>
-            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
+            <label className="set-lbl">
               Назва
             </label>
             <input className="input-field" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required placeholder="Назва категорії" />
           </div>
           <div style={{ flex: '1 1 120px' }}>
-            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Тип</label>
+            <label className="set-lbl">Тип</label>
             <select className="input-field" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
               <option value="income">Дохід</option>
               <option value="expense">Витрати</option>
@@ -1280,7 +1235,7 @@ export default function SettingsPage() {
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>Колір</label>
+            <label className="set-lbl">Колір</label>
             <div className="pick-grid" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {CATEGORY_PALETTE.map(c => (
                 <button
@@ -1295,16 +1250,16 @@ export default function SettingsPage() {
               ))}
             </div>
           </div>
-          <button type="submit" className="btn-primary"><Plus size={15} /> Додати</button>
+          <button type="submit" className="d-btn"><Plus size={15} /> Додати</button>
           <label style={{ flexBasis: '100%', display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
             <input type="checkbox" checked={form.lockedFromModes} onChange={e => setForm(f => ({ ...f, lockedFromModes: e.target.checked }))} style={{ marginTop: 3 }} />
-            <span style={{ fontSize: 13, color: 'var(--c-text-sec)' }}>
+            <span style={{ fontSize: 14, color: 'var(--c-text-sec)' }}>
               Режими не чіпають цю категорію
-              <span style={{ display: 'block', fontSize: 12, color: 'var(--c-text-muted)' }}>Режим подорожі не переносить сюди витрати</span>
+              <span className="d-note" style={{ display: 'block' }}>Режим подорожі не переносить сюди витрати</span>
             </span>
           </label>
           <div style={{ flexBasis: '100%' }}>
-            <label style={{ fontSize: 12, color: 'var(--c-text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>Іконка</label>
+            <label className="set-lbl">Іконка</label>
             <div className="pick-grid pick-icons" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 96, overflowY: 'auto' }}>
               {ICON_KEYS.map(key => (
                 <button
@@ -1319,40 +1274,42 @@ export default function SettingsPage() {
                     border: form.icon === key ? `1px solid ${form.color}` : '1px solid transparent',
                   }}
                 >
-                  <CategoryIcon name={key} color={form.icon === key ? form.color : '#94A3B8'} size={15} />
+                  <CategoryIcon name={key} color={form.icon === key ? form.color : 'var(--c-text-muted)'} size={15} />
                 </button>
               ))}
             </div>
           </div>
         </form>
-      </div>
+      </section>
 
       {/* Categories list */}
-      {sections.map(({ type, label, color }) => {
+      {sections.map(({ type, label, color }, si) => {
         const items = cats.filter(c => c.type === type);
         return (
-          <div key={type} className="card card-pad" style={{ marginBottom: 16 }}>
-            <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color }}>{label}</span>
-              <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-text-muted)' }}>({items.length})</span>
-            </h2>
-            {type === 'expense' && <p style={{ fontSize: 12, color: 'var(--c-text-muted)', margin: '-8px 0 10px' }}>Замок — режими не чіпають категорію: режим подорожі не переносить сюди витрати.</p>}
-            {items.length === 0 && <p style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>Немає категорій</p>}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <section key={type} className="d-card d-pane d-rise" style={vars({ '--i': 7 + si })}>
+            <div className="d-ch">
+              <h2>
+                <span style={{ color }}>{label}</span>
+                <span className="d-note" style={{ marginLeft: 8, fontWeight: 500 }}>({items.length})</span>
+              </h2>
+            </div>
+            {type === 'expense' && <p className="d-note" style={{ margin: '-4px 0 10px' }}>Замок — режими не чіпають категорію: режим подорожі не переносить сюди витрати.</p>}
+            {items.length === 0 && <div className="d-empty" style={{ minHeight: 64 }}>Немає категорій</div>}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
               {items.map(cat => (
-                <div key={cat.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
+                <div key={cat.id} className="set-cat">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
                     <button
+                      className="d-chip"
                       title="Змінити іконку"
                       onClick={() => { setEditingIconId(editingIconId === cat.id ? null : cat.id); setEditingColorId(null); }}
                       style={{
-                        width: 28, height: 28, borderRadius: 8, flexShrink: 0, cursor: 'pointer',
+                        cursor: 'pointer', padding: 0,
                         background: `${cat.color}1A`,
                         border: editingIconId === cat.id ? `1px solid ${cat.color}` : '1px solid transparent',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
                       }}
                     >
-                      <CategoryIcon name={cat.icon} color={cat.color} size={15} />
+                      <CategoryIcon name={cat.icon} color={cat.color} size={18} />
                     </button>
                     <button
                       className="hit40"
@@ -1364,24 +1321,24 @@ export default function SettingsPage() {
                         cursor: 'pointer', flexShrink: 0, padding: 0,
                       }}
                     />
-                    <span style={{ flex: 1, fontSize: 14, color: 'var(--c-text-sec)' }}>{cat.name}</span>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 14, color: 'var(--c-text-sec)', overflowWrap: 'anywhere' }}>{cat.name}</span>
                     {cat.type === 'expense' && (
                       <button
-                        className="btn-ghost hit40" type="button" aria-pressed={cat.lockedFromModes}
+                        className="d-round ghost hit40" type="button" aria-pressed={cat.lockedFromModes}
                         title={`Режими не чіпають цю категорію — ${cat.lockedFromModes ? 'увімкнено' : 'вимкнено'}. Режим подорожі не переносить сюди витрати`}
                         aria-label="Режими не чіпають цю категорію"
                         onClick={() => toggleLocked(cat.id, !cat.lockedFromModes)}
-                        style={{ padding: '4px 6px', border: 'none', color: cat.lockedFromModes ? 'var(--c-accent-text)' : 'var(--c-text-muted)', opacity: cat.lockedFromModes ? 1 : 0.5 }}
+                        style={{ color: cat.lockedFromModes ? 'var(--c-accent-text)' : 'var(--c-text-muted)', opacity: cat.lockedFromModes ? 1 : 0.5 }}
                       >
-                        <Lock size={13} />
+                        <Lock size={14} />
                       </button>
                     )}
-                    <button className="btn-ghost" style={{ padding: '4px 6px', border: 'none', color: '#EF4444' }} onClick={() => deleteCat(cat.id)} title={`Видалити ${cat.name}`} aria-label={`Видалити ${cat.name}`}>
-                      <Trash2 size={13} />
+                    <button className="d-round ghost neg" onClick={() => deleteCat(cat.id)} title={`Видалити ${cat.name}`} aria-label={`Видалити ${cat.name}`}>
+                      <Trash2 size={14} />
                     </button>
                   </div>
                   {editingIconId === cat.id && (
-                    <div className="pick-grid pick-icons" style={{ display: 'flex', gap: 6, paddingBottom: 10, paddingLeft: 26, flexWrap: 'wrap', maxHeight: 120, overflowY: 'auto' }}>
+                    <div className="pick-grid pick-icons" style={{ display: 'flex', gap: 6, paddingBottom: 10, paddingLeft: 8, flexWrap: 'wrap', maxHeight: 120, overflowY: 'auto' }}>
                       {ICON_KEYS.map(key => (
                         <button
                           className="pick-icon"
@@ -1395,13 +1352,13 @@ export default function SettingsPage() {
                             border: cat.icon === key ? `1px solid ${cat.color}` : '1px solid transparent',
                           }}
                         >
-                          <CategoryIcon name={key} color={cat.icon === key ? cat.color : '#94A3B8'} size={14} />
+                          <CategoryIcon name={key} color={cat.icon === key ? cat.color : 'var(--c-text-muted)'} size={14} />
                         </button>
                       ))}
                     </div>
                   )}
                   {editingColorId === cat.id && (
-                    <div className="pick-grid" style={{ display: 'flex', gap: 6, paddingBottom: 10, paddingLeft: 26, flexWrap: 'wrap' }}>
+                    <div className="pick-grid" style={{ display: 'flex', gap: 6, paddingBottom: 10, paddingLeft: 8, flexWrap: 'wrap' }}>
                       {CATEGORY_PALETTE.map(c => (
                         <button
                           className="pick-swatch"
@@ -1418,9 +1375,59 @@ export default function SettingsPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         );
       })}
+      </div>
+
+      <div className="set-group" role="group" aria-labelledby="set-g-look">
+        <p className="set-grp" id="set-g-look">Вигляд</p>
+
+      {/* Appearance section */}
+      <section className="d-card d-pane d-rise" style={vars({ '--i': 10 })}>
+        <div className="d-ch"><h2>Зовнішній вигляд</h2></div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-sec)', marginBottom: 2 }}>
+              {theme === 'dark' ? 'Темна тема' : 'Світла тема'}
+            </p>
+            <p className="d-note">
+              {theme === 'dark' ? 'Перемкнути на світлу' : 'Перемкнути на темну'}
+            </p>
+          </div>
+          <button onClick={toggleTheme} className="d-btn">
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            {theme === 'dark' ? 'Світла' : 'Темна'}
+          </button>
+        </div>
+      </section>
+
+      {/* Dashboard sections visibility */}
+      <section className="d-card d-pane d-rise" style={vars({ '--i': 11 })}>
+        <div className="d-ch"><h2>Головна сторінка</h2></div>
+        <p className="d-note" style={{ marginBottom: 12 }}>
+          Які блоки показувати на дашборді (зберігається на цьому пристрої)
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {(Object.keys(PREF_LABELS) as (keyof DashboardPrefs)[]).map(key => (
+            <label key={key} className="set-pref">
+              <span style={{ fontSize: 14, color: 'var(--c-text-sec)' }}>{PREF_LABELS[key]}</span>
+              <button
+                type="button"
+                onClick={() => updateSections({ [key]: !dashSections[key] })}
+                className={`set-sw${dashSections[key] ? ' on' : ''}`}
+                aria-label={`${dashSections[key] ? 'Сховати' : 'Показати'}: ${PREF_LABELS[key]}`}
+              >
+                {/* transform, not left — animating left triggers a layout
+                    reflow every frame; translateX is compositor-only
+                    (audit 2026-08-02, same class as the budget-bar fix). */}
+                <span />
+              </button>
+            </label>
+          ))}
+        </div>
+      </section>
+      </div>
     </div>
   );
 }
