@@ -242,18 +242,6 @@ input[type="number"]::-webkit-outer-spin-button {
   border-radius: 16px;
 }
 
-.stat-card {
-  background: linear-gradient(135deg, var(--c-elevated) 0%, var(--c-raised) 100%);
-  border: 1px solid var(--c-border-mid);
-  border-radius: 20px;
-  padding: 24px;
-  transition: border-color 0.2s, transform 0.2s, background 0.2s;
-}
-.stat-card:hover {
-  border-color: var(--c-border-hi);
-  transform: translateY(-1px);
-}
-
 .nav-link {
   display: flex;
   align-items: center;
@@ -382,7 +370,6 @@ select.input-field option {
 .mobile-only   { display: none; }
 .desktop-only  { display: block; }
 
-.grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .grid-5 { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 
@@ -392,7 +379,6 @@ select.input-field option {
   .grid-5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .grid-5 > * { grid-column: span 2; }
   .grid-5 > :nth-child(n+4) { grid-column: span 3; }
-  .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 768px) {
@@ -407,8 +393,6 @@ select.input-field option {
      they used a hand-copied 68 that left the last 3px of content under the nav. */
   :root { --nav-h: 71px; --card-pad: 16px; }
   body { padding-bottom: var(--nav-h); }
-
-  .stat-card { padding: 16px; border-radius: 14px; }
 
   /* Colour/icon pickers in Налаштування: 40px pitch so each swatch/tile is a
      real tap target (they were 22-30px). Icon grids scroll inside. */
@@ -428,7 +412,6 @@ select.input-field option {
 
   .modal-overlay { align-items: flex-end; padding: 0; padding-bottom: env(safe-area-inset-bottom); }
 
-  .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .grid-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .grid-5 > :last-child { grid-column: 1 / -1; }
   .grid-2 { grid-template-columns: 1fr; gap: 12px; }
@@ -516,8 +499,7 @@ select.input-field option {
 
 /* ── Light mode extras ── */
 [data-theme="light"] .card,
-[data-theme="light"] .card-elevated,
-[data-theme="light"] .stat-card {
+[data-theme="light"] .card-elevated {
   box-shadow: var(--card-shadow);
 }
 
@@ -792,3 +774,8 @@ select.input-field option {
 .pool-bank { grid-column: 2 / -1; font-size: 12px; line-height: 1.4; color: var(--c-text-muted); }
 .pool-bank span { white-space: nowrap; }
 .pool-bank .diff { color: var(--c-warn-text); }
+/* Аналітика: the savings tile carries the pool list under its figure, full tile width. */
+.d-stat.has-pools { flex-wrap: wrap; }
+.d-stat.has-pools > div:nth-child(2) { min-width: 0; }
+.d-stat .pool-list { width: 100%; }
+@media (min-width: 900px) { .d-stats.an-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
