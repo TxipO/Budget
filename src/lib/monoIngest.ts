@@ -189,6 +189,13 @@ export async function ingestStatementItem(userId: number, householdId: number, i
     return 'skipped_duplicate';
   }
 
+  // Deleted by the person earlier — see DeletedBankTransaction. Never recreate.
+  const deleted = await prisma.deletedBankTransaction.findUnique({
+    where: { userId_source_bankKey: { userId, source: 'mono', bankKey: item.id } },
+    select: { id: true },
+  });
+  if (deleted) return 'skipped_duplicate';
+
   const txType: 'expense' | 'income' = item.amount < 0 ? 'expense' : 'income';
   // operationAmount (in currencyCode's currency), not amount (always the
   // account's own currency) — see the MonoStatementItem comment above.

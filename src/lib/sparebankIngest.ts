@@ -450,6 +450,17 @@ export async function ingestTransaction(userId: number, householdId: number, ite
     where: { userId, sbTransactionId: storageKey },
     select: { id: true, isTransfer: true, categoryId: true, savingsWithdrawal: true, categorySource: true, details: true, merchantText: true },
   });
+  // Deleted by the person earlier — see DeletedBankTransaction. The occurrence
+  // counter was already bumped above, so later same-signature items keep their
+  // slots. Checked before the rebooked-placeholder logic so a deleted row's
+  // key is never re-claimed by (or re-created from) a re-delivery.
+  if (!existing) {
+    const deleted = await prisma.deletedBankTransaction.findUnique({
+      where: { userId_source_bankKey: { userId, source: 'sparebank', bankKey: storageKey } },
+      select: { id: true },
+    });
+    if (deleted) return { status: 'skipped_duplicate' };
+  }
   // Date-shifted re-delivery of a weekend placeholder (see
   // findRebookedPlaceholder). The claimed row is re-keyed to this item's key —
   // so every later re-fetch of it is an ordinary duplicate hit — and takes the

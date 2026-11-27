@@ -178,7 +178,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!householdId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const id = parseId((await params).id);
     if (id === null) return badRequest('Невалідний ID');
-    const owned = await prisma.transaction.findUnique({ where: { id }, select: { householdId: true } });
+    const owned = await prisma.transaction.findUnique({ where: { id }, select: { householdId: true, userId: true, source: true, monoStatementId: true, sbTransactionId: true } });
     if (!owned || owned.householdId !== householdId) {
       return NextResponse.json({ error: 'Транзакцію не знайдено' }, { status: 404 });
     }
@@ -186,8 +186,22 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     // see Ф5), so Postgres won't clean up references to this row on its own.
     // Clear them first so deleting the "original" of a flagged pair never
     // leaves the flagged row pointing at a transaction that no longer exists.
-    await prisma.transaction.updateMany({ where: { possibleDuplicateOf: id }, data: { possibleDuplicateOf: null } });
-    await prisma.transaction.delete({ where: { id } });
+    //
+    // A bank-imported row also leaves a tombstone (same transaction as the
+    // delete) so the next sync doesn't re-fetch the bank item and recreate it.
+    const bankKey = owned.source === 'mono' ? owned.monoStatementId
+      : owned.source === 'sparebank' ? owned.sbTransactionId
+      : null;
+    await prisma.$transaction([
+      prisma.transaction.updateMany({ where: { possibleDuplicateOf: id }, data: { possibleDuplicateOf: null } }),
+      ...(bankKey && owned.userId
+        ? [prisma.deletedBankTransaction.createMany({
+            data: [{ householdId, userId: owned.userId, source: owned.source, bankKey }],
+            skipDuplicates: true,
+          })]
+        : []),
+      prisma.transaction.delete({ where: { id } }),
+    ]);
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     if (e?.code === 'P2025') return NextResponse.json({ error: 'Транзакцію не знайдено' }, { status: 404 });
