@@ -799,6 +799,9 @@ select.input-field option {
 .d-btn.sm { height: 36px; padding: 0 14px; font-size: 13px; }
 .d-btn.neg { color: var(--c-neg-text); }
 .d-btn:disabled { opacity: 0.55; cursor: default; }
+/* Inside a card the default button shares the card fill and reads as plain text: lift it one step. */
+.d-card .d-btn:not(.pr) { background: var(--c-raised); }
+.d-card .d-btn:not(.pr):not(:disabled):hover { background: color-mix(in srgb, var(--c-raised), var(--c-text) 6%); }
 @media (max-width: 768px) {
   .d-btn.sm { height: 40px; }
   .set-form > * { min-width: 0; }
